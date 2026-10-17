@@ -272,16 +272,29 @@ async function pickQuestions(game, cats, n, aiFresh = []) {
   const all = [...BANKS[game], ...AI_POOL[game]].filter((it) => !aiIds.has(it.id));
   const fresh = all.filter((it) => !isUsed(game, it));
   let chosen = [...ai, ...shuffle(fresh.filter(inCat)).slice(0, n - ai.length)];
+  if (chosen.length < n && !(cats && cats.length && cats.every((c) => RELIGIOUS.has(c)))) {
+    let tries = 0;
+    while (chosen.length < n && tries < 1) {
+      tries++;
+      const gen = await aiGenerate(game, cats, Math.min(8, n - chosen.length + 2));
+      const ids = new Set(chosen.map((c) => c.id));
+      chosen.push(...gen.filter((g) => !ids.has(g.id)).slice(0, n - chosen.length));
+    }
+  }
+  // لو الفئات اللي اختارها خلصت، نعيد استخدام أسئلة نفس الفئات قبل ما نروح لفئات تانية
+  if (chosen.length < n) {
+    const ids = new Set(chosen.map((c) => c.id));
+    const catPool = shuffle(all.filter((it) => inCat(it) && !ids.has(it.id))).slice(0, n - chosen.length);
+    catPool.forEach((it) => { usedIdSet.delete(it.id); usedHashSet.delete(hashText(game + ':' + itemText(game, it))); });
+    chosen.push(...catPool);
+  }
   if (chosen.length < n) {
     const ids = new Set(chosen.map((c) => c.id));
     chosen.push(...shuffle(fresh.filter((it) => !ids.has(it.id))).slice(0, n - chosen.length));
   }
-  let tries = 0;
-  while (chosen.length < n && tries < 2) {
-    tries++;
-    const gen = await aiGenerate(game, cats, Math.min(10, n - chosen.length + 2));
+  if (chosen.length < n) {
     const ids = new Set(chosen.map((c) => c.id));
-    chosen.push(...gen.filter((g) => !ids.has(g.id)).slice(0, n - chosen.length));
+    chosen.push(...shuffle(all.filter((it) => !ids.has(it.id))).slice(0, n - chosen.length));
   }
   return shuffle(chosen);
 }

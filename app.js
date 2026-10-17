@@ -89,13 +89,16 @@ const S = {
   avTab: 'outfit',
   setup: LS.get('setup', null) || { game: null, teamNames: ['فريق الكرك', 'فريق السحلب'], categories: [], count: 10, writeSec: 60, voteSec: 30, hintSec: 30, chessSec: 180, useCustom: false },
   custom: LS.get('custom', []),
+  customInRoom: false,
   view: null,
   offset: 0,
   es: null,
+  pollTimer: null,
   drawer: false,
   draft: {},
   pickOpt: null,
   busy: false,
+  synced: false,
   lastEventId: null,
   prevScores: null,
   bumps: {},
@@ -103,48 +106,73 @@ const S = {
   resumable: null
 };
 
+const NON_BLOCKING_ACTIONS = new Set([
+  'adjust_score', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
+  'update_lobby', 'rename_team', 'kr_suggest', 'kr_vote_suggest', 'sh_suggest', 'tm_suggest'
+]);
+
 // ------------------------------------------------------------------
 // الشبكة
 // ------------------------------------------------------------------
+function applyView(v) {
+  if (!v) return;
+  if (S.view && v.seq && S.view.seq && v.seq < S.view.seq) return;
+  S.offset = (v.now || Date.now()) - Date.now();
+  onEvent(v);
+  S.view = v;
+  if (v.status === 'closed') { closedRoom(); return; }
+  render();
+}
+
 async function api(action, data = {}) {
-  if (S.busy && action !== 'kr_suggest' && action !== 'kr_vote_suggest') return { ok: false };
-  S.busy = true;
+  const blocking = !NON_BLOCKING_ACTIONS.has(action);
+  if (blocking && S.busy) return { ok: false };
+  if (blocking) S.busy = true;
   try {
     const r = await fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, code: S.code, pid: ident.pid, secret: ident.secret, ...data }) });
     const j = await r.json();
     if (!j.ok && j.error) toast(j.error, 'err');
+    if (j.ok && j.view) applyView(j.view);
     return j;
   } catch (e) {
     toast('الاتصال بالسيرفر وقع — اتأكد إنك على نفس الشبكة', 'err');
     return { ok: false };
   } finally {
-    S.busy = false;
+    if (blocking) S.busy = false;
   }
 }
 
 function connect(code) {
   if (S.es) S.es.close();
+  if (S.pollTimer) clearInterval(S.pollTimer);
   S.code = code;
+  S.synced = false;
+  S.lastEventId = null;
   const es = new EventSource(`/api/stream?code=${encodeURIComponent(code)}&pid=${ident.pid}&secret=${ident.secret}`);
   S.es = es;
   es.onmessage = (ev) => {
-    const v = JSON.parse(ev.data);
-    S.offset = v.now - Date.now();
-    onEvent(v);
-    S.view = v;
-    if (v.status === 'closed') { closedRoom(); return; }
-    render();
+    try { applyView(JSON.parse(ev.data)); } catch (e) {}
   };
   es.onerror = async () => {
     const r = await fetch('/api/room-exists?code=' + encodeURIComponent(code)).then((x) => x.json()).catch(() => null);
     if (r && !r.ok) closedRoom();
   };
+  S.pollTimer = setInterval(async () => {
+    if (!S.code) return;
+    const r = await fetch(`/api/state?code=${encodeURIComponent(S.code)}&pid=${ident.pid}&secret=${ident.secret}`).then((x) => x.json()).catch(() => null);
+    if (!r) return;
+    if (!r.ok && r.closed) { closedRoom(); return; }
+    if (r.ok && r.view && (!S.view || r.view.seq !== S.view.seq)) applyView(r.view);
+  }, 1500);
 }
 
 function closedRoom() {
   if (S.es) S.es.close();
+  if (S.pollTimer) clearInterval(S.pollTimer);
   S.es = null;
+  S.pollTimer = null;
   S.view = null;
+  S.customInRoom = false;
   LS.set('session', null);
   S.screen = 'closed';
   render();
@@ -161,20 +189,27 @@ function onEvent(v) {
   S.prevScores = v.teams ? Object.fromEntries(v.teams.map((t) => [t.id, t.score])) : null;
 
   const e = v.lastEvent;
+  if (!S.synced) {
+    S.synced = true;
+    S.lastEventId = e ? e.id : 0;
+    return;
+  }
   if (!e || e.id === S.lastEventId) return;
-  const first = S.lastEventId === null;
   S.lastEventId = e.id;
-  if (first) return;
   const tn = (id) => (v.teams.find((t) => t.id === id) || {}).name || '';
   const msgs = {
     join: () => v.me.role === 'admin' && `${e.name} دخل الغرفة`,
-    wrong: () => `${tn(e.team)} غلط — اتجمد`,
+    wrong: () => e.bothFrozen ? `الفريقين اتجمدوا! التلميح الجاي بيفتح تلقائياً...` : `${tn(e.team)} جاوب غلط — اتجمد لحد التلميح الجاي!`,
+    unfrozen: () => `الحكم فك التجميد عن ${tn(e.team)}`,
+    frozen_by_admin: () => `الحكم جمّد ${tn(e.team)}`,
+    guess: () => v.me.role === 'admin' && `${tn(e.team)} بعت تخمين جديد!`,
     golden: () => `فرصة ذهبية لـ ${tn(e.team)}!`,
     rejected: () => `الحكم رفض إجابة ${tn(e.team)} — اكتبوا واحدة تانية`,
     penalty: () => `عقوبة تضليل: -15 ثانية من ${tn(e.team)}`,
     adjust: () => `الحكم عدّل نقاط ${tn(e.team)} (${e.delta > 0 ? '+' : ''}${e.delta})`,
-    hint: () => 'اتفتح تلميح جديد',
-    turn: () => `الدور على ${tn(e.team)}`
+    hint: () => 'اتفتح تلميح جديد — التجميد اتفك!',
+    turn: () => `الدور على ${tn(e.team)}`,
+    game_changed: () => `الحكم غيّر اللعبة لـ ${GAMES[e.game] ? GAMES[e.game].name : e.game}`
   };
   const m = msgs[e.type] && msgs[e.type]();
   if (m) toast(m);
@@ -260,13 +295,18 @@ function scorebar() {
   const v = S.view;
   const [a, b] = v.teams;
   const mt = myTeam();
+  const adm = isAdmin();
   const cell = (t) => {
     const bump = S.bumps[t.id] && Date.now() - S.bumps[t.id].at < 2500 ? S.bumps[t.id].d : null;
     const cap = v.players.find((p) => p.id === t.captainId);
     return `<div class="score team-${t.id} ${mt === t.id ? 'mine' : ''}">
       ${avatar(cap, 'xs')}
       <div class="score-txt"><span class="score-name">${esc(t.name)}${mt === t.id ? ' <em>(فريقك)</em>' : ''}</span>
-      <span class="score-val">${t.score}</span></div>
+      <span class="score-val" data-team-score="${t.id}">${t.score}</span></div>
+      ${adm ? `<div class="score-qctl" title="تعديل سريع للنقاط">
+        <button class="qscore plus" onclick="api('adjust_score',{team:'${t.id}',delta:5})" aria-label="زود 5 نقاط لـ ${esc(t.name)}">+5</button>
+        <button class="qscore minus" onclick="api('adjust_score',{team:'${t.id}',delta:-5})" aria-label="نقص 5 نقاط من ${esc(t.name)}">-5</button>
+      </div>` : ''}
       ${bump ? `<span class="bump ${bump > 0 ? 'up' : 'down'}">${bump > 0 ? '+' : ''}${bump}</span>` : ''}
     </div>`;
   };
@@ -282,6 +322,7 @@ function scorebar() {
 // ------------------------------------------------------------------
 function screenKey() {
   const v = S.view;
+  if (S.customInRoom) return 'customInRoom';
   if (!v) return S.screen;
   if (v.me.role === 'kicked') return 'kicked';
   if (v.status === 'lobby') return isAdmin() ? 'lobbyAdmin' : myTeam() ? 'lobbyPlayer' : 'teamPick';
@@ -302,7 +343,9 @@ function render() {
 
   let html = '';
   const v = S.view;
-  if (!v) {
+  if (S.customInRoom) {
+    html = viewCustom();
+  } else if (!v) {
     html = ({ home: viewHome, avatar: viewAvatar, setup: viewSetup, custom: viewCustom, closed: viewClosed, loading: viewLoading })[S.screen]();
   } else if (key === 'kicked') html = viewKicked();
   else if (v.status === 'lobby') html = isAdmin() ? viewLobbyAdmin() : myTeam() ? viewLobbyPlayer() : viewTeamPick();
@@ -325,6 +368,18 @@ function render() {
   tick();
 }
 
+function tamrClockSec(teamId) {
+  const v = S.view;
+  if (!v || !v.tm || !v.tm.clocks) return 0;
+  let s = v.tm.clocks[teamId] ?? 0;
+  const active = v.tm.golden || v.tm.turn;
+  if (v.tm.turnRunning && active === teamId && v.tm.lastTick) {
+    const elapsed = Math.max(0, Math.floor(((Date.now() + S.offset) - v.tm.lastTick) / 1000));
+    s = Math.max(0, s - elapsed);
+  }
+  return s;
+}
+
 // تحديث العداد بدون إعادة رسم
 function tick() {
   const el = document.querySelector('.js-timer');
@@ -341,7 +396,10 @@ function tick() {
   const v = S.view;
   if (v && v.game === 'tamr' && v.tm) {
     document.querySelectorAll('.js-clock').forEach((c) => {
-      c.textContent = mmss(v.tm.clocks[c.dataset.team]);
+      const sec = tamrClockSec(c.dataset.team);
+      c.textContent = mmss(sec);
+      const card = c.closest('.clock');
+      if (card) card.classList.toggle('low', sec <= 30);
     });
   }
 }
@@ -542,13 +600,14 @@ async function createRoom() {
 // 4) صفحة الأسئلة المخصصة (كاستم)
 // ==================================================================
 function viewCustom() {
-  const g = S.setup.game;
+  const inRoom = Boolean(S.customInRoom && S.view);
+  const g = inRoom ? S.view.game : S.setup.game;
   const qLabel = g === 'sahlab' ? 'التلميح' : g === 'tamr' ? 'وصف الشخصية' : 'السؤال';
   const aLabel = g === 'tamr' ? 'اسم الشخصية' : 'الإجابة الصح';
-  return `${topbar(stepper(['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'], 1))}
+  return `${topbar(stepper(['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'], inRoom ? 2 : 1))}
   <section class="wrap narrow custom">
     <div class="card tape">
-      <h1 class="h1">${ic('pencil')} أسئلتك الخاصة</h1>
+      <h1 class="h1">${ic('pencil')} أسئلتك الخاصة (${GAMES[g] ? GAMES[g].name : ''})</h1>
       <p class="sub">اكتب ${qLabel} و${aLabel}. ${g === 'karak' ? 'في كرك حط <b>____</b> مكان الإجابة في السؤال، والـ AI هيجيب إجابتين مزيفين لكل سؤال.' : ''}</p>
       <div class="row wrap-row">
         <button class="btn ghost sm" onclick="presetCustom(10)">10 أسئلة</button>
@@ -569,10 +628,30 @@ function viewCustom() {
         </div>`).join('')}
       <button class="btn ghost block" onclick="S.custom.push({q:'',truth:''});saveCustom();render()">${ic('plus')} أضف سؤال</button>
     </div>
-    <div class="next-bar"><button class="btn primary lg" onclick="S.setup.useCustom=true;S.screen='setup';render()">${ic('check')} احفظ وكمّل الإعداد</button></div>
+    <div class="next-bar">
+      ${inRoom ? `<button class="btn ghost lg" onclick="S.customInRoom=false;render()">رجوع لغرفة الانتظار</button>` : ''}
+      <button class="btn primary lg" onclick="finishCustom()">${ic('check')} ${inRoom ? 'احفظ في الغرفة وارجع للانتظار' : 'احفظ وكمّل الإعداد'}</button>
+    </div>
   </section>`;
 }
-function openCustom() { if (!S.custom.length) presetCustom(10, true); S.screen = 'custom'; render(); }
+function openCustom() { if (!S.custom.length) presetCustom(10, true); S.customInRoom = false; S.screen = 'custom'; render(); }
+function openCustomInLobby() { if (!S.custom.length) presetCustom(10, true); S.customInRoom = true; render(); }
+async function finishCustom() {
+  saveCustom();
+  if (S.customInRoom && S.view) {
+    const custom = S.custom.filter((c) => c.q.trim() && c.truth.trim());
+    if (!custom.length) return toast('اكتب سؤال واحد على الأقل الأول', 'err');
+    if (S.view.game === 'tamr' && custom.length < 2) return toast('تمر هندي محتاج شخصيتين على الأقل', 'err');
+    await api('update_lobby', { settings: { useCustom: true }, customPack: custom });
+    S.customInRoom = false;
+    toast('اتحفظت الأسئلة الخاصة في الغرفة');
+    render();
+    return;
+  }
+  S.setup.useCustom = true;
+  S.screen = 'setup';
+  render();
+}
 function presetCustom(n, silent) {
   while (S.custom.length < n) S.custom.push({ q: '', truth: '' });
   if (S.custom.length > n) S.custom = S.custom.slice(0, n).concat(S.custom.slice(n).filter((c) => c.q || c.truth));
@@ -601,13 +680,51 @@ function memberRow(p, adminCtl) {
 }
 function kick(id, name) { if (confirm(`تطرد ${name} من الغرفة؟`)) api('kick', { target: id }); }
 
+function lobbyRangeField(key, label, min, max, step, val) {
+  return `<label class="field"><span>${label}: <b id="llbl_${key}">${fmtSec(val)}</b></span>
+    <input type="range" class="range" min="${min}" max="${max}" step="${step}" value="${val}"
+      oninput="document.getElementById('llbl_${key}').textContent=fmtSec(+this.value)"
+      onchange="lobbySetSetting('${key}',+this.value)"/></label>`;
+}
+
+function lobbyPickGame(k) {
+  S.setup.game = k;
+  S.setup.categories = [];
+  LS.set('setup', S.setup);
+  api('update_lobby', { game: k, settings: { categories: [] } });
+}
+function lobbyToggleCat(id) {
+  const v = S.view;
+  if (!v) return;
+  const cur = Array.isArray(v.settings.categories) ? [...v.settings.categories] : [];
+  const i = cur.indexOf(id);
+  if (i >= 0) cur.splice(i, 1); else cur.push(id);
+  S.setup.categories = cur;
+  LS.set('setup', S.setup);
+  api('update_lobby', { settings: { categories: cur } });
+}
+function lobbySetSetting(key, val) {
+  S.setup[key] = val;
+  LS.set('setup', S.setup);
+  api('update_lobby', { settings: { [key]: val } });
+}
+function lobbySetCustom(useCustom) {
+  const custom = S.custom.filter((c) => c.q.trim() && c.truth.trim());
+  S.setup.useCustom = useCustom;
+  LS.set('setup', S.setup);
+  api('update_lobby', { settings: { useCustom }, customPack: custom });
+}
+
 function viewLobbyAdmin() {
   const v = S.view;
   const s = v.settings;
+  const g = v.game;
+  const cats = CATS[g] || [];
+  const customReady = v.customCount || S.custom.filter((c) => c.q && c.truth).length;
   const unassigned = v.players.filter((p) => !p.team);
   const empty = v.teams.filter((t) => !playersOf(t.id).length);
   const timers = v.game === 'karak' ? `كتابة ${s.writeSec}ث · اختيار ${s.voteSec}ث` : v.game === 'sahlab' ? `كل تلميح ${s.hintSec}ث` : `ساعة ${mmss(s.chessSec)} لكل فريق`;
-  const catNames = s.useCustom ? `كاستم (${v.customCount} سؤال)` : s.categories.length ? s.categories.map((c) => (CATS[v.game].find((x) => x[0] === c) || [c, c])[1]).join('، ') : 'كوكتيل';
+  const catNames = s.useCustom ? `كاستم (${customReady} سؤال)` : s.categories.length ? s.categories.map((c) => (cats.find((x) => x[0] === c) || [c, c])[1]).join('، ') : 'كوكتيل';
   return `${topbar(stepper(['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'], 2))}
   <section class="wrap wide lobby">
     <div class="lobby-grid">
@@ -620,20 +737,21 @@ function viewLobbyAdmin() {
         <div class="settings-sum">
           <div><span>اللعبة</span><b>${GAMES[v.game].name}</b></div>
           <div><span>الأسئلة</span><b>${esc(catNames)}</b></div>
-          <div><span>العدد</span><b>${s.useCustom ? v.customCount : s.count}</b></div>
+          <div><span>العدد</span><b>${s.useCustom ? customReady : s.count}</b></div>
           <div><span>الوقت</span><b>${timers}</b></div>
           <div><span>اللاعبين</span><b>${v.players.length} / ${(v.caps || {}).room || 40}</b></div>
           ${v.ai && v.ai.on ? `<div><span>الـ AI</span><b class="ai-state ${v.ai.status}">${v.ai.status === 'loading' ? '<i class="ai-dot"></i> بيجمع أسئلة جديدة...' : v.ai.status === 'ready' ? `جهّز ${v.ai.ready} سؤال جديد` : v.ai.status === 'verified' ? 'البنك الموثّق' : 'هيكمل من البنك'}</b></div>` : ''}
         </div>
-        <p class="note warn">${ic('lock')} الإعدادات هتتقفل أول ما تدوس ابدأ.</p>
+        <p class="note warn">${ic('lock')} تقدر تعدّل اللعبة والأسئلة والوقت براحتك قبل ما تدوس ابدأ.</p>
       </aside>
 
       <div class="lobby-main">
         <div class="judge-card card">
           ${avatar(v.admin, 'md')}
-          <div><b>${esc(v.admin.name)}</b><span class="sub">الحكم — مش بيلعب</span></div>
+          <div><b>${esc(v.admin.name)}</b><span class="sub">الحكم — تقدر تغيّر اللعبة والأسئلة والوقت من غير ما تخرّج اللاعيبة</span></div>
           <span class="badge">${ic('whistle')} الحكم</span>
         </div>
+
         <div class="teams-2">
           ${v.teams.map((t) => `
             <div class="card team-col team-${t.id}">
@@ -645,8 +763,60 @@ function viewLobbyAdmin() {
             </div>`).join('')}
         </div>
         ${unassigned.length ? `<div class="card unassigned"><h3 class="h3">لسه بيختاروا فريق (${unassigned.length})</h3><ul class="members">${unassigned.map((p) => memberRow(p, true)).join('')}</ul></div>` : ''}
+
+        <div class="card lobby-config" id="lobbyConfig">
+          <h2 class="h2">${ic('sliders')} تغيير اللعبة والأسئلة والإعدادات <small>(من غير ما تخرج الفرق)</small></h2>
+          <div class="field">
+            <span>نوع اللعبة الحالية</span>
+            <div class="lobby-games">
+              ${Object.entries(GAMES).map(([k, G]) => `
+                <button class="lobby-game-btn ${g === k ? 'sel' : ''}" onclick="lobbyPickGame('${k}')" aria-pressed="${g === k}">
+                  <img src="${G.img}" alt="" class="blend"/>
+                  <div><b>${G.name}</b><small>${G.tag}</small></div>
+                  ${g === k ? `<span class="lobby-check">${ic('check')}</span>` : ''}
+                </button>`).join('')}
+            </div>
+          </div>
+
+          <div class="lobby-config-cols">
+            <div class="lobby-config-box">
+              <h3 class="h3">الأسئلة والكتالوج</h3>
+              <div class="seg">
+                <button class="${!s.useCustom ? 'on' : ''}" onclick="lobbySetCustom(false)">بنك الأسئلة</button>
+                <button class="${s.useCustom ? 'on' : ''}" onclick="lobbySetCustom(true)">أسئلتك الخاصة (كاستم)</button>
+              </div>
+              ${s.useCustom ? `
+                <div class="custom-sum">
+                  <div><b>${customReady}</b> سؤال جاهز</div>
+                  <button class="btn olive sm" onclick="openCustomInLobby()">${ic('pencil')} ${customReady ? 'عدّل أسئلتك' : 'اكتب أسئلتك'}</button>
+                </div>` : `
+                <div class="field">
+                  <span>الكتالوج <small>(لو ماختارتش حاجة هيبقى كوكتيل)</small></span>
+                  <div class="chips">${cats.map(([id, l]) => `<button class="chip ${s.categories.includes(id) ? 'on' : ''}" onclick="lobbyToggleCat('${id}')">${l}</button>`).join('')}</div>
+                </div>
+                <button class="ai-toggle ${s.ai !== false ? 'on' : ''}" onclick="lobbySetSetting('ai', ${s.ai === false})" aria-pressed="${s.ai !== false}">
+                  <span class="ai-orb" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <span class="ai-txt"><b>مساعد الأسئلة الذكي (AI)</b><small>${s.ai !== false ? 'شغال — بيجمع أسئلة جديدة على حسب الكتالوج' : 'مقفول — الأسئلة من البنك بس'}</small></span>
+                  <span class="switch" aria-hidden="true"><span></span></span>
+                </button>
+                <label class="field"><span>عدد ${g === 'tamr' ? 'الجولات' : 'الأسئلة'}: <b id="lcountLbl">${s.count}</b></span>
+                  <input type="range" class="range" min="3" max="20" value="${s.count}" oninput="document.getElementById('lcountLbl').textContent=this.value" onchange="lobbySetSetting('count',+this.value)"/>
+                </label>`}
+            </div>
+
+            <div class="lobby-config-box">
+              <h3 class="h3">إعدادات الوقت</h3>
+              ${g === 'karak'
+                ? lobbyRangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5, s.writeSec) + lobbyRangeField('voteSec', 'وقت الاختيار', 15, 120, 5, s.voteSec)
+                : g === 'sahlab'
+                  ? lobbyRangeField('hintSec', 'وقت كل تلميح', 15, 120, 5, s.hintSec)
+                  : lobbyRangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15, s.chessSec)}
+            </div>
+          </div>
+        </div>
+
         <details class="card tools">
-          <summary>${ic('sliders')} أدوات التجربة</summary>
+          <summary>${ic('users')} أدوات التجربة السريعة</summary>
           <p class="sub">لاعب وهمي للتجربة بس — مابيكونش قائد ومابيلعبش.</p>
           <div class="row"><button class="btn ghost sm" onclick="addTest('A')">${ic('plus')} لـ ${esc(v.teams[0].name)}</button><button class="btn ghost sm" onclick="addTest('B')">${ic('plus')} لـ ${esc(v.teams[1].name)}</button></div>
         </details>
@@ -890,6 +1060,7 @@ function viewSahlab() {
   const blur = solved ? 0 : [16, 12, 8, 5, 2][Math.min(sh.hintIdx, 4)];
   const t = myTeam();
   const values = v.points.sahlab;
+  const nameOf = (pid) => (v.players.find((p) => p.id === pid) || {}).name || '';
   const ladder = `<ol class="ladder">
     ${Array.from({ length: sh.totalHints }).map((_, i) => {
       const open = i <= sh.hintIdx || solved;
@@ -900,8 +1071,21 @@ function viewSahlab() {
       </li>`;
     }).join('')}
   </ol>`;
-  const photo = `<div class="photo-frame"><div class="photo" style="filter:blur(${blur}px)">${sh.photo ? `<img src="${sh.photo}" alt="صورة مموهة"/>` : `<div class="photo-ph">${sticker('latte', 80)}</div>`}</div><span class="photo-tag">${solved ? 'اتكشفت' : `وضوح ${sh.hintIdx + 1}/5`}</span></div>`;
-  const frozenPills = `<div class="pills">${v.teams.map((x) => `<span class="status-pill team-${x.id} ${sh.frozen[x.id] ? 'frozen' : sh.pending[x.id] ? 'wait' : 'ok'}">${sh.frozen[x.id] ? ic('snow') + ' متجمد' : sh.pending[x.id] ? ic('clock') + ' مستني الحكم' : ic('check') + ' يقدر يخمن'} · ${esc(x.name)}</span>`).join('')}</div>`;
+  const hasPhoto = Boolean(sh.photo);
+  const photo = hasPhoto
+    ? `<div class="photo-frame"><div class="photo" style="filter:blur(${blur}px)"><img src="${esc(sh.photo)}" alt="" onerror="const f=this.closest('.photo-frame');if(f)f.remove();const g=document.querySelector('.sahlab-grid');if(g)g.classList.add('no-photo');"/></div><span class="photo-tag">${solved ? 'اتكشفت الصورة' : `وضوح الصورة ${sh.hintIdx + 1}/5`}</span></div>`
+    : '';
+  const frozenPills = `<div class="pills">${v.teams.map((x) => {
+    const isFrz = Boolean(sh.frozen[x.id]);
+    const isPend = Boolean(sh.pending[x.id]);
+    return `<span class="status-pill team-${x.id} ${isFrz ? 'frozen' : isPend ? 'wait' : 'ok'}">
+      ${isFrz ? ic('snow') + ' متجمد' : isPend ? ic('clock') + ' مستني الحكم' : ic('check') + ' يقدر يخمن'} · ${esc(x.name)}
+      ${admin && !solved ? `<button class="pill-btn" onclick="api('sh_toggle_freeze',{team:'${x.id}'})" title="${isFrz ? 'فك التجميد' : 'تجميد الفريق'}">${isFrz ? 'فك' : 'تجميد'}</button>` : ''}
+    </span>`;
+  }).join('')}</div>`;
+  const bothFrozenBanner = (!solved && sh.frozen.A && sh.frozen.B)
+    ? `<div class="card frozen-card both-frozen">${ic('snow')}<div><b>الفريقين اتجمدوا!</b><p class="sub">التلميح الجاي بيفتح تلقائياً دلوقتي وهيفك التجميد عن الفريقين...</p></div></div>`
+    : '';
 
   let actions = '';
   if (solved) {
@@ -912,29 +1096,50 @@ function viewSahlab() {
     </div>
     ${admin ? `<div class="next-bar"><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' الجولة الجاية'}</button></div>` : '<div class="waiting small"><p>مستنيين الحكم<span class="dots"><i></i><i></i><i></i></span></p></div>'}`;
   } else if (admin) {
+    const teamSugs = v.teams.map((x) => {
+      const entries = Object.entries((sh.suggestions && sh.suggestions[x.id]) || {});
+      return entries.length && !sh.pending[x.id] ? `<div class="card sub-sugs team-${x.id}"><span class="sub">اقتراحات ${esc(x.name)}:</span> <div class="sugs">${entries.map(([pid, txt]) => `<span class="sug"><b>${esc(nameOf(pid))}:</b> ${esc(txt)}</span>`).join('')}</div></div>` : '';
+    }).join('');
     actions = `<div class="secret">${ic('eyeOff')}<div><span>الإجابة (ماتورهاش لحد)</span><b>${esc(sh.answer)}</b></div></div>
+      ${bothFrozenBanner}
       ${v.teams.map((x) => (sh.pending[x.id] ? `<div class="card judge team-${x.id}"><span>${esc(x.name)} بيقول:</span><b class="big-txt">${esc(sh.pending[x.id])}</b>
-        <div class="row"><button class="btn olive" onclick="api('sh_judge',{team:'${x.id}',correct:true})">${ic('check')} صح (+${sh.value})</button><button class="btn danger" onclick="api('sh_judge',{team:'${x.id}',correct:false})">${ic('x')} غلط (تجميد)</button></div></div>` : '')).join('')}
+        <div class="row"><button class="btn olive" onclick="api('sh_judge',{team:'${x.id}',correct:true})">${ic('check')} صح (+${sh.value})</button><button class="btn danger" onclick="api('sh_judge',{team:'${x.id}',correct:false})">${ic('x')} غلط (تجميد الفريق)</button></div></div>` : '')).join('')}
+      ${teamSugs}
       <div class="next-bar"><button class="btn ghost lg" onclick="api('sh_next_hint')">${ic('skip')} ${sh.hintIdx >= sh.totalHints - 1 ? 'اكشف الإجابة' : 'افتح التلميح الجاي'}</button></div>`;
   } else {
-    const frozen = sh.frozen[t];
-    actions = sh.myPending ? `<div class="card done-card">${ic('clock')}<div><b>تخمينكم:</b><p class="big-txt">${esc(sh.myPending)}</p><span class="sub">مستنيين حكم الحكم...</span></div></div>`
-      : frozen ? `<div class="card frozen-card">${ic('snow')} فريقكم متجمد لحد التلميح الجاي</div>`
+    const frozen = Boolean(sh.frozen[t]);
+    const sug = sh.suggestions || {};
+    const mine = sug[me().id] || '';
+    const others = Object.entries(sug);
+    actions = `${bothFrozenBanner}` + (
+      sh.myPending ? `<div class="card done-card">${ic('clock')}<div><b>تخمين فريقكم اتبعت:</b><p class="big-txt">${esc(sh.myPending)}</p><span class="sub">مستنيين حكم الحكم...</span></div></div>`
+      : frozen ? `<div class="card frozen-card">${ic('snow')}<div><b>فريقكم متجمد في التلميح ده!</b><p class="sub">جاوبتوا غلط على التلميح رقم ${sh.hintIdx + 1} — التجميد هيتفك أول ما يفتح التلميح الجاي.</p></div></div>`
       : me().captain ? `<div class="card write-card"><h2 class="h2">${ic('bulb')} تخمين الفريق (+${sh.value})</h2>
-          <div class="row"><input id="shGuess" class="input big" maxlength="60" placeholder="إيه هي الإجابة؟" value="${esc(S.draft.sh || '')}" oninput="S.draft.sh=this.value" onkeydown="if(event.key==='Enter')shGuess()"/></div>
+          <div class="row"><input id="shGuess" class="input big" maxlength="60" placeholder="إيه هي الإجابة؟" value="${esc(S.draft.sh ?? '')}" oninput="S.draft.sh=this.value" onkeydown="if(event.key==='Enter')shGuess()"/></div>
           <button class="btn primary block" onclick="shGuess()">${ic('check')} ابعت التخمين</button>
+          ${others.length ? `<div class="sugs"><span class="sub">اقتراحات فريقك (دوس لاختيارها):</span>${others.map(([pid, txt]) => `<button class="sug" onclick="S.draft.sh=this.dataset.t;render()" data-t="${esc(txt)}"><b>${esc(nameOf(pid))}:</b> ${esc(txt)}</button>`).join('')}</div>` : ''}
           <p class="note">التخمين الغلط بيجمد فريقكم لحد التلميح الجاي.</p></div>`
-      : `<div class="card"><p class="center">${ic('crown')} قول تخمينك لقائد فريقك — هو اللي بيبعت</p></div>`;
+      : `<div class="card write-card">
+          <h2 class="h2">${ic('bulb')} اقترح الإجابة على قائد فريقك</h2>
+          <div class="row"><input id="shSugIn" class="input big" maxlength="60" placeholder="اكتب تخمينك للقائد..." value="${esc(S.draft.shSug ?? mine)}" oninput="S.draft.shSug=this.value" onkeydown="if(event.key==='Enter')shSuggest()"/></div>
+          <button class="btn olive block" onclick="shSuggest()">${ic('bulb')} ابعت اقتراحك للقائد</button>
+          ${others.length ? `<div class="sugs"><span class="sub">اقتراحات الفريق:</span>${others.map(([pid, txt]) => `<span class="sug"><b>${esc(nameOf(pid))}:</b> ${esc(txt)}</span>`).join('')}</div>` : ''}
+        </div>`
+    );
   }
   return `${topbar()}<section class="wrap game sahlab">${scorebar()}
-    <div class="sahlab-grid">
-      <div>${photo}<div class="value-badge">قيمة التلميح الحالي: <b>${sh.value}</b> نقطة</div>${frozenPills}</div>
-      <div>${ladder}${actions}</div>
+    <div class="sahlab-grid ${hasPhoto ? '' : 'no-photo'}">
+      ${hasPhoto ? `<div>${photo}<div class="value-badge">قيمة التلميح الحالي: <b>${sh.value}</b> نقطة</div>${frozenPills}</div>` : ''}
+      <div>
+        ${!hasPhoto ? `<div class="value-badge">قيمة التلميح الحالي: <b>${sh.value}</b> نقطة</div>${frozenPills}` : ''}
+        ${ladder}${actions}
+      </div>
     </div>
-    ${sh.guesses.length ? `<div class="card guesses"><h3 class="h3">التخمينات</h3>${sh.guesses.map((g) => `<span class="g ${g.correct ? 'ok' : 'no'} team-${g.team}">${esc(teamOf(g.team).name)}: ${esc(g.text)} ${g.correct ? ic('check') : ic('x')}</span>`).join('')}</div>` : ''}
+    ${sh.guesses.length ? `<div class="card guesses"><h3 class="h3">التخمينات السابقة</h3>${sh.guesses.map((g) => `<span class="g ${g.correct ? 'ok' : 'no'} team-${g.team}">${esc(teamOf(g.team).name)}: ${esc(g.text)} ${g.correct ? ic('check') : ic('x')}</span>`).join('')}</div>` : ''}
   </section>`;
 }
-function shGuess() { const t = (S.draft.sh || '').trim(); if (!t) return; api('sh_guess', { text: t }).then((r) => { if (r.ok) S.draft.sh = ''; }); }
+function shGuess() { const t = (S.draft.sh || '').trim(); if (!t) return toast('اكتب التخمين الأول', 'err'); api('sh_guess', { text: t }).then((r) => { if (r.ok) S.draft.sh = ''; }); }
+function shSuggest() { const t = (S.draft.shSug || '').trim(); if (!t) return; api('sh_suggest', { text: t }).then((r) => r.ok && toast('اقتراحك وصل للقائد')); }
 
 // ==================================================================
 // 8) لبن تمر هندي
@@ -946,20 +1151,23 @@ function viewTamr() {
   const t = myTeam();
   const solved = v.phase === 'solved';
   const active = tm.golden || tm.turn;
+  const nameOf = (pid) => (v.players.find((p) => p.id === pid) || {}).name || '';
   const clock = (id) => {
     const T = teamOf(id);
     const on = !solved && active === id;
-    return `<div class="clock team-${id} ${on ? 'active' : ''} ${tm.clocks[id] <= 30 ? 'low' : ''} ${tm.golden && tm.golden !== id ? 'frozen' : ''}">
+    const sec = tamrClockSec(id);
+    return `<div class="clock team-${id} ${on ? 'active' : ''} ${sec <= 30 ? 'low' : ''} ${tm.golden && tm.golden !== id ? 'frozen' : ''}">
       <span class="clock-name">${esc(T.name)}${t === id ? ' (فريقك)' : ''}</span>
-      <span class="clock-digits js-clock" data-team="${id}">${mmss(tm.clocks[id])}</span>
+      <span class="clock-digits js-clock" data-team="${id}">${mmss(sec)}</span>
       <span class="clock-state">${solved ? '' : tm.golden === id ? 'فرصة ذهبية!' : on ? (v.pausedLeft != null ? 'متوقف' : 'دورهم — الوقت بيعد') : 'مستني'}</span>
     </div>`;
   };
   const charCard = (id, label) => {
     const c = tm.chars[id];
     if (!c) return `<div class="char-card hidden-char">${ic('eyeOff')}<b>شخصيتكم سر!</b><span>اسألوا الفريق التاني أسئلة إجابتها أه أو لأ</span></div>`;
+    const photoHtml = c.photo ? `<div class="char-photo"><img src="${esc(c.photo)}" alt="" onerror="this.parentElement.remove()"/></div>` : '';
     return `<div class="char-card team-${id}">
-      <div class="char-photo">${c.photo ? `<img src="${c.photo}" alt="${esc(c.name)}"/>` : sticker('cup', 70)}</div>
+      ${photoHtml}
       <span class="sub">${label}</span><b class="char-name">${esc(c.name)}</b><span class="char-brief">${esc(c.brief)}</span>
     </div>`;
   };
@@ -987,14 +1195,23 @@ function viewTamr() {
       </div>`;
   } else {
     const myTurn = active === t;
+    const sug = tm.suggestions || {};
+    const mine = sug[me().id] || '';
+    const others = Object.entries(sug);
     actions = tm.golden ? `<div class="golden">${ic('star')} ${tm.golden === t ? 'فرصتكم الذهبية! خمنوا دلوقتي والساعات واقفة' : `فرصة ذهبية لـ ${esc(teamOf(tm.golden).name)}`}</div>` : '';
     if (tm.pending && tm.pending.team === t) actions += `<div class="card done-card">${ic('clock')}<div><b>تخمينكم:</b><p class="big-txt">${esc(tm.pending.text)}</p><span class="sub">مستنيين الحكم...</span></div></div>`;
     else if (myTurn && me().captain) actions += `<div class="card write-card">
         <h2 class="h2">${ic('bulb')} دوركم — اسألوا وبعدين خمّنوا أو حوّلوا الساعة</h2>
-        <div class="row"><input id="tmGuess" class="input big" maxlength="60" placeholder="اسم الشخصية" value="${esc(S.draft.tm || '')}" oninput="S.draft.tm=this.value" onkeydown="if(event.key==='Enter')tmGuess()"/></div>
+        <div class="row"><input id="tmGuess" class="input big" maxlength="60" placeholder="اسم الشخصية" value="${esc(S.draft.tm ?? '')}" oninput="S.draft.tm=this.value" onkeydown="if(event.key==='Enter')tmGuess()"/></div>
         <div class="row"><button class="btn primary" onclick="tmGuess()">${ic('check')} نخمن</button>${!tm.golden ? `<button class="btn ghost" onclick="api('tm_pass')">${ic('swap')} خلصنا دورنا</button>` : ''}</div>
+        ${others.length ? `<div class="sugs"><span class="sub">اقتراحات فريقك (دوس لاختيارها):</span>${others.map(([pid, txt]) => `<button class="sug" onclick="S.draft.tm=this.dataset.t;render()" data-t="${esc(txt)}"><b>${esc(nameOf(pid))}:</b> ${esc(txt)}</button>`).join('')}</div>` : ''}
       </div>`;
-    else if (myTurn) actions += `<div class="card"><p class="center">${ic('crown')} دوركم — اسألوا، والقائد يخمّن أو يحوّل الساعة</p></div>`;
+    else if (myTurn) actions += `<div class="card write-card">
+        <h2 class="h2">${ic('crown')} دوركم — اسألوا واقترحوا اسم الشخصية على القائد</h2>
+        <div class="row"><input id="tmSugIn" class="input big" maxlength="60" placeholder="اقترح اسم الشخصية للقائد..." value="${esc(S.draft.tmSug ?? mine)}" oninput="S.draft.tmSug=this.value" onkeydown="if(event.key==='Enter')tmSuggest()"/></div>
+        <button class="btn olive block" onclick="tmSuggest()">${ic('bulb')} اقترح على القائد</button>
+        ${others.length ? `<div class="sugs"><span class="sub">اقتراحات الفريق:</span>${others.map(([pid, txt]) => `<span class="sug"><b>${esc(nameOf(pid))}:</b> ${esc(txt)}</span>`).join('')}</div>` : ''}
+      </div>`;
     else actions += `<div class="card"><p class="center">دور ${esc(teamOf(active).name)} — جاوبوا أسئلتهم بأه أو لأ بصراحة!</p></div>`;
   }
   return `${topbar()}<section class="wrap game tamr">${scorebar()}
@@ -1003,7 +1220,8 @@ function viewTamr() {
     ${tm.guesses.length ? `<div class="card guesses"><h3 class="h3">التخمينات</h3>${tm.guesses.map((g) => `<span class="g ${g.correct ? 'ok' : 'no'} team-${g.team}">${esc(teamOf(g.team).name)}: ${esc(g.text)}</span>`).join('')}</div>` : ''}
   </section>`;
 }
-function tmGuess() { const t = (S.draft.tm || '').trim(); if (!t) return; api('tm_guess', { text: t }).then((r) => { if (r.ok) S.draft.tm = ''; }); }
+function tmGuess() { const t = (S.draft.tm || '').trim(); if (!t) return toast('اكتب اسم الشخصية الأول', 'err'); api('tm_guess', { text: t }).then((r) => { if (r.ok) S.draft.tm = ''; }); }
+function tmSuggest() { const t = (S.draft.tmSug || '').trim(); if (!t) return; api('tm_suggest', { text: t }).then((r) => r.ok && toast('اقتراحك وصل للقائد')); }
 
 // ==================================================================
 // 9) النهاية
@@ -1023,7 +1241,7 @@ function viewFinal() {
     </div>
     <div class="final-teams">${v.teams.map((t) => `<div class="card team-col team-${t.id}"><b>${esc(t.name)}</b><div class="tp-avatars">${playersOf(t.id).map((p) => avatar(p, 'xs')).join('')}</div></div>`).join('')}</div>
     ${isAdmin() ? `<div class="next-bar col">
-      <button class="btn primary lg" onclick="api('end_to_lobby')">${ic('users')} العب تاني بنفس الفرق</button>
+      <button class="btn primary lg" onclick="returnToLobby()">${ic('sliders')} ارجع لغرفة الانتظار (العب تاني أو غيّر اللعبة)</button>
       <button class="btn ghost" onclick="closeRoom()">${ic('home')} اقفل الغرفة وابدأ من جديد</button>
     </div>` : '<div class="waiting small"><p>الحكم هيقرر الخطوة الجاية<span class="dots"><i></i><i></i><i></i></span></p></div>'}
   </section>`;
@@ -1041,10 +1259,10 @@ function adminDrawer() {
     ${v.status === 'playing' ? `<div class="drawer-sec">
       <h3 class="h3">الوقت</h3>
       <button class="btn ${v.pausedLeft != null ? 'primary' : 'ghost'} block" onclick="api('pause')">${v.pausedLeft != null ? ic('play') + ' كمّل اللعب' : ic('pause') + ' إيقاف مؤقت'}</button>
-      <p class="note">${ic('lock')} مدة التايمر مقفولة أثناء اللعب.</p>
+      <p class="note">${ic('lock')} تقدر تغيّر الوقت واللعبة لما ترجع لغرفة الانتظار.</p>
     </div>` : ''}
     <div class="drawer-sec">
-      <h3 class="h3">النقاط</h3>
+      <h3 class="h3">تعديل النقاط (بيظهر فوراً لكل الفرق)</h3>
       ${v.teams.map((t) => `<div class="adj team-${t.id}"><b>${esc(t.name)}</b><span class="adj-score">${t.score}</span>
         <div class="row">${[-10, -5, 5, 10].map((d) => `<button class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${t.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}</div></div>`).join('')}
     </div>
@@ -1053,17 +1271,25 @@ function adminDrawer() {
       ${v.teams.map((t) => `<p class="sub">${esc(t.name)}</p><ul class="members">${playersOf(t.id).map((p) => memberRow(p, true)).join('')}</ul>`).join('')}
     </div>
     <div class="drawer-sec">
-      <h3 class="h3">إنهاء</h3>
-      <button class="btn ghost block" onclick="if(confirm('تنهي اللعبة وترجع لغرفة الانتظار بنفس الكود واللاعيبة؟'))api('end_to_lobby').then(()=>{S.drawer=false})">${ic('users')} إنهاء والرجوع لغرفة الانتظار</button>
+      <h3 class="h3">تغيير اللعبة / إنهاء الجولة</h3>
+      <button class="btn olive block" onclick="returnToLobby()">${ic('sliders')} إنهاء والرجوع لغرفة الانتظار (لتغيير اللعبة أو الإعدادات)</button>
       <button class="btn danger block" onclick="closeRoom()">${ic('home')} اقفل الغرفة وابدأ من جديد</button>
     </div>
   </aside>` : ''}`;
+}
+async function returnToLobby() {
+  S.drawer = false;
+  S.pickOpt = null;
+  S.draft = {};
+  await api('end_to_lobby');
+  toast('رجعنا لغرفة الانتظار — تقدر تغيّر اللعبة أو الأسئلة أو الوقت دلوقتي!');
 }
 async function closeRoom() {
   if (!confirm('تقفل الغرفة؟ كل اللاعيبة هيخرجوا.')) return;
   await api('close_room');
   if (S.es) S.es.close();
-  S.es = null; S.view = null; S.drawer = false; S.lastKey = null;
+  if (S.pollTimer) clearInterval(S.pollTimer);
+  S.es = null; S.pollTimer = null; S.view = null; S.drawer = false; S.lastKey = null; S.customInRoom = false;
   LS.set('session', null);
   S.mode = 'create'; S.screen = 'setup';
   render();

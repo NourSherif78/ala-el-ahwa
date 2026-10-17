@@ -83,9 +83,16 @@ function makeCode() {
   return c.slice(0, 3) + '-' + c.slice(3);
 }
 
-function fetchJson(target, timeoutMs = 6000) {
+const WIKI_UA = 'AlaElAhwa/15 (https://ala-el-ahwa.onrender.com; contact@alaelahwa.com)';
+
+function fetchJson(target, timeoutMs = 6500, redirectsLeft = 4) {
   return new Promise((resolve) => {
-    const req = https.get(target, { headers: { 'User-Agent': 'AlaElAhwa/14 (party game)' }, timeout: timeoutMs }, (res) => {
+    const req = https.get(target, { headers: { 'User-Agent': WIKI_UA, Accept: 'application/json' }, timeout: timeoutMs }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
+        res.resume();
+        const nextUrl = new URL(res.headers.location, target).href;
+        return fetchJson(nextUrl, timeoutMs, redirectsLeft - 1).then(resolve);
+      }
       let raw = '';
       res.on('data', (c) => (raw += c));
       res.on('end', () => { try { resolve(JSON.parse(raw)); } catch (e) { resolve(null); } });
@@ -95,22 +102,176 @@ function fetchJson(target, timeoutMs = 6000) {
   });
 }
 
+// كاش لبيانات الصور نفسها في الرام عشان الـ 40 لاعب ياخدوا الصورة فوراً ومنغير حظر من ويكيبيديا
+const IMG_BYTES_CACHE = new Map();
+const IMG_INFLIGHT = new Map();
+const ALLOWED_IMG_HOST = /^https:\/\/(upload|thumb)\.wikimedia\.org\//i;
+
+function fetchImageBytes(target, timeoutMs = 8000, redirectsLeft = 5) {
+  if (!ALLOWED_IMG_HOST.test(target)) return Promise.resolve(null);
+  if (IMG_BYTES_CACHE.has(target)) return Promise.resolve(IMG_BYTES_CACHE.get(target));
+  if (IMG_INFLIGHT.has(target)) return IMG_INFLIGHT.get(target);
+  const job = new Promise((resolve) => {
+    const req = https.get(target, { headers: { 'User-Agent': WIKI_UA, Accept: 'image/*,*/*;q=0.8' }, timeout: timeoutMs }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
+        res.resume();
+        const nextUrl = new URL(res.headers.location, target).href;
+        return fetchImageBytes(nextUrl, timeoutMs, redirectsLeft - 1).then(resolve);
+      }
+      const ct = String(res.headers['content-type'] || '');
+      if (res.statusCode !== 200 || !ct.startsWith('image/')) {
+        res.resume();
+        return resolve(null);
+      }
+      const chunks = [];
+      let total = 0;
+      res.on('data', (c) => {
+        total += c.length;
+        if (total <= 6 * 1024 * 1024) chunks.push(c);
+      });
+      res.on('end', () => {
+        const buf = Buffer.concat(chunks);
+        if (buf.length < 300) return resolve(null);
+        const entry = { buf, type: ct || 'image/jpeg', at: Date.now() };
+        if (IMG_BYTES_CACHE.size >= 350) {
+          const oldest = IMG_BYTES_CACHE.keys().next().value;
+          if (oldest) IMG_BYTES_CACHE.delete(oldest);
+        }
+        IMG_BYTES_CACHE.set(target, entry);
+        resolve(entry);
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  }).finally(() => IMG_INFLIGHT.delete(target));
+  IMG_INFLIGHT.set(target, job);
+  return job;
+}
+
 const IMG_CACHE = new Map();
-async function wikiImage(title) {
+const WIKI_URL_CACHE = new Map();
+const WIKI_INFLIGHT = new Map();
+
+async function wikiImage(rawTitle, arFallback = '') {
+  const title = String(rawTitle || '').trim();
+  const ar = String(arFallback || '').trim();
   if (!title) return null;
-  if (IMG_CACHE.has(title)) return IMG_CACHE.get(title);
-  let src = null;
-  const d1 = await fetchJson(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=pageimages&piprop=thumbnail&pithumbsize=600&redirects=1&format=json`);
-  const pages1 = d1 && d1.query && d1.query.pages ? Object.values(d1.query.pages) : [];
-  for (const p of pages1) if (p.thumbnail && p.thumbnail.source) src = p.thumbnail.source;
-  if (!src) {
-    const d2 = await fetchJson(`https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(title)}&gsrlimit=3&prop=pageimages&piprop=thumbnail&pithumbsize=600&format=json`);
-    const pages2 = d2 && d2.query && d2.query.pages ? Object.values(d2.query.pages).sort((a, b) => a.index - b.index) : [];
-    for (const p of pages2) if (!src && p.thumbnail && p.thumbnail.source) src = p.thumbnail.source;
+  const cacheKey = `${title}||${ar}`;
+  if (IMG_CACHE.has(cacheKey)) return IMG_CACHE.get(cacheKey);
+  if (IMG_CACHE.has(title) && IMG_CACHE.get(title)) return IMG_CACHE.get(title);
+  if (WIKI_INFLIGHT.has(cacheKey)) return WIKI_INFLIGHT.get(cacheKey);
+
+  const job = (async () => {
+    const candidates = [];
+    const addCandidate = (u) => { if (u && ALLOWED_IMG_HOST.test(u) && !candidates.includes(u)) candidates.push(u); };
+    if (WIKI_URL_CACHE.has(title)) addCandidate(WIKI_URL_CACHE.get(title));
+    if (ar && WIKI_URL_CACHE.has('ar:' + ar)) addCandidate(WIKI_URL_CACHE.get('ar:' + ar));
+
+    const collectPages = (d) => {
+      if (!d || !d.query || !d.query.pages) return;
+      const pages = Object.values(d.query.pages).sort((a, b) => (a.index || 0) - (b.index || 0));
+      for (const p of pages) {
+        if (p.thumbnail && p.thumbnail.source) addCandidate(p.thumbnail.source);
+        if (Array.isArray(p.imageinfo)) {
+          for (const ii of p.imageinfo) addCandidate(ii.thumburl || ii.url);
+        }
+      }
+    };
+
+    if (!candidates.length) {
+      const isArPrefix = title.startsWith('ar:');
+      const cleanTitle = isArPrefix ? title.slice(3).trim() : title;
+      const isArabicText = /[\u0600-\u06FF]/.test(cleanTitle);
+      const steps = [];
+      if (isArPrefix || isArabicText) {
+        steps.push(['ar.wikipedia.org', cleanTitle]);
+        if (ar && ar !== cleanTitle) steps.push(['ar.wikipedia.org', ar]);
+        steps.push(['en.wikipedia.org', cleanTitle]);
+      } else {
+        steps.push(['en.wikipedia.org', cleanTitle]);
+        if (ar) steps.push(['ar.wikipedia.org', ar]);
+      }
+
+      for (const [host, term] of steps) {
+        if (!term) continue;
+        const d1 = await fetchJson(`https://${host}/w/api.php?action=query&titles=${encodeURIComponent(term)}&prop=pageimages&piprop=thumbnail&pilicense=any&pithumbsize=560&redirects=1&format=json`);
+        collectPages(d1);
+        if (candidates.length) break;
+        const d2 = await fetchJson(`https://${host}/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrlimit=4&prop=pageimages&piprop=thumbnail&pilicense=any&pithumbsize=560&format=json`);
+        collectPages(d2);
+        if (candidates.length) break;
+      }
+
+      if (!candidates.length) {
+        const term = cleanTitle || ar;
+        const dc = await fetchJson(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrnamespace=6&gsrlimit=4&prop=imageinfo&iiprop=url&iiurlwidth=560&format=json`);
+        collectPages(dc);
+      }
+    }
+
+    for (const src of candidates) {
+      const ok = await fetchImageBytes(src);
+      if (ok) {
+        const out = `/api/img?u=${encodeURIComponent(src)}`;
+        IMG_CACHE.set(title, out);
+        IMG_CACHE.set(cacheKey, out);
+        return out;
+      }
+    }
+    return null;
+  })().finally(() => WIKI_INFLIGHT.delete(cacheKey));
+
+  WIKI_INFLIGHT.set(cacheKey, job);
+  return job;
+}
+
+// تحضير الصور دفعة واحدة لطابور الجولات عشان تظهر فوراً من أول ثانية
+async function warmQueueImages(items, waitFirstCount = 2) {
+  if (!Array.isArray(items) || !items.length) return;
+  const enTitles = [];
+  const arTitles = [];
+  for (const it of items) {
+    const q = String((it && it.imageQuery) || '').trim();
+    if (!q || WIKI_URL_CACHE.has(q) || IMG_CACHE.has(q)) continue;
+    if (q.startsWith('ar:') || /[\u0600-\u06FF]/.test(q)) arTitles.push(q.replace(/^ar:/, '').trim());
+    else enTitles.push(q);
   }
-  const out = src ? `/api/img?u=${encodeURIComponent(src)}` : null;
-  IMG_CACHE.set(title, out);
-  return out;
+  const resolveBatch = async (host, list, prefix = '') => {
+    for (let i = 0; i < list.length; i += 40) {
+      const chunk = list.slice(i, i + 40);
+      const j = await fetchJson(`https://${host}/w/api.php?action=query&titles=${encodeURIComponent(chunk.join('|'))}&prop=pageimages&piprop=thumbnail&pilicense=any&pithumbsize=560&redirects=1&format=json`);
+      if (!j || !j.query) continue;
+      const norm = {};
+      (j.query.normalized || []).forEach((n) => (norm[n.to] = n.from));
+      const redir = {};
+      (j.query.redirects || []).forEach((r) => (redir[r.to] = r.from));
+      for (const p of Object.values(j.query.pages || {})) {
+        const src = p.thumbnail && p.thumbnail.source;
+        if (!src || !ALLOWED_IMG_HOST.test(src)) continue;
+        let orig = p.title;
+        WIKI_URL_CACHE.set(prefix + orig, src);
+        WIKI_URL_CACHE.set(orig, src);
+        if (redir[orig]) { orig = redir[orig]; WIKI_URL_CACHE.set(prefix + orig, src); WIKI_URL_CACHE.set(orig, src); }
+        if (norm[orig]) { orig = norm[orig]; WIKI_URL_CACHE.set(prefix + orig, src); WIKI_URL_CACHE.set(orig, src); }
+      }
+    }
+  };
+  await Promise.all([
+    enTitles.length ? resolveBatch('en.wikipedia.org', [...new Set(enTitles)], '') : null,
+    arTitles.length ? resolveBatch('ar.wikipedia.org', [...new Set(arTitles)], 'ar:') : null
+  ]);
+  if (waitFirstCount > 0) {
+    const first = items.slice(0, waitFirstCount);
+    await Promise.race([
+      Promise.all(first.map((it) => (it && it.imageQuery ? wikiImage(it.imageQuery, it.answer || it.name) : null))),
+      new Promise((r) => setTimeout(r, 2500))
+    ]);
+  }
+  setImmediate(async () => {
+    for (const it of items.slice(waitFirstCount)) {
+      if (it && it.imageQuery) await wikiImage(it.imageQuery, it.answer || it.name);
+    }
+  });
 }
 
 // ============================================================
@@ -130,6 +291,7 @@ function createRoom(admin, game, settings, customPack) {
   while (ROOMS.has(code)) code = makeCode();
   const room = {
     code,
+    seq: 1,
     inviteUrl: `http://${LAN_IP}:${PORT}/room/${code}`,
     admin: { pid: admin.pid, secret: admin.secret, profile: admin.profile },
     game,
@@ -269,6 +431,9 @@ async function startGame(room) {
   if (!items.length) throw new Error('مفيش أسئلة جديدة متاحة حالياً — جرب فئات تانية');
 
   room.queue = items;
+  if (room.game === 'sahlab' || room.game === 'tamr') {
+    await warmQueueImages(items, room.game === 'tamr' ? 2 : 1);
+  }
   room.totalRounds = room.game === 'tamr' ? Math.floor(items.length / 2) : items.length;
   room.teams.forEach((t) => (t.score = 0));
   room.status = 'playing';
@@ -277,6 +442,7 @@ async function startGame(room) {
 }
 
 async function nextRound(room) {
+  if (room.sh && room.sh.autoHintTimer) { clearTimeout(room.sh.autoHintTimer); room.sh.autoHintTimer = null; }
   room.round++;
   if (room.round >= room.totalRounds) return finishGame(room);
   if (room.game === 'karak') startKarakRound(room);
@@ -285,6 +451,7 @@ async function nextRound(room) {
 }
 
 function finishGame(room) {
+  if (room.sh && room.sh.autoHintTimer) { clearTimeout(room.sh.autoHintTimer); room.sh.autoHintTimer = null; }
   room.status = 'finished';
   room.phase = 'final';
   setDeadline(room, 0);
@@ -400,6 +567,13 @@ function karakReveal(room) {
 async function startSahlabRound(room) {
   const item = room.queue[room.round];
   Q.markUsed('sahlab', item);
+  let initialPhoto = null;
+  if (item.imageQuery) {
+    initialPhoto = await Promise.race([
+      wikiImage(item.imageQuery, item.answer),
+      new Promise((r) => setTimeout(() => r(null), 2600))
+    ]);
+  }
   room.sh = {
     answer: item.answer,
     aliases: item.aliases || [],
@@ -407,16 +581,23 @@ async function startSahlabRound(room) {
     hintIdx: 0,
     frozen: { A: false, B: false },
     pending: { A: null, B: null },
+    suggestions: { A: {}, B: {} },
     guesses: [],
     winner: null,
-    photo: null
+    photo: initialPhoto,
+    autoHintTimer: null
   };
   room.phase = 'play';
   setDeadline(room, room.settings.hintSec);
   event(room, 'round', { round: room.round });
-  wikiImage(item.imageQuery).then((img) => {
-    if (room.sh && room.sh.answer === item.answer) { room.sh.photo = img; broadcast(room); }
-  });
+  if (item.imageQuery && !initialPhoto) {
+    wikiImage(item.imageQuery, item.answer).then((img) => {
+      if (img && room.sh && room.sh.answer === item.answer && !room.sh.photo) {
+        room.sh.photo = img;
+        broadcast(room);
+      }
+    });
+  }
 }
 
 function sahlabMatches(sh, text) {
@@ -430,23 +611,43 @@ function sahlabMatches(sh, text) {
 
 function sahlabNextHint(room) {
   const sh = room.sh;
+  if (!sh) return;
+  if (sh.autoHintTimer) { clearTimeout(sh.autoHintTimer); sh.autoHintTimer = null; }
   if (sh.hintIdx >= sh.hints.length - 1) return sahlabSolve(room, null);
   sh.hintIdx++;
   sh.frozen = { A: false, B: false };
+  sh.pending = { A: null, B: null };
+  sh.suggestions = { A: {}, B: {} };
   setDeadline(room, room.settings.hintSec);
   event(room, 'hint', { idx: sh.hintIdx });
 }
 
 function sahlabSolve(room, teamId) {
   const sh = room.sh;
+  if (!sh) return;
+  if (sh.autoHintTimer) { clearTimeout(sh.autoHintTimer); sh.autoHintTimer = null; }
   sh.winner = teamId;
   const pts = teamId ? POINTS.sahlab[Math.min(sh.hintIdx, POINTS.sahlab.length - 1)] : 0;
   if (teamId) addScore(room, teamId, pts);
   sh.pending = { A: null, B: null };
+  sh.suggestions = { A: {}, B: {} };
   sh.wonPts = pts;
   room.phase = 'solved';
   setDeadline(room, 0);
   event(room, 'solved', { team: teamId, pts });
+}
+
+function sahlabScheduleBothFrozen(room) {
+  const sh = room.sh;
+  if (!sh || !(sh.frozen.A && sh.frozen.B)) return;
+  if (sh.autoHintTimer) clearTimeout(sh.autoHintTimer);
+  setDeadline(room, 2);
+  sh.autoHintTimer = setTimeout(() => {
+    if (room.status === 'playing' && room.game === 'sahlab' && room.phase === 'play' && room.sh === sh && sh.frozen.A && sh.frozen.B) {
+      sahlabNextHint(room);
+      broadcast(room);
+    }
+  }, 1800);
 }
 
 function sahlabJudge(room, teamId, correct) {
@@ -457,8 +658,9 @@ function sahlabJudge(room, teamId, correct) {
   sh.pending[teamId] = null;
   if (correct) return sahlabSolve(room, teamId);
   sh.frozen[teamId] = true;
-  event(room, 'wrong', { team: teamId });
-  if (sh.frozen.A && sh.frozen.B) sahlabNextHint(room);
+  const bothFrozen = !!(sh.frozen.A && sh.frozen.B);
+  event(room, 'wrong', { team: teamId, text: pend, bothFrozen });
+  if (bothFrozen) sahlabScheduleBothFrozen(room);
 }
 
 // ============================================================
@@ -469,12 +671,21 @@ async function startTamrRound(room) {
   const b = room.queue[room.round * 2 + 1];
   Q.markUsed('tamr', a);
   Q.markUsed('tamr', b);
+  const [photoA, photoB] = await Promise.race([
+    Promise.all([
+      a.imageQuery ? wikiImage(a.imageQuery, a.name) : Promise.resolve(null),
+      b.imageQuery ? wikiImage(b.imageQuery, b.name) : Promise.resolve(null)
+    ]),
+    new Promise((r) => setTimeout(() => r([null, null]), 2600))
+  ]);
   room.tm = {
-    chars: { A: { name: a.name, brief: a.brief, photo: null }, B: { name: b.name, brief: b.brief, photo: null } },
+    chars: { A: { name: a.name, brief: a.brief, photo: photoA }, B: { name: b.name, brief: b.brief, photo: photoB } },
     turn: room.round % 2 ? 'B' : 'A',
     clocks: { A: room.settings.chessSec, B: room.settings.chessSec },
+    lastTick: Date.now(),
     golden: null,
     pending: null,
+    suggestions: { A: {}, B: {} },
     guesses: [],
     winner: null,
     wonPts: 0,
@@ -485,8 +696,12 @@ async function startTamrRound(room) {
   setDeadline(room, 0);
   event(room, 'round', { round: room.round });
   const tm = room.tm;
-  wikiImage(a.imageQuery).then((img) => { if (room.tm === tm) { tm.chars.A.photo = img; broadcast(room); } });
-  wikiImage(b.imageQuery).then((img) => { if (room.tm === tm) { tm.chars.B.photo = img; broadcast(room); } });
+  if (a.imageQuery && !photoA) {
+    wikiImage(a.imageQuery, a.name).then((img) => { if (img && room.tm === tm && !tm.chars.A.photo) { tm.chars.A.photo = img; broadcast(room); } });
+  }
+  if (b.imageQuery && !photoB) {
+    wikiImage(b.imageQuery, b.name).then((img) => { if (img && room.tm === tm && !tm.chars.B.photo) { tm.chars.B.photo = img; broadcast(room); } });
+  }
 }
 
 function tamrMatches(name, text) {
@@ -513,15 +728,16 @@ function tamrJudge(room, correct) {
   const { team, text } = tm.pending;
   tm.guesses.push({ team, text, correct });
   tm.pending = null;
+  tm.lastTick = Date.now();
   if (correct) return tamrSolve(room, team, POINTS.tamr.guess, 'guess');
   if (tm.golden === team) {
     // الفرصة الذهبية ضاعت — الدور يكمل عادي على نفس الفريق
     tm.golden = null;
     tm.turn = team;
-    event(room, 'wrong', { team });
+    event(room, 'wrong', { team, text });
   } else {
     tm.golden = otherTeam(team);
-    event(room, 'golden', { team: tm.golden });
+    event(room, 'golden', { team: tm.golden, wrongTeam: team, text });
   }
 }
 
@@ -532,7 +748,7 @@ setInterval(() => {
   const now = Date.now();
   for (const room of ROOMS.values()) {
     if (room.status !== 'playing' || room.pausedLeft != null) continue;
-    let changed = false;
+    let shouldBroadcast = false;
     if (room.game === 'tamr' && room.phase === 'play' && room.tm && !room.tm.golden && !room.tm.pending && !room.paused) {
       const tm = room.tm;
       if (!tm.lastTick) tm.lastTick = now;
@@ -540,8 +756,10 @@ setInterval(() => {
         const steps = Math.floor((now - tm.lastTick) / 1000);
         tm.lastTick += steps * 1000;
         tm.clocks[tm.turn] = Math.max(0, tm.clocks[tm.turn] - steps);
-        if (tm.clocks[tm.turn] === 0) tamrSolve(room, otherTeam(tm.turn), POINTS.tamr.timeout, 'timeout');
-        changed = true;
+        if (tm.clocks[tm.turn] === 0) {
+          tamrSolve(room, otherTeam(tm.turn), POINTS.tamr.timeout, 'timeout');
+          shouldBroadcast = true;
+        }
       }
     } else if (room.tm) {
       room.tm.lastTick = now;
@@ -551,9 +769,9 @@ setInterval(() => {
       if (room.game === 'karak' && room.phase === 'write') karakWriteTimeout(room);
       else if (room.game === 'karak' && room.phase === 'vote') karakReveal(room);
       else if (room.game === 'sahlab' && room.phase === 'play') sahlabNextHint(room);
-      changed = true;
+      shouldBroadcast = true;
     }
-    if (changed) broadcast(room);
+    if (shouldBroadcast) broadcast(room);
   }
   // تنظيف الغرف القديمة (6 ساعات بدون نشاط)
   for (const [code, room] of ROOMS) if (now - room.touched > 6 * 3600e3 && room.clients.size === 0) ROOMS.delete(code);
@@ -568,6 +786,7 @@ function viewFor(room, pid) {
   const myTeam = me ? me.team : null;
   const v = {
     now: Date.now(),
+    seq: room.seq || 1,
     code: room.code,
     inviteUrl: room.inviteUrl,
     game: room.game,
@@ -579,6 +798,7 @@ function viewFor(room, pid) {
     pausedLeft: room.pausedLeft,
     settings: { ...room.settings },
     customCount: room.customPack.length,
+    customPack: isAdmin ? room.customPack : undefined,
     teams: room.teams.map((t) => ({ ...t })),
     players: Object.values(room.players).map((p) => ({ id: p.id, name: p.name, outfit: p.outfit, face: p.face, hat: p.hat, team: p.team, isTest: !!p.isTest, online: p.isTest || p.conns > 0 })),
     admin: { name: room.admin.profile.name, outfit: room.admin.profile.outfit, face: room.admin.profile.face, hat: room.admin.profile.hat, online: room.admin.conns > 0 },
@@ -630,7 +850,8 @@ function viewFor(room, pid) {
       frozen: sh.frozen,
       pending: isAdmin ? sh.pending : { A: !!sh.pending.A, B: !!sh.pending.B },
       myPending: myTeam ? sh.pending[myTeam] : null,
-      guesses: sh.guesses.map((g) => ({ team: g.team, text: isAdmin || solved || g.team === myTeam ? g.text : '؟؟؟', correct: g.correct })),
+      suggestions: isAdmin ? sh.suggestions : myTeam ? (sh.suggestions && sh.suggestions[myTeam]) || {} : {},
+      guesses: sh.guesses.map((g) => ({ team: g.team, text: isAdmin || solved || g.team === myTeam ? g.text : '؟؟؟', correct: g.correct, hint: g.hint })),
       photo: sh.photo,
       winner: sh.winner,
       wonPts: sh.wonPts || 0
@@ -642,16 +863,20 @@ function viewFor(room, pid) {
   if (room.game === 'tamr' && room.tm) {
     const tm = room.tm;
     const solved = room.phase === 'solved';
+    const turnRunning = room.phase === 'play' && !room.paused && room.pausedLeft == null && !tm.golden && !tm.pending;
     v.tm = {
       turn: tm.turn,
-      clocks: tm.clocks,
+      clocks: { ...tm.clocks },
+      lastTick: tm.lastTick || Date.now(),
+      turnRunning,
       golden: tm.golden,
       pending: tm.pending ? { team: tm.pending.team, text: isAdmin || tm.pending.team === myTeam ? tm.pending.text : null } : null,
+      suggestions: isAdmin ? tm.suggestions : myTeam ? (tm.suggestions && tm.suggestions[myTeam]) || {} : {},
       guesses: tm.guesses,
       winner: tm.winner,
       wonPts: tm.wonPts,
       reason: tm.reason,
-      paused: !!room.paused
+      paused: !!room.paused || room.pausedLeft != null
     };
     // كل فريق بيشوف شخصية الفريق التاني (اللي هيجاوب عنها) — ومايشوفش شخصيته
     if (isAdmin || solved) v.tm.chars = tm.chars;
@@ -666,6 +891,7 @@ function send(client, room) {
 }
 function broadcast(room) {
   room.touched = Date.now();
+  room.seq = (room.seq || 0) + 1;
   for (const c of room.clients) send(c, room);
 }
 
@@ -765,19 +991,33 @@ async function handleAction(b) {
     }
     ERR('مش وقته دلوقتي');
   }
-  if (p && action === 'sh_guess' && room.game === 'sahlab' && room.sh && room.phase === 'play') {
+  if (p && (action === 'sh_guess' || action === 'sh_suggest') && room.game === 'sahlab' && room.sh && room.phase === 'play') {
     const sh = room.sh;
-    if (!isCaptain(room, p.id)) ERR('القائد بس هو اللي يبعت التخمين');
+    if (!p.team) ERR('اختار فريق الأول');
     if (sh.frozen[p.team]) ERR('فريقكم متجمد لحد التلميح الجاي');
-    if (sh.pending[p.team]) ERR('مستنيين حكم الأدمن على تخمينكم');
+    if (action === 'sh_suggest') {
+      const txt = clean(b.text, 60);
+      if (!sh.suggestions) sh.suggestions = { A: {}, B: {} };
+      if (txt) sh.suggestions[p.team][p.id] = txt; else delete sh.suggestions[p.team][p.id];
+      return { room };
+    }
+    if (!isCaptain(room, p.id)) ERR('القائد بس هو اللي يبعت التخمين');
+    if (sh.pending[p.team]) ERR('مستنيين حكم الحكم على تخمينكم');
     const txt = clean(b.text, 60) || ERR('اكتب التخمين');
     sh.pending[p.team] = txt;
     if (sahlabMatches(sh, txt)) sahlabJudge(room, p.team, true);
-    else event(room, 'guess', { team: p.team });
+    else event(room, 'guess', { team: p.team, text: txt });
     return { room };
   }
   if (p && action.startsWith('tm_') && room.game === 'tamr' && room.tm && room.phase === 'play') {
     const tm = room.tm;
+    if (!p.team) ERR('اختار فريق الأول');
+    if (action === 'tm_suggest') {
+      const txt = clean(b.text, 60);
+      if (!tm.suggestions) tm.suggestions = { A: {}, B: {} };
+      if (txt) tm.suggestions[p.team][p.id] = txt; else delete tm.suggestions[p.team][p.id];
+      return { room };
+    }
     if (!isCaptain(room, p.id)) ERR('القائد بس');
     const active = tm.golden || tm.turn;
     if (p.team !== active) ERR('مش دوركم');
@@ -792,8 +1032,9 @@ async function handleAction(b) {
       if (tm.pending) ERR('في تخمين مستني الحكم');
       const txt = clean(b.text, 60) || ERR('اكتب اسم الشخصية');
       tm.pending = { team: p.team, text: txt };
+      tm.lastTick = Date.now();
       if (tamrMatches(tm.chars[p.team].name, txt)) tamrJudge(room, true);
-      else event(room, 'guess', { team: p.team });
+      else event(room, 'guess', { team: p.team, text: txt });
       return { room };
     }
   }
@@ -802,6 +1043,33 @@ async function handleAction(b) {
   if (!admin) ERR('الأكشن ده للحكم بس');
 
   switch (action) {
+    case 'update_lobby': {
+      if (room.status === 'playing') ERR('انهي الجولة الحالية الأول عشان تغير اللعبة أو الإعدادات');
+      room.status = 'lobby';
+      room.phase = null;
+      if (room.sh && room.sh.autoHintTimer) clearTimeout(room.sh.autoHintTimer);
+      room.kr = room.sh = room.tm = null;
+      room.round = -1;
+      setDeadline(room, 0);
+      room.paused = false;
+
+      const oldGame = room.game;
+      if (['karak', 'sahlab', 'tamr'].includes(b.game)) room.game = b.game;
+      if (b.customPack !== undefined) room.customPack = sanitizeCustom(b.customPack);
+
+      const merged = { ...room.settings, ...(b.settings || {}) };
+      if (room.game !== oldGame && (!b.settings || b.settings.categories === undefined)) {
+        merged.categories = [];
+      }
+      room.settings = sanitizeSettings(room.game, merged);
+      if (b.settings && Array.isArray(b.settings.teamNames)) {
+        room.teams[0].name = clean(b.settings.teamNames[0], 24) || room.teams[0].name;
+        room.teams[1].name = clean(b.settings.teamNames[1], 24) || room.teams[1].name;
+      }
+      startAiPrefetch(room);
+      if (room.game !== oldGame) event(room, 'game_changed', { game: room.game });
+      break;
+    }
     case 'set_captain': {
       const target = room.players[b.target];
       if (!target || !target.team) ERR('اللاعب مش في فريق');
@@ -845,6 +1113,8 @@ async function handleAction(b) {
     case 'start_game': {
       if (room.status === 'playing') ERR('اللعبة شغالة بالفعل');
       for (const t of room.teams) if (!teamMembers(room, t.id).length) ERR(`${t.name} لسه فاضي — محتاج لاعب واحد على الأقل في كل فريق`);
+      if (room.settings.useCustom && !room.customPack.length) ERR('اكتب أسئلة الكاستم الأول أو اختار بنك الأسئلة');
+      if (room.settings.useCustom && room.game === 'tamr' && room.customPack.length < 2) ERR('تمر هندي محتاج شخصيتين على الأقل في الكاستم');
       room.teams.forEach((t) => ensureCaptain(room, t.id));
       await startGame(room);
       break;
@@ -864,13 +1134,16 @@ async function handleAction(b) {
       break;
     }
     case 'adjust_score': {
-      const d = Number(b.delta);
-      if (![10, 5, -5, -10].includes(d)) ERR('قيمة غير مسموحة');
-      addScore(room, b.team, d);
-      event(room, 'adjust', { team: b.team, delta: d });
+      const d = Math.round(Number(b.delta) || 0);
+      if (!d || Math.abs(d) > 100) ERR('قيمة غير مسموحة');
+      const teamId = b.team === 'B' ? 'B' : 'A';
+      addScore(room, teamId, d);
+      const t = room.teams.find((x) => x.id === teamId);
+      event(room, 'adjust', { team: teamId, delta: d, score: t ? t.score : 0 });
       break;
     }
     case 'end_to_lobby': {
+      if (room.sh && room.sh.autoHintTimer) clearTimeout(room.sh.autoHintTimer);
       room.status = 'lobby';
       room.phase = null;
       room.kr = room.sh = room.tm = null;
@@ -879,9 +1152,11 @@ async function handleAction(b) {
       room.paused = false;
       room.teams.forEach((t) => (t.score = 0));
       startAiPrefetch(room);
+      event(room, 'lobby', {});
       break;
     }
     case 'close_room': {
+      if (room.sh && room.sh.autoHintTimer) clearTimeout(room.sh.autoHintTimer);
       event(room, 'closed');
       room.status = 'closed';
       broadcast(room);
@@ -931,6 +1206,21 @@ async function handleAction(b) {
       sahlabJudge(room, b.team === 'B' ? 'B' : 'A', !!b.correct);
       break;
     }
+    case 'sh_toggle_freeze': {
+      if (!room.sh || room.phase !== 'play') ERR('مش وقته');
+      const t = b.team === 'B' ? 'B' : 'A';
+      room.sh.frozen[t] = b.frozen !== undefined ? !!b.frozen : !room.sh.frozen[t];
+      if (room.sh.frozen[t]) {
+        room.sh.pending[t] = null;
+        const bothFrozen = !!(room.sh.frozen.A && room.sh.frozen.B);
+        event(room, 'wrong', { team: t, bothFrozen });
+        if (bothFrozen) sahlabScheduleBothFrozen(room);
+      } else {
+        if (room.sh.autoHintTimer) { clearTimeout(room.sh.autoHintTimer); room.sh.autoHintTimer = null; }
+        event(room, 'unfrozen', { team: t });
+      }
+      break;
+    }
     case 'sh_next_hint': {
       if (!room.sh || room.phase !== 'play') ERR('مش وقته');
       sahlabNextHint(room);
@@ -948,19 +1238,22 @@ async function handleAction(b) {
       room.tm.golden = null;
       room.tm.turn = otherTeam(room.tm.turn);
       room.tm.lastTick = Date.now();
+      event(room, 'turn', { team: room.tm.turn });
       break;
     }
     case 'tm_penalty': {
       if (!room.tm || room.phase !== 'play') ERR('مش وقته');
       const t = b.team === 'B' ? 'B' : 'A';
       room.tm.clocks[t] = Math.max(0, room.tm.clocks[t] - 15);
-      event(room, 'penalty', { team: t });
+      room.tm.lastTick = Date.now();
+      event(room, 'penalty', { team: t, left: room.tm.clocks[t] });
       if (room.tm.clocks[t] === 0) tamrSolve(room, otherTeam(t), POINTS.tamr.timeout, 'timeout');
       break;
     }
     case 'tm_end_golden': {
       if (!room.tm) ERR('مش وقته');
       room.tm.golden = null;
+      room.tm.lastTick = Date.now();
       break;
     }
 
@@ -1003,11 +1296,20 @@ const server = http.createServer(async (req, res) => {
     try {
       const out = await handleAction(b);
       if (out.room) broadcast(out.room);
-      return json(res, 200, { ok: true, code: out.room ? out.room.code : null });
+      const pid = clean(b.pid, 40);
+      return json(res, 200, { ok: true, code: out.room ? out.room.code : null, view: out.room ? viewFor(out.room, pid) : null });
     } catch (e) {
       if (!e.user) console.error(e);
       return json(res, 200, { ok: false, error: e.user ? e.message : 'حصلت مشكلة، جرب تاني' });
     }
+  }
+
+  if (p === '/api/state') {
+    const code = clean(parsed.query.code, 10).toUpperCase();
+    const room = ROOMS.get(code);
+    const pid = clean(parsed.query.pid, 40);
+    if (!room) return json(res, 404, { ok: false, error: 'الغرفة مش موجودة' });
+    return json(res, 200, { ok: true, view: viewFor(room, pid) });
   }
 
   if (p === '/api/stream') {
@@ -1016,7 +1318,13 @@ const server = http.createServer(async (req, res) => {
     const pid = clean(parsed.query.pid, 40);
     const secret = clean(parsed.query.secret, 40);
     if (!room) return json(res, 404, { ok: false, error: 'الغرفة مش موجودة' });
-    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive' });
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+    if (res.socket && typeof res.socket.setNoDelay === 'function') res.socket.setNoDelay(true);
     const isAdm = room.admin.pid === pid && room.admin.secret === secret;
     const pl = room.players[pid] && room.players[pid].secret === secret ? room.players[pid] : null;
     const who = isAdm ? room.admin : pl;
@@ -1024,7 +1332,7 @@ const server = http.createServer(async (req, res) => {
     const client = { res, pid: who ? pid : 'guest_' + rid(3) };
     room.clients.add(client);
     broadcast(room);
-    const ka = setInterval(() => { try { res.write(': ka\n\n'); } catch (e) {} }, 20000);
+    const ka = setInterval(() => { try { res.write(': ka\n\n'); } catch (e) {} }, 15000);
     req.on('close', () => {
       clearInterval(ka);
       room.clients.delete(client);
@@ -1053,13 +1361,15 @@ const server = http.createServer(async (req, res) => {
 
   if (p === '/api/img') {
     const u = String(parsed.query.u || '');
-    if (!/^https:\/\/upload\.wikimedia\.org\//.test(u)) { res.writeHead(404); return res.end(); }
-    https.get(u, { headers: { 'User-Agent': 'AlaElAhwa/14 (party game)' }, timeout: 8000 }, (r) => {
-      if (r.statusCode !== 200) { res.writeHead(404); return res.end(); }
-      res.writeHead(200, { 'Content-Type': r.headers['content-type'] || 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });
-      r.pipe(res);
-    }).on('error', () => { res.writeHead(404); res.end(); });
-    return;
+    if (!ALLOWED_IMG_HOST.test(u)) { res.writeHead(404); return res.end(); }
+    const entry = await fetchImageBytes(u);
+    if (!entry) { res.writeHead(404); return res.end(); }
+    res.writeHead(200, {
+      'Content-Type': entry.type,
+      'Content-Length': entry.buf.length,
+      'Cache-Control': 'public, max-age=86400'
+    });
+    return res.end(entry.buf);
   }
 
   if (p === '/' || p.startsWith('/room/')) p = '/index.html';
@@ -1073,7 +1383,13 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
+// تحضير روابط صور كل بنوك الأسئلة في الخلفية عند تشغيل السيرفر
+setImmediate(() => {
+  const allImgItems = [...(Q.BANKS.sahlab || []), ...(Q.BANKS.tamr || [])].filter((x) => x && x.imageQuery);
+  warmQueueImages(allImgItems, 0).catch(() => {});
+});
+
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Ala El-Ahwa v14 running at http://localhost:${PORT}  |  LAN: http://${LAN_IP}:${PORT}`);
+  console.log(`Ala El-Ahwa v15 running at http://localhost:${PORT}  |  LAN: http://${LAN_IP}:${PORT}`);
   console.log('Question banks:', JSON.stringify(Q.stats()));
 });
