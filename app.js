@@ -71,10 +71,10 @@ const TEAM_LABELS = { A: 'الفريق أ', B: 'الفريق ب', C: 'الفري
 const DEFAULT_TEAM_NAMES = ['فريق الكرك', 'فريق السحلب', 'فريق العنّاب', 'فريق التمر هندي'];
 
 const GAMES = {
-  karak: { name: 'كرك', img: '/assets/ui/karak.jpg', tag: 'لعبة الخداع', desc: 'سؤال غريب بفراغ، كل فريق يكتب إجابة مزيفة تخدع التاني وبعدين الكل يدور على الإجابة الصح وسط 6 إجابات.' },
-  sahlab: { name: 'سحلب', img: '/assets/ui/sahlab.jpg', tag: 'سلم التلميحات', desc: 'صورة مموهة و5 تلميحات بتسهل واحدة ورا التانية. خمّن بدري تاخد نقط أكتر، وكل غلطة بتجمد فريقك.' },
-  tamr: { name: 'لبن تمر هندي', img: '/assets/ui/tamr.jpg', tag: 'ساعة الشطرنج', desc: 'الشخصية السرية — كل فريق عنده شخصية سرية لازم يخمنها بأسئلة أه/لأ، وساعة شطرنج بتعد على الفريق اللي عليه الدور.' },
-  annab: { name: 'عنّاب', img: '/assets/ui/annab.jpg', tag: 'زرار الباز · 4 اختيارات', desc: '20 سؤال بـ 4 اختيارات وزرار باز لقائد كل فريق! اللي يدوس الأول يجاوب، ولو غلط بتتشطب إجابته والفرصة تروح للفريق التاني يختار من الـ 3 الباقيين.' }
+  karak: { name: 'كرك', img: '/assets/ui/karak.png', tag: 'لعبة الخداع', desc: 'سؤال غريب بفراغ، كل فريق يكتب إجابة مزيفة تخدع التاني وبعدين الكل يدور على الإجابة الصح وسط 6 إجابات.' },
+  sahlab: { name: 'سحلب', img: '/assets/ui/sahlab.png', tag: 'سلم التلميحات', desc: 'صورة مموهة و5 تلميحات بتسهل واحدة ورا التانية. خمّن بدري تاخد نقط أكتر، وكل غلطة بتجمد فريقك.' },
+  tamr: { name: 'لبن تمر هندي', img: '/assets/ui/tamr.png', tag: 'ساعة الشطرنج', desc: 'الشخصية السرية — كل فريق عنده شخصية سرية لازم يخمنها بأسئلة أه/لأ، وساعة شطرنج بتعد على الفريق اللي عليه الدور.' },
+  annab: { name: 'عنّاب', img: '/assets/ui/annab.png', tag: 'زرار الباز · 4 اختيارات', desc: '20 سؤال بـ 4 اختيارات وزرار باز لقائد كل فريق! اللي يدوس الأول يجاوب، ولو غلط بتتشطب إجابته والفرصة تروح للفريق التاني يختار من الـ 3 الباقيين.' }
 };
 
 // كتالوج شامل موحّد في كل الألعاب الأربعة (يشمل الـ 6 كتالوجات الجديدة + كل الكتالوجات السابقة)
@@ -574,7 +574,7 @@ function viewHome() {
     ${logo('lg')}
     <p class="home-sub">ألعاب السهرة على القهوة — فرق، حكم، وأسئلة عمرها ما بتتكرر</p>
     <div class="home-art" aria-hidden="true">
-      <img src="/assets/ui/karak.jpg" alt="" class="blend"/><img src="/assets/ui/sahlab.jpg" alt="" class="blend"/><img src="/assets/ui/tamr.jpg" alt="" class="blend"/><img src="/assets/ui/annab.jpg" alt="" class="blend"/>
+      <img src="/assets/ui/karak.png" alt=""/><img src="/assets/ui/sahlab.png" alt=""/><img src="/assets/ui/tamr.png" alt=""/><img src="/assets/ui/annab.png" alt=""/>
     </div>
     <div class="card tape home-card">
       <button class="btn primary block lg" onclick="goCreate()">${ic('whistle')} اعمل غرفة (أنا الحكم أو العب معاهم)</button>
@@ -684,7 +684,7 @@ function viewSetup() {
       <div class="games">
         ${Object.entries(GAMES).map(([k, G]) => `
           <button class="game-card ${g === k ? 'sel' : ''}" onclick="pickGame('${k}')" aria-pressed="${g === k}">
-            <div class="game-art"><img src="${G.img}" alt="${esc(G.name)}" class="blend"/></div>
+            <div class="game-art"><img src="${G.img}" alt="${esc(G.name)}"/></div>
             <span class="game-tag">${G.tag}</span>
             <b class="game-name">${G.name}</b>
             <span class="game-desc">${G.desc}</span>
@@ -1111,7 +1111,7 @@ function viewCustom() {
       <div class="custom-game-tabs" role="tablist" aria-label="اختيار اللعبة لتعديل أسئلتها الخاصة">
         ${Object.entries(GAMES).map(([k, G]) => `
           <button type="button" role="tab" class="custom-game-tab ${g === k ? 'on' : ''}" onclick="switchCustomGame('${k}')" aria-selected="${g === k}">
-            <img src="${G.img}" alt="" class="blend"/>
+            <img src="${G.img}" alt=""/>
             <span>${G.name}</span>
           </button>`).join('')}
       </div>
@@ -1478,7 +1478,7 @@ function viewLobbyAdmin() {
             <div class="lobby-games">
               ${Object.entries(GAMES).map(([k, G]) => `
                 <button class="lobby-game-btn ${g === k ? 'sel' : ''}" onclick="lobbyPickGame('${k}')" aria-pressed="${g === k}">
-                  <img src="${G.img}" alt="" class="blend"/>
+                  <img src="${G.img}" alt=""/>
                   <div><b>${G.name}</b><small>${G.tag}</small></div>
                   ${g === k ? `<span class="lobby-check">${ic('check')}</span>` : ''}
                 </button>`).join('')}

@@ -963,7 +963,8 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
   height: 100%;
   object-fit: contain;
   margin: 0;
-  mix-blend-mode: multiply;
+  mix-blend-mode: normal;
+  background: transparent;
   -webkit-mask-image: none;
   mask-image: none;
   transition: transform .28s ease;
@@ -991,6 +992,8 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
 .lobby-game-btn img,
 .custom-game-tab img,
 .home-art img {
+  mix-blend-mode: normal;
+  background: transparent;
   -webkit-mask-image: none;
   mask-image: none;
   object-fit: contain;
