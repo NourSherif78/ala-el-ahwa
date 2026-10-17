@@ -53,6 +53,8 @@ const PUBLIC_FILES = new Set(['/index.html', '/app.js', '/avatar.js', '/styles.c
 // إعدادات ثابتة
 // ============================================================
 const ALL_TEAM_IDS = ['A', 'B', 'C', 'D'];
+const SOLO_IDS = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10'];
+const MAX_SOLO = 10;
 const DEFAULT_TEAM_NAMES = ['فريق الكرك', 'فريق السحلب', 'فريق العنّاب', 'فريق التمر هندي'];
 const POINTS = {
   karak: { truth: 10, fooled: 5, houseBluff: -5 },
@@ -61,6 +63,7 @@ const POINTS = {
   annab: { first: 10, steal: 5 }
 };
 const DEFAULT_SETTINGS = {
+  playMode: 'teams', // 'teams' | 'solo'
   count: 10,
   categories: [],
   useCustom: false,
@@ -354,9 +357,39 @@ function scheduleAutoNext(room, sec = 6) {
   }, sec * 1000);
 }
 
+function isSoloMode(room) {
+  return Boolean(room && room.settings && room.settings.playMode === 'solo');
+}
+
+function syncSoloTeams(room) {
+  if (!isSoloMode(room)) return;
+  const oldScoreByCap = {};
+  (room.teams || []).forEach((t) => {
+    if (t.captainId) oldScoreByCap[t.captainId] = t.score || 0;
+  });
+  const playersList = Object.values(room.players).slice(0, MAX_SOLO);
+  room.teams = playersList.map((p, i) => {
+    const sid = SOLO_IDS[i] || ('S' + (i + 1));
+    p.team = sid;
+    if (p.id === room.admin.pid) {
+      room.admin.playingTeam = sid;
+      room.settings.adminTeam = sid;
+    }
+    return {
+      id: sid,
+      name: clean(p.name, 24) || `لاعب ${i + 1}`,
+      captainId: p.id,
+      score: oldScoreByCap[p.id] || 0,
+      isSolo: true
+    };
+  });
+}
+
 function syncAdminPlaying(room, adminPlays, adminTeam) {
   if (adminPlays) {
-    const tId = validTeamId(room, adminTeam || room.admin.playingTeam || room.settings.adminTeam || 'A');
+    const tId = isSoloMode(room)
+      ? 'S1'
+      : validTeamId(room, adminTeam || room.admin.playingTeam || room.settings.adminTeam || 'A');
     room.aiJudge = true;
     room.admin.playingTeam = tId;
     room.settings.adminPlays = true;
@@ -375,19 +408,31 @@ function syncAdminPlaying(room, adminPlays, adminTeam) {
       isHostPlayer: true,
       conns: room.admin.conns || 1
     };
-    if (oldTeam && oldTeam !== tId) ensureCaptain(room, oldTeam);
-    ensureCaptain(room, tId);
+    if (isSoloMode(room)) {
+      syncSoloTeams(room);
+    } else {
+      if (oldTeam && oldTeam !== tId) ensureCaptain(room, oldTeam);
+      ensureCaptain(room, tId);
+    }
   } else {
     const oldTeam = room.admin.playingTeam || (room.players[room.admin.pid] && room.players[room.admin.pid].team);
     room.aiJudge = false;
     room.admin.playingTeam = null;
     room.settings.adminPlays = false;
     delete room.players[room.admin.pid];
-    if (oldTeam) ensureCaptain(room, oldTeam);
+    if (isSoloMode(room)) {
+      syncSoloTeams(room);
+    } else if (oldTeam) {
+      ensureCaptain(room, oldTeam);
+    }
   }
 }
 
 function syncRoomTeams(room, teamCount, teamNames) {
+  if (isSoloMode(room)) {
+    syncSoloTeams(room);
+    return;
+  }
   const n = clamp(teamCount ?? room.settings.teamCount ?? room.teams.length, LIMITS.teamCount);
   room.settings.teamCount = n;
   if (Array.isArray(teamNames)) {
@@ -396,18 +441,23 @@ function syncRoomTeams(room, teamCount, teamNames) {
   const activeIds = ALL_TEAM_IDS.slice(0, n);
   const oldMap = Object.fromEntries(room.teams.map((t) => [t.id, t]));
   room.teams = activeIds.map((id, i) => {
-    if (oldMap[id]) {
+    if (oldMap[id] && !oldMap[id].isSolo) {
       oldMap[id].name = room.settings.teamNames[i] || oldMap[id].name;
       return oldMap[id];
     }
     return { id, name: room.settings.teamNames[i] || DEFAULT_TEAM_NAMES[i], captainId: null, score: 0 };
   });
+  let idx = 0;
   for (const p of Object.values(room.players)) {
     if (p.team && !activeIds.includes(p.team)) {
       if (p.id === room.admin.pid) {
         p.team = activeIds[0];
         room.admin.playingTeam = activeIds[0];
         room.settings.adminTeam = activeIds[0];
+      } else if (SOLO_IDS.includes(p.team)) {
+        // لو كان في وضع فردي واتحول لفرق، نوزع اللاعبين على الفرق بالتساوي
+        p.team = activeIds[idx % activeIds.length];
+        idx++;
       } else {
         p.team = null;
       }
@@ -429,7 +479,7 @@ function createRoom(admin, game, settings, customPack) {
     settings,
     customPack,
     status: 'lobby', // lobby | playing | finished
-    teams: newTeams(settings.teamNames, settings.teamCount),
+    teams: settings.playMode === 'solo' ? [] : newTeams(settings.teamNames, settings.teamCount),
     players: {},
     kicked: new Set(),
     queue: [],
@@ -446,12 +496,16 @@ function createRoom(admin, game, settings, customPack) {
   if (settings.adminPlays) {
     syncAdminPlaying(room, true, settings.adminTeam || 'A');
   }
+  if (settings.playMode === 'solo') {
+    syncSoloTeams(room);
+  }
   ROOMS.set(code, room);
   return room;
 }
 
 function sanitizeSettings(game, s = {}) {
   const out = { ...DEFAULT_SETTINGS, teamNames: [...DEFAULT_TEAM_NAMES] };
+  out.playMode = s.playMode === 'solo' ? 'solo' : 'teams';
   const defCount = game === 'annab' ? 20 : out.count;
   out.count = clamp(s.count ?? defCount, LIMITS.count);
   out.writeSec = clamp(s.writeSec ?? out.writeSec, LIMITS.writeSec);
@@ -507,7 +561,7 @@ function sanitizeCustom(list, game = 'karak') {
 function teamMembers(room, teamId) {
   return Object.values(room.players).filter((p) => p.team === teamId);
 }
-// سعة الغرفة: 40 لاعب — كل فريق 20
+// سعة الغرفة: 40 لاعب في وضع الفرق (20 لكل فريق) · و10 لاعبين في الوضع الفردي
 const MAX_PLAYERS = 40;
 const MAX_TEAM = 20;
 function assertTeamRoom(room, teamId, pid) {
@@ -551,6 +605,7 @@ function setDeadline(room, sec) {
 function startAiPrefetch(room) {
   const s = room.settings;
   room.aiJob = null;
+  room.aiReadyList = [];
   room.aiReady = 0;
   if (!s.ai || s.useCustom) return;
   const REL = ['islamic_history', 'islamic', 'quran', 'hadith'];
@@ -559,18 +614,20 @@ function startAiPrefetch(room) {
   const need = room.game === 'tamr' ? s.count * tCount : s.count;
   room.aiStatus = 'loading';
   room.aiJob = Q.prefetchAI(room.game, s.categories, need).then((list) => {
-    room.aiReady = list.length;
-    room.aiStatus = list.length ? 'ready' : 'off';
+    room.aiReadyList = Array.isArray(list) ? list : [];
+    room.aiReady = room.aiReadyList.length;
+    room.aiStatus = room.aiReadyList.length ? 'ready' : 'off';
     broadcast(room);
-    return list;
-  });
+    return room.aiReadyList;
+  }).catch(() => []);
 }
 
 // ============================================================
-// بداية اللعبة
+// بداية اللعبة (فورية وبدون أي انتظار للشبكة)
 // ============================================================
 async function startGame(room) {
   const s = room.settings;
+  if (isSoloMode(room)) syncSoloTeams(room);
   const tCount = Math.max(2, room.teams.length);
   let items = [];
   if (s.useCustom && room.customPack.length) {
@@ -585,22 +642,18 @@ async function startGame(room) {
       return { id: 'custom_' + i, custom: true, name: c.truth, brief: '', imageQuery: '', customPhoto: c.photo || null };
     });
     if (room.game === 'karak' || room.game === 'annab') {
-      const targetLen = room.game === 'annab' ? 3 : 4;
-      const needAi = items.filter((it) => (it.bluffs || []).length < 3);
-      if (needAi.length) {
-        const ai = await Q.aiBluffsFor(needAi);
-        needAi.forEach((it, idx) => {
-          const userBluffs = (it.bluffs || []).filter(Boolean);
-          const seen = new Set([Q.normalizeAr(it.truth), ...userBluffs.map(Q.normalizeAr)]);
-          const extra = [...(ai[idx] || []), ...Q.fallbackBluffs(it.truth, 10)].filter((b) => {
-            const k = Q.normalizeAr(b);
-            if (!k || seen.has(k)) return false;
-            seen.add(k);
-            return true;
-          });
-          it.bluffs = [...userBluffs, ...extra].slice(0, targetLen);
+      const targetLen = room.game === 'annab' ? 3 : 10;
+      items.forEach((it) => {
+        const userBluffs = (it.bluffs || []).filter(Boolean);
+        const seen = new Set([Q.normalizeAr(it.truth), ...userBluffs.map(Q.normalizeAr)]);
+        const extra = Q.fallbackBluffs(it.truth, 16).filter((b) => {
+          const k = Q.normalizeAr(b);
+          if (!k || seen.has(k)) return false;
+          seen.add(k);
+          return true;
         });
-      }
+        it.bluffs = [...userBluffs, ...extra].slice(0, targetLen);
+      });
     }
     if (room.game === 'tamr') {
       while (items.length < tCount || items.length % tCount !== 0) {
@@ -610,18 +663,15 @@ async function startGame(room) {
     }
   } else {
     const need = room.game === 'tamr' ? s.count * tCount : s.count;
-    let aiFresh = [];
-    if (s.ai && room.aiJob) {
-      aiFresh = await Promise.race([room.aiJob, new Promise((r) => setTimeout(() => r([]), 6000))]);
-    }
-    items = await Q.pickQuestions(room.game, s.categories, need, aiFresh || []);
+    const aiFresh = Array.isArray(room.aiReadyList) && room.aiReadyList.length ? room.aiReadyList : [];
+    items = await Q.pickQuestions(room.game, s.categories, need, aiFresh);
     room.aiUsed = items.filter((x) => x.ai).length;
   }
-  if (!items.length) throw new Error('مفيش أسئلة جديدة متاحة حالياً — جرب فئات تانية');
+  if (!items.length) throw new Error('مفيش أسئلة متاحة حالياً — جرب فئات تانية');
 
   room.queue = items;
   if (room.game === 'sahlab' || room.game === 'tamr') {
-    await warmQueueImages(items, room.game === 'tamr' ? tCount : 1);
+    setImmediate(() => warmQueueImages(items, 0).catch(() => {}));
   }
   room.totalRounds = room.game === 'tamr' ? Math.max(1, Math.floor(items.length / tCount)) : items.length;
   room.teams.forEach((t) => (t.score = 0));
@@ -651,19 +701,30 @@ function finishGame(room) {
 }
 
 // ============================================================
-// كرك (يدعم 2 أو 3 أو 4 فرق + تحكيم AI تلقائي)
+// كرك (يدعم 2 لـ 4 فرق أو 2 لـ 10 لاعبين فردي + تحكيم AI تلقائي)
 // ============================================================
 function startKarakRound(room) {
   const item = room.queue[room.round];
   Q.markUsed('karak', item);
   const ids = teamIds(room);
-  const bl = Q.shuffle(item.bluffs || []);
+  const bl = Q.shuffle([...(item.bluffs || []), ...Q.fallbackBluffs(item.truth, 18)]);
+  const uniqueBl = [];
+  const seenBl = new Set([Q.normalizeAr(item.truth)]);
+  for (const b of bl) {
+    const k = Q.normalizeAr(b);
+    if (k && !seenBl.has(k)) {
+      seenBl.add(k);
+      uniqueBl.push(b);
+    }
+  }
+  // لو عدد اللاعبين/الفرق أقل من 5، الـ AI بيكمل لحد ما يبقوا 5 إجابات مضللة على الأقل (+ 1 صح = 6 إجابات)
+  const aiCount = Math.max(1, 5 - ids.length - (room.aiJudge ? 0 : 1));
   room.kr = {
     q: item.q,
     truth: item.truth,
     cat: item.cat || 'custom',
-    aiBluffs: bl.slice(0, 2),
-    spareBluffs: bl.slice(2),
+    aiBluffs: uniqueBl.slice(0, aiCount),
+    spareBluffs: uniqueBl.slice(aiCount),
     adminBluff: '',
     teamBluff: Object.fromEntries(ids.map((id) => [id, ''])),
     teamBluffBy: Object.fromEntries(ids.map((id) => [id, null])),
@@ -674,7 +735,6 @@ function startKarakRound(room) {
     votes: Object.fromEntries(ids.map((id) => [id, null])),
     results: null
   };
-  while (room.kr.aiBluffs.length < 2) room.kr.aiBluffs.push(...Q.fallbackBluffs(item.truth, 2 - room.kr.aiBluffs.length));
   room.phase = 'write';
   setDeadline(room, room.settings.writeSec);
   event(room, 'round', { round: room.round });
@@ -687,7 +747,7 @@ function spareBluff(room, avoid) {
     const b = kr.spareBluffs.shift();
     if (!taken.has(Q.normalizeAr(b))) return b;
   }
-  const fb = Q.fallbackBluffs(kr.truth, 14).find((b) => !taken.has(Q.normalizeAr(b)));
+  const fb = Q.fallbackBluffs(kr.truth, 20).find((b) => !taken.has(Q.normalizeAr(b)));
   return fb || 'معلومة مش معروفة';
 }
 
@@ -734,13 +794,23 @@ function karakPublish(room) {
     seen.add(Q.normalizeAr(t));
     list.push({ src, text: t });
   };
+  // إجابة كل فريق أو كل لاعب فردي (من 2 لحد 10 لاعبين)
   for (const id of ids) {
     push(kr.autoFilled[id] ? 'ai' : id, kr.teamBluff[id]);
   }
-  if (!room.aiJudge || kr.adminBluff) {
-    push(kr.adminBluff ? 'admin' : 'ai', kr.adminBluff || spareBluff(room, [...seen]));
+  // لو الحكم كتب إجابة مضللة
+  if (!room.aiJudge && kr.adminBluff) {
+    push('admin', kr.adminBluff);
   }
-  kr.aiBluffs.forEach((b) => push('ai', b));
+  // أقل عدد للإجابات هو 6 (5 مضللة + 1 صح)، ولو عدد اللاعبين 6 فما فوق بيزيد العدد تلقائياً على حسب عددهم
+  const targetTotalOptions = Math.max(6, ids.length + 1);
+  for (const b of kr.aiBluffs) {
+    if (list.length >= targetTotalOptions) break;
+    push('ai', b);
+  }
+  while (list.length < targetTotalOptions) {
+    push('ai', spareBluff(room, [...seen]));
+  }
   kr.options = Q.shuffle(list).map((o, i) => ({ id: 'o' + i, ...o }));
   room.phase = 'vote';
   setDeadline(room, room.settings.voteSec);
@@ -776,7 +846,7 @@ function karakReveal(room) {
 }
 
 // ============================================================
-// سحلب (يدعم 2 أو 3 أو 4 فرق + تحكيم AI تلقائي)
+// سحلب (يدعم 2 أو 3 أو 4 فرق أو فردي لحد 10 + تحكيم AI تلقائي)
 // ============================================================
 async function startSahlabRound(room) {
   const item = room.queue[room.round];
@@ -786,7 +856,7 @@ async function startSahlabRound(room) {
   if (!item.custom && item.imageQuery) {
     initialPhoto = await Promise.race([
       wikiImage(item.imageQuery, item.answer),
-      new Promise((r) => setTimeout(() => r(null), 2600))
+      new Promise((r) => setTimeout(() => r(null), 350))
     ]);
   }
   room.sh = {
@@ -888,7 +958,7 @@ function sahlabJudge(room, teamId, correct) {
 }
 
 // ============================================================
-// لبن تمر هندي (يدعم 2 أو 3 أو 4 فرق + تحكيم AI تلقائي)
+// لبن تمر هندي (يدعم 2 أو 3 أو 4 فرق أو فردي + تحكيم AI تلقائي)
 // ============================================================
 async function startTamrRound(room) {
   const ids = teamIds(room);
@@ -898,7 +968,7 @@ async function startTamrRound(room) {
 
   const photos = await Promise.race([
     Promise.all(roundItems.map((it) => (it.custom ? Promise.resolve(it.customPhoto || null) : (it.imageQuery ? wikiImage(it.imageQuery, it.name) : Promise.resolve(null))))),
-    new Promise((r) => setTimeout(() => r(roundItems.map((it) => (it.custom ? (it.customPhoto || null) : null))), 2600))
+    new Promise((r) => setTimeout(() => r(roundItems.map((it) => (it.custom ? (it.customPhoto || null) : null))), 350))
   ]);
 
   const chars = {};
@@ -1192,8 +1262,9 @@ function viewFor(room, pid) {
     me: meObj,
     lastEvent: room.lastEvent,
     points: POINTS,
+    playMode: room.settings.playMode || 'teams',
     ai: { on: !!room.settings.ai && !room.settings.useCustom, status: room.aiStatus || 'off', ready: room.aiReady || 0, used: room.aiUsed || 0 },
-    caps: { room: MAX_PLAYERS, team: MAX_TEAM }
+    caps: { room: isSoloMode(room) ? MAX_SOLO : MAX_PLAYERS, team: isSoloMode(room) ? 1 : MAX_TEAM, solo: MAX_SOLO }
   };
   if (room.kicked.has(pid)) v.me.role = 'kicked';
 
@@ -1360,19 +1431,29 @@ async function handleAction(b) {
     const prof = b.profile || {};
     const existing = room.players[b.pid];
     if (existing && existing.secret !== b.secret) ERR('هوية غير صحيحة');
-    if (!existing && Object.keys(room.players).length >= MAX_PLAYERS) ERR(`الغرفة كاملة (${MAX_PLAYERS} لاعب)`);
+    const roomCap = isSoloMode(room) ? MAX_SOLO : MAX_PLAYERS;
+    if (!existing && Object.keys(room.players).length >= roomCap) {
+      ERR(isSoloMode(room) ? `الوضع الفردي كامل (${MAX_SOLO} لاعبين كحد أقصى)` : `الغرفة كاملة (${MAX_PLAYERS} لاعب)`);
+    }
     const p = existing || { id: clean(b.pid, 40), secret: clean(b.secret, 40), team: null, conns: 0 };
     p.name = clean(prof.name, 20) || p.name || 'لاعب';
     p.outfit = clean(prof.outfit, 30) || p.outfit;
     p.face = clean(prof.face, 30) || p.face;
     p.hat = clean(prof.hat, 30) || p.hat;
     room.players[p.id] = p;
+    if (isSoloMode(room)) {
+      syncSoloTeams(room);
+    }
     event(room, 'join', { name: p.name });
     return { room };
   }
 
   if (action === 'pick_team') {
     const p = authPlayer(room, b) || ERR('ادخل الغرفة الأول');
+    if (isSoloMode(room)) {
+      syncSoloTeams(room);
+      return { room };
+    }
     if (!ids.includes(b.team)) ERR('فريق غير صحيح');
     if (p.team !== b.team) assertTeamRoom(room, b.team, p.id);
     const old = p.team;
@@ -1412,7 +1493,7 @@ async function handleAction(b) {
     }
     if (action === 'kr_vote_suggest' && room.phase === 'vote') {
       const o = kr.options.find((x) => x.id === b.opt);
-      if (!o || o.src === t) ERR('ماينفعش تختار إجابة فريقك');
+      if (!o || o.src === t) ERR('ماينفعش تختار إجابةك');
       if (!kr.voteSuggest[t]) kr.voteSuggest[t] = {};
       kr.voteSuggest[t][p.id] = o.id;
       return { room };
@@ -1420,7 +1501,7 @@ async function handleAction(b) {
     if (action === 'kr_vote_submit' && room.phase === 'vote') {
       if (!isCaptain(room, p.id)) ERR('القائد بس هو اللي يأكد الاختيار');
       const o = kr.options.find((x) => x.id === b.opt);
-      if (!o || o.src === t) ERR('ماينفعش تختار إجابة فريقك');
+      if (!o || o.src === t) ERR('ماينفعش تختار إجابتك');
       kr.votes[t] = o.id;
       if (ids.every((id) => kr.votes[id])) karakReveal(room);
       return { room };
@@ -1430,7 +1511,7 @@ async function handleAction(b) {
   if (p && (action === 'sh_guess' || action === 'sh_suggest') && room.game === 'sahlab' && room.sh && room.phase === 'play') {
     const sh = room.sh;
     if (!p.team || !ids.includes(p.team)) ERR('اختار فريق الأول');
-    if (sh.frozen[p.team]) ERR('فريقكم متجمد لحد التلميح الجاي');
+    if (sh.frozen[p.team]) ERR('أنت متجمد لحد التلميح الجاي');
     if (action === 'sh_suggest') {
       const txt = clean(b.text, 60);
       if (!sh.suggestions) sh.suggestions = {};
@@ -1464,9 +1545,9 @@ async function handleAction(b) {
     }
     if (!isCaptain(room, p.id)) ERR('القائد بس');
     const active = tm.golden || tm.turn;
-    if (p.team !== active) ERR('مش دوركم');
+    if (p.team !== active) ERR('مش دورك دلوقتي');
     if (action === 'tm_pass') {
-      if (tm.golden) ERR('استخدموا الفرصة الذهبية الأول');
+      if (tm.golden) ERR('استخدم الفرصة الذهبية الأول');
       tm.turn = nextTeamId(room, tm.turn);
       tm.lastTick = Date.now();
       event(room, 'turn', { team: tm.turn });
@@ -1500,8 +1581,8 @@ async function handleAction(b) {
     }
     if (action === 'an_buzz') {
       if (!isCaptain(room, p.id)) ERR('قائد الفريق بس هو اللي بيدوس زرار الباز');
-      if ((an.triedTeams || []).includes(p.team)) ERR('فريقكم جاوب على السؤال ده خلاص');
-      if (an.subPhase !== 'buzz' || an.buzzedTeam) ERR(`${(room.teams.find((x) => x.id === an.buzzedTeam) || {}).name || 'فريق تاني'} سبق وداس الباز!`);
+      if ((an.triedTeams || []).includes(p.team)) ERR('جاوبت على السؤال ده خلاص');
+      if (an.subPhase !== 'buzz' || an.buzzedTeam) ERR(`${(room.teams.find((x) => x.id === an.buzzedTeam) || {}).name || 'لاعب تاني'} سبق وداس الباز!`);
       an.buzzedTeam = p.team;
       an.attempt = (an.triedTeams || []).length + 1;
       an.subPhase = 'answer';
@@ -1512,7 +1593,7 @@ async function handleAction(b) {
     if (action === 'an_pick') {
       if (!isCaptain(room, p.id)) ERR('قائد الفريق بس هو اللي بيختار الإجابة');
       if (an.subPhase === 'buzz' || !an.buzzedTeam) ERR('دوس زرار الباز الأول!');
-      if (p.team !== an.buzzedTeam) ERR('مش دور فريقكم في الإجابة دلوقتي');
+      if (p.team !== an.buzzedTeam) ERR('مش دورك في الإجابة دلوقتي');
       const opt = an.options.find((x) => x.id === b.opt);
       if (!opt || an.eliminated.includes(opt.id)) ERR('الاختيار ده مش متاح');
       annabHandlePick(room, p.team, opt);
@@ -1529,6 +1610,14 @@ async function handleAction(b) {
       break;
     }
     case 'admin_join_team': {
+      if (isSoloMode(room)) {
+        if (!room.players[room.admin.pid] && Object.keys(room.players).length >= MAX_SOLO) {
+          ERR(`الوضع الفردي كامل (${MAX_SOLO} لاعبين كحد أقصى)`);
+        }
+        syncAdminPlaying(room, true, 'S1');
+        event(room, 'admin_joined_team', { team: room.admin.playingTeam || 'S1', name: room.admin.profile.name });
+        break;
+      }
       const targetTeam = validTeamId(room, b.team || room.admin.playingTeam || 'A');
       assertTeamRoom(room, targetTeam, room.admin.pid);
       syncAdminPlaying(room, true, targetTeam);
@@ -1540,8 +1629,15 @@ async function handleAction(b) {
       event(room, 'admin_became_judge', { name: room.admin.profile.name });
       break;
     }
+    case 'set_play_mode': {
+      if (room.status === 'playing') ERR('انهي الجولة الحالية الأول عشان تغير نظام اللعب');
+      room.settings.playMode = b.playMode === 'solo' ? 'solo' : 'teams';
+      syncRoomTeams(room, room.settings.teamCount, room.settings.teamNames);
+      break;
+    }
     case 'set_team_count': {
       if (room.status === 'playing') ERR('انهي الجولة الحالية الأول عشان تغير عدد الفرق');
+      room.settings.playMode = 'teams';
       syncRoomTeams(room, b.teamCount || b.count, b.teamNames);
       break;
     }
@@ -1583,6 +1679,7 @@ async function handleAction(b) {
       break;
     }
     case 'move_player': {
+      if (isSoloMode(room)) break;
       const target = room.players[b.target] || ERR('لاعب غير موجود');
       const old = target.team;
       const dest = ids.includes(b.team) ? b.team : nextTeamId(room, old || ids[ids.length - 1]);
@@ -1605,7 +1702,11 @@ async function handleAction(b) {
       const old = target.team;
       delete room.players[target.id];
       if (!target.isTest) room.kicked.add(target.id);
-      if (old) ensureCaptain(room, old);
+      if (isSoloMode(room)) {
+        syncSoloTeams(room);
+      } else if (old) {
+        ensureCaptain(room, old);
+      }
       break;
     }
     case 'rename_team': {
@@ -1619,19 +1720,31 @@ async function handleAction(b) {
       break;
     }
     case 'add_test_player': {
-      if (Object.keys(room.players).length >= MAX_PLAYERS) ERR(`الغرفة كاملة (${MAX_PLAYERS} لاعب)`);
-      const targetTeam = ids.includes(b.team) ? b.team : null;
+      const cap = isSoloMode(room) ? MAX_SOLO : MAX_PLAYERS;
+      if (Object.keys(room.players).length >= cap) {
+        ERR(isSoloMode(room) ? `الوضع الفردي كامل (${MAX_SOLO} لاعبين كحد أقصى)` : `الغرفة كاملة (${MAX_PLAYERS} لاعب)`);
+      }
+      const targetTeam = !isSoloMode(room) && ids.includes(b.team) ? b.team : null;
       if (targetTeam) assertTeamRoom(room, targetTeam, null);
       const n = Object.values(room.players).filter((x) => x.isTest).length + 1;
       const parts = b.parts || {};
       const id = 'test_' + rid(4);
       room.players[id] = { id, secret: rid(8), name: 'لاعب تجريبي ' + n, outfit: parts.outfit, face: parts.face, hat: parts.hat, team: targetTeam, isTest: true, conns: 0 };
-      if (room.players[id].team) ensureCaptain(room, room.players[id].team);
+      if (isSoloMode(room)) {
+        syncSoloTeams(room);
+      } else if (room.players[id].team) {
+        ensureCaptain(room, room.players[id].team);
+      }
       break;
     }
     case 'start_game': {
       if (room.status === 'playing') ERR('اللعبة شغالة بالفعل');
-      for (const t of room.teams) if (!teamMembers(room, t.id).length) ERR(`${t.name} لسه فاضي — محتاج لاعب واحد على الأقل في كل فريق`);
+      if (isSoloMode(room)) {
+        syncSoloTeams(room);
+        if (room.teams.length < 2) ERR('وضع اللعب الفردي محتاج لاعبين اتنين على الأقل في الغرفة عشان تبدأ اللعبة');
+      } else {
+        for (const t of room.teams) if (!teamMembers(room, t.id).length) ERR(`${t.name} لسه فاضي — محتاج لاعب واحد على الأقل في كل فريق`);
+      }
       if (room.settings.useCustom && !room.customPack.length) ERR('اكتب أسئلة الكاستم الأول أو اختار بنك الأسئلة');
       if (room.settings.useCustom && room.game === 'tamr' && room.customPack.length < 2) ERR('تمر هندي محتاج شخصيتين على الأقل في الكاستم');
       room.teams.forEach((t) => ensureCaptain(room, t.id));
@@ -1669,6 +1782,7 @@ async function handleAction(b) {
       room.round = -1;
       setDeadline(room, 0);
       room.paused = false;
+      if (isSoloMode(room)) syncSoloTeams(room);
       room.teams.forEach((t) => (t.score = 0));
       startAiPrefetch(room);
       event(room, 'lobby', {});
@@ -1693,7 +1807,8 @@ async function handleAction(b) {
     }
     case 'kr_regen_ai': {
       if (!room.kr || !['write', 'review'].includes(room.phase)) ERR('مش وقته');
-      const i = Number(b.index) === 1 ? 1 : 0;
+      const maxIdx = Math.max(0, (room.kr.aiBluffs || []).length - 1);
+      const i = Math.max(0, Math.min(maxIdx, Number(b.index) || 0));
       room.kr.aiBluffs[i] = spareBluff(room, [room.kr.truth, ...room.kr.aiBluffs, ...Object.values(room.kr.teamBluff), room.kr.adminBluff]);
       break;
     }

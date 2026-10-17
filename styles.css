@@ -1251,4 +1251,69 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
   gap: 6px;
 }
 
-
+/* ================================================================
+   5) وضع اللعب الفردي (Solo Mode — لحد 10 لاعبين)
+   ================================================================ */
+.play-mode-seg button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.solo-mode-banner {
+  margin: 10px 0 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #FFF7E4 0%, #FBF0D5 100%);
+  border: 2px dashed #C7A46B;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.solo-banner-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.05rem;
+  color: var(--ink);
+}
+.solo-lobby-card {
+  border-top: 5px solid var(--gold);
+  background: linear-gradient(180deg, rgba(247, 229, 194, .45), var(--card) 95px);
+}
+.solo-members-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.solo-member {
+  border: 1.5px solid var(--line);
+  background: #FFFBF2;
+  padding: 8px 12px;
+  border-radius: 14px;
+}
+.solo-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 99px;
+  background: var(--bg-2);
+  color: var(--ink-2);
+  font-weight: 800;
+  font-size: .82rem;
+}
+.score-multi-grid {
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+}
+.score.team-S1, .score.team-S5, .score.team-S9  { border-inline-start: 6px solid var(--teamA); }
+.score.team-S2, .score.team-S6, .score.team-S10 { border-inline-start: 6px solid var(--teamB); }
+.score.team-S3, .score.team-S7 { border-inline-start: 6px solid var(--teamC); }
+.score.team-S4, .score.team-S8 { border-inline-start: 6px solid var(--teamD); }
+.status-pill.team-S1, .status-pill.team-S5, .status-pill.team-S9, .tchip.team-S1, .tchip.team-S5, .tchip.team-S9 { border-color: var(--teamA); }
+.status-pill.team-S2, .status-pill.team-S6, .status-pill.team-S10, .tchip.team-S2, .tchip.team-S6, .tchip.team-S10 { border-color: var(--teamB); }
+.status-pill.team-S3, .status-pill.team-S7, .tchip.team-S3, .tchip.team-S7 { border-color: var(--teamC); }
+.status-pill.team-S4, .status-pill.team-S8, .tchip.team-S4, .tchip.team-S8 { border-color: var(--teamD); }

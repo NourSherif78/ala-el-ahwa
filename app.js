@@ -139,6 +139,7 @@ const S = {
   avTab: 'outfit',
   setup: {
     game: null,
+    playMode: 'teams',
     teamCount: 2,
     teamNames: [...DEFAULT_TEAM_NAMES],
     adminPlays: false,
@@ -174,6 +175,7 @@ const S = {
   resumable: null
 };
 if (!S.setup.buzzSec) S.setup.buzzSec = 20;
+if (S.setup.playMode !== 'solo') S.setup.playMode = 'teams';
 if (!S.setup.teamCount || S.setup.teamCount < 2 || S.setup.teamCount > 4) S.setup.teamCount = 2;
 if (!Array.isArray(S.setup.teamNames)) S.setup.teamNames = [...DEFAULT_TEAM_NAMES];
 while (S.setup.teamNames.length < 4) S.setup.teamNames.push(DEFAULT_TEAM_NAMES[S.setup.teamNames.length]);
@@ -239,7 +241,7 @@ const NON_BLOCKING_ACTIONS = new Set([
   'adjust_score', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
   'update_lobby', 'rename_team', 'kr_suggest', 'kr_vote_suggest', 'sh_suggest', 'tm_suggest',
   'toggle_secret', 'an_buzz', 'an_pick', 'an_suggest', 'an_reset_buzz', 'an_pass_turn', 'an_reveal',
-  'set_team_count', 'admin_join_team', 'admin_become_judge'
+  'set_team_count', 'set_play_mode', 'add_test_player', 'admin_join_team', 'admin_become_judge'
 ]);
 
 // ------------------------------------------------------------------
@@ -259,16 +261,24 @@ async function api(action, data = {}) {
   const blocking = !NON_BLOCKING_ACTIONS.has(action);
   if (blocking && S.busy) return { ok: false };
   if (blocking) S.busy = true;
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 15000) : null;
   try {
-    const r = await fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, code: S.code, pid: ident.pid, secret: ident.secret, ...data }) });
+    const r = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, code: S.code, pid: ident.pid, secret: ident.secret, ...data }),
+      signal: ctrl ? ctrl.signal : undefined
+    });
     const j = await r.json();
     if (!j.ok && j.error) toast(j.error, 'err');
     if (j.ok && j.view) applyView(j.view);
     return j;
   } catch (e) {
-    toast('الاتصال بالسيرفر وقع — اتأكد إنك على نفس الشبكة', 'err');
+    toast('الاتصال بالسيرفر اتأخر أو وقع — جرب تاني', 'err');
     return { ok: false };
   } finally {
+    if (timer) clearTimeout(timer);
     if (blocking) S.busy = false;
   }
 }
@@ -666,6 +676,7 @@ async function avatarNext() {
 function viewSetup() {
   const s = S.setup;
   const g = s.game;
+  const isSolo = s.playMode === 'solo';
   const cats = g ? CATS[g] : [];
   const customOk = g ? validCustomList(g).length : 0;
   const unitLbl = g === 'tamr' ? 'شخصية جاهزة' : 'سؤال جاهز';
@@ -676,7 +687,7 @@ function viewSetup() {
   <section class="wrap setup">
     <div class="setup-head">
       <h1 class="h1">إعداد السهرة</h1>
-      <p class="sub">اختار اللعبة، حدد عدد الفرق (2 أو 3 أو 4 فرق)، وتقدر كمان تنضم لفريق وتلعب معاهم والـ AI يحكم!</p>
+      <p class="sub">اختار اللعبة، حدد نظام اللعب (فرق من 2 لـ 4 فرق · أو وضع فردي لحد 10 لاعبين)، وتقدر كمان تلعب معاهم والـ AI يحكم!</p>
     </div>
 
     <div class="card">
@@ -695,30 +706,49 @@ function viewSetup() {
 
     <div class="setup-cols">
       <div class="card">
-        <h2 class="h2"><span class="num">2</span> الفرق ودورك في السهرة</h2>
+        <h2 class="h2"><span class="num">2</span> نظام اللعب (فردي ولا فرق) ودورك</h2>
         <div class="field">
-          <span>عدد الفرق <small>(تقدر تزود لحد 4 فرق أو تقلل لفريقين)</small></span>
-          <div class="team-count-bar">
-            <div class="seg team-count-seg">
-              ${[2, 3, 4].map((n) => `<button type="button" class="${tc === n ? 'on' : ''}" onclick="setSetupTeamCount(${n})">${n === 2 ? 'فريقين (2)' : n === 3 ? '3 فرق' : '4 فرق'}</button>`).join('')}
-            </div>
-            <div class="row">
-              <button type="button" class="btn olive sm" ${tc >= 4 ? 'disabled' : ''} onclick="setSetupTeamCount(${tc + 1})" title="زود فريق">${ic('plus')} زود فريق</button>
-              <button type="button" class="btn ghost sm" ${tc <= 2 ? 'disabled' : ''} onclick="setSetupTeamCount(${tc - 1})" title="شيل فريق">${ic('x')} شيل فريق</button>
-            </div>
+          <span>نظام اللعب <small>(اختار بين اللعب في فرق أو اللعب الفردي لحد 10 أشخاص)</small></span>
+          <div class="seg play-mode-seg">
+            <button type="button" class="${!isSolo ? 'on' : ''}" onclick="setSetupPlayMode('teams')">${ic('users')} نظام الفرق (2 لـ 4 فرق)</button>
+            <button type="button" class="${isSolo ? 'on' : ''}" onclick="setSetupPlayMode('solo')">${ic('crown')} وضع فردي — كل واحد لوحده (لحد 10 لاعبين)</button>
           </div>
         </div>
-        ${activeTeamIds.map((tid, i) => `
-          <label class="field team-name-field team-${tid}"><span>${TEAM_LABELS[tid]}</span>
-            <input id="tn${i}" class="input" maxlength="24" value="${esc(s.teamNames[i] || DEFAULT_TEAM_NAMES[i])}" oninput="S.setup.teamNames[${i}]=this.value"/>
-          </label>`).join('')}
+        ${isSolo ? `
+          <div class="solo-mode-banner">
+            <div class="solo-banner-head">${ic('crown')} <b>وضع اللعب الفردي (لحد 10 أشخاص)</b></div>
+            <p class="sub">كل لاعب بيدخل الغرفة بيلعب لوحده باسمه وشخصيته بدون تقسيم فرق (من 2 لحد 10 لاعبين).</p>
+            <p class="note">${ic('bulb')} <span>في لعبة <b>كرك</b>: الطبيعي <b>6 إجابات</b> (5 مضللة + 1 صح)، ولو عدد اللاعبين 6 أو أكتر (6، 7، 8، 9، 10 لاعبين) عدد الإجابات المضللة بيزيد تلقائياً على حسب عددهم عشان كذبة كل لاعب تنزل مع الإجابة الصح!</span></p>
+          </div>
+        ` : `
+          <div class="field">
+            <span>عدد الفرق <small>(تقدر تزود لحد 4 فرق أو تقلل لفريقين)</small></span>
+            <div class="team-count-bar">
+              <div class="seg team-count-seg">
+                ${[2, 3, 4].map((n) => `<button type="button" class="${tc === n ? 'on' : ''}" onclick="setSetupTeamCount(${n})">${n === 2 ? 'فريقين (2)' : n === 3 ? '3 فرق' : '4 فرق'}</button>`).join('')}
+              </div>
+              <div class="row">
+                <button type="button" class="btn olive sm" ${tc >= 4 ? 'disabled' : ''} onclick="setSetupTeamCount(${tc + 1})" title="زود فريق">${ic('plus')} زود فريق</button>
+                <button type="button" class="btn ghost sm" ${tc <= 2 ? 'disabled' : ''} onclick="setSetupTeamCount(${tc - 1})" title="شيل فريق">${ic('x')} شيل فريق</button>
+              </div>
+            </div>
+          </div>
+          ${activeTeamIds.map((tid, i) => `
+            <label class="field team-name-field team-${tid}"><span>${TEAM_LABELS[tid]}</span>
+              <input id="tn${i}" class="input" maxlength="24" value="${esc(s.teamNames[i] || DEFAULT_TEAM_NAMES[i])}" oninput="S.setup.teamNames[${i}]=this.value"/>
+            </label>`).join('')}
+        `}
         <div class="admin-play-box ${s.adminPlays ? 'on' : ''}">
           <span class="field-lbl">${ic('whistle')} وضع الحكم (إنت):</span>
           <div class="seg">
             <button type="button" class="${!s.adminPlays ? 'on' : ''}" onclick="setSetupAdminPlay(false)">${ic('whistle')} أنا الحكم (أنظم بنفسي)</button>
             <button type="button" class="${s.adminPlays ? 'on' : ''}" onclick="setSetupAdminPlay(true)">${ic('users')} العب معاهم والـ AI يحكم</button>
           </div>
-          ${s.adminPlays ? `
+          ${s.adminPlays ? (isSolo ? `
+            <div class="admin-team-picker">
+              <p class="note">${ic('check')} <span>هتدخل كلاعب فردي ضمن الـ 10 لاعبين، والـ <b>AI</b> هيمسك التحكيم والنقاط بالكامل!</span></p>
+            </div>
+          ` : `
             <div class="admin-team-picker">
               <span>هتنضم وتلعب مع أنهي فريق؟</span>
               <div class="row wrap-row">
@@ -732,7 +762,7 @@ function viewSetup() {
                   ? `${ic('bulb')} <span>في لعبة <b>لبن تمر هندي</b> يفضل وجود حكم بشري لأن الأسئلة شفوية، بس لو لعبت معاهم الـ AI هيصحح التخمينات المكتوبة ويدير الساعات والجولات تلقائياً!</span>`
                   : `${ic('check')} <span>كل تحكم الحكم هيتحول للـ <b>AI تلقائياً</b> (تصحيح، نقاط، ونقل للجولة الجاية) وهتظهرلك شاشة لاعب عادي في فريقك عشان ماتتحرقلكش الإجابات!</span>`}
               </p>
-            </div>` : `<p class="note">${ic('crown')} <span>بعد ما اللاعبين يدخلوا، إنت اللي بتختار قائد كل فريق وتقدر كمان تنضم لأي فريق من جوه غرفة الانتظار.</span></p>`}
+            </div>`) : `<p class="note">${ic('crown')} <span>${isSolo ? 'في الوضع الفردي كل لاعب بيبعت إجابته بنفسه، وتقدر تنضم للعب معاهم في أي وقت من غرفة الانتظار.' : 'بعد ما اللاعبين يدخلوا، إنت اللي بتختار قائد كل فريق وتقدر كمان تنضم لأي فريق من جوه غرفة الانتظار.'}</span></p>`}
         </div>
       </div>
 
@@ -777,8 +807,14 @@ function viewSetup() {
     <div class="next-bar"><button class="btn primary lg" onclick="createRoom()">${ic('next')} اعمل الغرفة وابعت الدعوة</button></div>
   </section>`;
 }
+function setSetupPlayMode(mode) {
+  S.setup.playMode = mode === 'solo' ? 'solo' : 'teams';
+  LS.set('setup', S.setup);
+  render();
+}
 function setSetupTeamCount(n) {
   const count = Math.max(2, Math.min(4, Number(n) || 2));
+  S.setup.playMode = 'teams';
   S.setup.teamCount = count;
   while (S.setup.teamNames.length < 4) S.setup.teamNames.push(DEFAULT_TEAM_NAMES[S.setup.teamNames.length] || 'فريق');
   const active = ALL_TEAM_IDS.slice(0, count);
@@ -809,10 +845,9 @@ function toggleCat(id) { const c = S.setup.categories; const i = c.indexOf(id); 
 async function createRoom() {
   const s = S.setup;
   if (!s.game) return toast('اختار اللعبة الأول', 'err');
-  const tc = Math.max(2, Math.min(4, Number(s.teamCount) || 2));
   const custom = validCustomList(s.game);
   if (s.useCustom && !custom.length) return toast('اكتب أسئلة الكاستم الأول', 'err');
-  if (s.useCustom && s.game === 'tamr' && custom.length < tc) return toast(`تمر هندي محتاج ${tc} شخصيات على الأقل (واحدة لكل فريق)`, 'err');
+  if (s.useCustom && s.game === 'tamr' && custom.length < 2) return toast('تمر هندي محتاج شخصيتين على الأقل في الكاستم', 'err');
   LS.set('setup', s);
   const r = await api('create_room', { game: s.game, settings: s, customPack: custom, profile: S.profile });
   if (r.ok) {
@@ -1378,8 +1413,15 @@ function lobbySetCustom(useCustom) {
   LS.set('setup', S.setup);
   api('update_lobby', { settings: { useCustom }, customPack: custom });
 }
+function lobbySetPlayMode(mode) {
+  const playMode = mode === 'solo' ? 'solo' : 'teams';
+  S.setup.playMode = playMode;
+  LS.set('setup', S.setup);
+  api('set_play_mode', { playMode });
+}
 function lobbySetTeamCount(count) {
   const n = Math.max(2, Math.min(4, Number(count) || 2));
+  S.setup.playMode = 'teams';
   S.setup.teamCount = n;
   LS.set('setup', S.setup);
   api('set_team_count', { count: n });
@@ -1389,13 +1431,16 @@ function viewLobbyAdmin() {
   const v = S.view;
   const s = v.settings;
   const g = v.game;
+  const isSolo = v.playMode === 'solo' || s.playMode === 'solo';
   const cats = CATS[g] || [];
   const customReady = v.customCount || validCustomList(g).length;
   const unitLbl = g === 'tamr' ? 'شخصية جاهزة' : 'سؤال جاهز';
-  const unassigned = v.players.filter((p) => !p.team);
-  const empty = v.teams.filter((t) => !playersOf(t.id).length);
+  const unassigned = isSolo ? [] : v.players.filter((p) => !p.team);
+  const empty = isSolo ? [] : v.teams.filter((t) => !playersOf(t.id).length);
+  const soloNeedMore = isSolo && v.teams.length < 2;
+  const cannotStart = isSolo ? soloNeedMore : empty.length > 0;
   const tc = v.teams.length;
-  const timers = v.game === 'karak' ? `كتابة ${s.writeSec}ث · اختيار ${s.voteSec}ث` : v.game === 'sahlab' ? `كل تلميح ${s.hintSec}ث` : v.game === 'annab' ? `الباز والإجابة ${s.buzzSec || 20}ث` : `ساعة ${mmss(s.chessSec)} لكل فريق`;
+  const timers = v.game === 'karak' ? `كتابة ${s.writeSec}ث · اختيار ${s.voteSec}ث` : v.game === 'sahlab' ? `كل تلميح ${s.hintSec}ث` : v.game === 'annab' ? `الباز والإجابة ${s.buzzSec || 20}ث` : `ساعة ${mmss(s.chessSec)} لكل ${isSolo ? 'لاعب' : 'فريق'}`;
   const catNames = s.useCustom ? `كاستم (${customReady} ${g === 'tamr' ? 'شخصية' : 'سؤال'})` : s.categories.length ? s.categories.map((c) => (cats.find((x) => x[0] === c) || [c, c])[1]).join('، ') : 'كوكتيل';
   return `${topbar(stepper(['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'], 2))}
   <section class="wrap wide lobby">
@@ -1408,16 +1453,16 @@ function viewLobbyAdmin() {
         <div class="link-row"><input class="input" readonly value="${esc(`${location.origin}/room/${v.code}`)}" onclick="this.select()"/><button class="btn olive sm" onclick="copyLink()">${ic('copy')} نسخ</button></div>
         <div class="settings-sum">
           <div><span>اللعبة</span><b>${GAMES[v.game].name}</b></div>
-          <div><span>عدد الفرق</span><b>${tc} فرق</b></div>
-          <div><span>وضع الأدمن</span><b>${v.adminPlays ? `لاعب مع ${esc(teamOf(v.adminTeam).name)} (حكم AI)` : 'حكم بشري'}</b></div>
+          <div><span>نظام اللعب</span><b>${isSolo ? `فردي (${v.players.length} / 10 لاعبين)` : `فرق (${tc} فرق)`}</b></div>
+          <div><span>وضع الأدمن</span><b>${v.adminPlays ? (isSolo ? 'لاعب فردي (حكم AI)' : `لاعب مع ${esc(teamOf(v.adminTeam).name)} (حكم AI)`) : 'حكم بشري'}</b></div>
           <div><span>الأسئلة</span><b>${esc(catNames)}</b></div>
           <div><span>العدد</span><b>${s.useCustom ? customReady : s.count}</b></div>
           <div><span>الوقت</span><b>${timers}</b></div>
-          <div><span>اللاعبين</span><b>${v.players.length} / ${(v.caps || {}).room || 40}</b></div>
+          <div><span>اللاعبين</span><b>${v.players.length} / ${(v.caps || {}).room || (isSolo ? 10 : 40)}</b></div>
           <div><span>وضع التلفزيون</span><b>${s.hideSecret ? 'إخفاء الإجابات' : 'إظهار للحكم'}</b></div>
           ${v.ai && v.ai.on ? `<div><span>الـ AI</span><b class="ai-state ${v.ai.status}">${v.ai.status === 'loading' ? '<i class="ai-dot"></i> بيجمع أسئلة جديدة...' : v.ai.status === 'ready' ? `جهّز ${v.ai.ready} سؤال جديد` : v.ai.status === 'verified' ? 'البنك الموثّق' : 'هيكمل من البنك'}</b></div>` : ''}
         </div>
-        <p class="note warn">${ic('lock')} تقدر تعدّل اللعبة، الفرق، والأسئلة براحتك قبل ما تدوس ابدأ.</p>
+        <p class="note warn">${ic('lock')} تقدر تعدّل اللعبة، نظام اللعب (فردي/فرق)، والأسئلة براحتك قبل ما تدوس ابدأ.</p>
       </aside>
 
       <div class="lobby-main">
@@ -1426,14 +1471,18 @@ function viewLobbyAdmin() {
             ${avatar(v.admin, 'md')}
             <div class="judge-card-info">
               <b>${esc(v.admin.name)}</b>
-              <span class="sub">${v.adminPlays ? `منضم كلاعب في «${esc(teamOf(v.adminTeam).name)}» — الـ AI هيمسك التحكيم بالكامل وقت اللعب!` : 'إنت الحكم — أو تقدر تنضم لأي فريق وتلعب معاهم والـ AI يحكم كل حاجة تلقائياً!'}</span>
+              <span class="sub">${v.adminPlays ? (isSolo ? 'منضم كلاعب فردي — الـ AI هيمسك التحكيم بالكامل وقت اللعب!' : `منضم كلاعب في «${esc(teamOf(v.adminTeam).name)}» — الـ AI هيمسك التحكيم بالكامل وقت اللعب!`) : 'إنت الحكم — أو تقدر تلعب معاهم والـ AI يحكم كل حاجة تلقائياً!'}</span>
             </div>
             <span class="badge">${v.adminPlays ? ic('users') + ' لاعب + حكم AI' : ic('whistle') + ' الحكم'}</span>
           </div>
           <div class="judge-play-actions">
-            <span>${v.adminPlays ? 'فريقك الحالي (أو ارجع حكم):' : 'عايز تلعب معاهم في فريق؟ اختار فريقك:'}</span>
+            <span>${v.adminPlays ? 'وضعك الحالي:' : isSolo ? 'عايز تلعب معاهم في الوضع الفردي؟' : 'عايز تلعب معاهم في فريق؟ اختار فريقك:'}</span>
             <div class="row wrap-row">
-              ${v.teams.map((t) => `
+              ${isSolo ? `
+                <button type="button" class="btn sm ${v.adminPlays ? 'olive' : 'ghost'}" onclick="api('admin_join_team',{team:'S1'})">
+                  ${v.adminPlays ? ic('check') + ' بتلعب معاهم فردي (حكم AI)' : ic('users') + ' العب معاهم فردي (والـ AI يحكم)'}
+                </button>
+              ` : v.teams.map((t) => `
                 <button type="button" class="btn sm ${v.adminPlays && v.adminTeam === t.id ? 'olive' : 'ghost'} team-pill-${t.id}" onclick="api('admin_join_team',{team:'${t.id}'})">
                   ${v.adminPlays && v.adminTeam === t.id ? ic('check') : ic('users')} العب مع ${esc(t.name)}
                 </button>`).join('')}
@@ -1446,33 +1495,63 @@ function viewLobbyAdmin() {
         <div class="card lobby-teams-bar">
           <div class="row wrap-row" style="justify-content:space-between">
             <div>
-              <b>${ic('users')} عدد الفرق في الغرفة (${tc} فرق)</b>
-              <span class="sub" style="display:block">تقدر تزوّد لحد 4 فرق أو تشيل فريقين لحد فريقين بس</span>
+              <b>${ic(isSolo ? 'crown' : 'users')} نظام اللعب: ${isSolo ? `وضع فردي (${v.players.length} / 10 لاعبين)` : `نظام الفرق (${tc} فرق)`}</b>
+              <span class="sub" style="display:block">${isSolo ? 'كل لاعب بيلعب لوحده لحد 10 أشخاص · وفي كرك عدد الإجابات المضللة بيزيد مع عدد اللاعبين (بحد أدنى 6 اختيارات)' : 'تقدر تلعب بنظام الفرق (2 لـ 4 فرق) أو تحوّل للوضع الفردي (لحد 10 لاعبين)'}</span>
             </div>
             <div class="row wrap-row">
-              <div class="seg team-count-seg">
-                ${[2, 3, 4].map((n) => `<button type="button" class="${tc === n ? 'on' : ''}" onclick="lobbySetTeamCount(${n})">${n} فرق</button>`).join('')}
+              <div class="seg play-mode-seg">
+                <button type="button" class="${!isSolo ? 'on' : ''}" onclick="lobbySetPlayMode('teams')">${ic('users')} فرق (2-4)</button>
+                <button type="button" class="${isSolo ? 'on' : ''}" onclick="lobbySetPlayMode('solo')">${ic('crown')} فردي (لحد 10)</button>
               </div>
-              <button type="button" class="btn olive sm" ${tc >= 4 ? 'disabled' : ''} onclick="lobbySetTeamCount(${tc + 1})">${ic('plus')} زود فريق</button>
-              <button type="button" class="btn ghost sm" ${tc <= 2 ? 'disabled' : ''} onclick="lobbySetTeamCount(${tc - 1})">${ic('x')} شيل فريق</button>
+              ${!isSolo ? `
+                <div class="seg team-count-seg">
+                  ${[2, 3, 4].map((n) => `<button type="button" class="${tc === n ? 'on' : ''}" onclick="lobbySetTeamCount(${n})">${n} فرق</button>`).join('')}
+                </div>
+                <button type="button" class="btn olive sm" ${tc >= 4 ? 'disabled' : ''} onclick="lobbySetTeamCount(${tc + 1})">${ic('plus')} زود فريق</button>
+                <button type="button" class="btn ghost sm" ${tc <= 2 ? 'disabled' : ''} onclick="lobbySetTeamCount(${tc - 1})">${ic('x')} شيل فريق</button>
+              ` : ''}
             </div>
           </div>
         </div>
 
-        <div class="teams-2 teams-grid teams-count-${tc}">
-          ${v.teams.map((t, idx) => `
-            <div class="card team-col team-${t.id}">
-              <div class="team-head">
-                <input id="rn${t.id}" class="input team-title" maxlength="24" value="${esc(S.draft['rn' + t.id] ?? t.name)}" oninput="S.draft['rn${t.id}']=this.value" onchange="api('rename_team',{team:'${t.id}',name:this.value});delete S.draft['rn${t.id}']" aria-label="اسم الفريق"/>
-                <span class="count">${playersOf(t.id).length}/${(v.caps || {}).team || 20} ${ic('users')}</span>
+        ${isSolo ? `
+          <div class="card solo-lobby-card">
+            <div class="team-head">
+              <div>
+                <h3 class="h3">${ic('crown')} اللاعبين في الوضع الفردي (${v.players.length} / 10 لاعبين)</h3>
+                <p class="sub">${g === 'karak' ? `في كرك هيظهر ${Math.max(6, v.teams.length + 1)} اختيارات (${Math.max(5, v.teams.length)} إجابات مضللة + إجابة واحدة صح)` : 'كل لاعب هيلعب لوحده والنقاط هتتحسب لكل لاعب بشكل مستقل'}</p>
               </div>
-              <ul class="members">${playersOf(t.id).map((p) => memberRow(p, true)).join('') || `<li class="empty">${sticker(idx % 2 === 0 ? 'latte' : 'pink', 46)}<span>مستني لاعبين...</span></li>`}</ul>
-            </div>`).join('')}
-        </div>
-        ${unassigned.length ? `<div class="card unassigned"><h3 class="h3">لسه بيختاروا فريق (${unassigned.length})</h3><ul class="members">${unassigned.map((p) => memberRow(p, true)).join('')}</ul></div>` : ''}
+              <button type="button" class="btn olive sm" ${v.players.length >= 10 ? 'disabled' : ''} onclick="addTest(null)">${ic('plus')} ضيف لاعب تجريبي</button>
+            </div>
+            ${v.players.length ? `
+              <ul class="members solo-members-grid">
+                ${v.players.map((p, idx) => `
+                  <li class="member solo-member team-${p.team || ('S' + (idx + 1))} ${p.online ? '' : 'offline'} ${p.id === me().id ? 'me' : ''}">
+                    <span class="solo-rank">#${idx + 1}</span>
+                    ${avatar(p, 'sm')}
+                    <span class="m-name">${esc(p.name)}${p.isAdminPlayer ? ' <small>(الأدمن · لاعب)</small>' : ''}${p.isTest ? ' <small>(تجريبي)</small>' : ''}${p.id === me().id ? ' <small>(إنت)</small>' : ''}</span>
+                    <span class="crown">${ic('crown')} فردي</span>
+                    ${!p.isAdminPlayer ? `<span class="m-ctl"><button class="icon-btn danger" title="اطرده" aria-label="طرد" onclick="kick('${p.id}','${esc(String(p.name).replace(/['"\\]/g, ''))}')">${ic('kick')}</button></span>` : ''}
+                  </li>`).join('')}
+              </ul>
+            ` : `<div class="empty">${sticker('latte', 52)}<span>مستني اللاعبين يدخلوا الغرفة (من 2 لحد 10 لاعبين)...</span></div>`}
+          </div>
+        ` : `
+          <div class="teams-2 teams-grid teams-count-${tc}">
+            ${v.teams.map((t, idx) => `
+              <div class="card team-col team-${t.id}">
+                <div class="team-head">
+                  <input id="rn${t.id}" class="input team-title" maxlength="24" value="${esc(S.draft['rn' + t.id] ?? t.name)}" oninput="S.draft['rn${t.id}']=this.value" onchange="api('rename_team',{team:'${t.id}',name:this.value});delete S.draft['rn${t.id}']" aria-label="اسم الفريق"/>
+                  <span class="count">${playersOf(t.id).length}/${(v.caps || {}).team || 20} ${ic('users')}</span>
+                </div>
+                <ul class="members">${playersOf(t.id).map((p) => memberRow(p, true)).join('') || `<li class="empty">${sticker(idx % 2 === 0 ? 'latte' : 'pink', 46)}<span>مستني لاعبين...</span></li>`}</ul>
+              </div>`).join('')}
+          </div>
+          ${unassigned.length ? `<div class="card unassigned"><h3 class="h3">لسه بيختاروا فريق (${unassigned.length})</h3><ul class="members">${unassigned.map((p) => memberRow(p, true)).join('')}</ul></div>` : ''}
+        `}
 
         <div class="card lobby-config" id="lobbyConfig">
-          <h2 class="h2">${ic('sliders')} تغيير اللعبة والأسئلة والإعدادات <small>(من غير ما تخرج الفرق)</small></h2>
+          <h2 class="h2">${ic('sliders')} تغيير اللعبة والأسئلة والإعدادات <small>(من غير ما تخرج اللاعبين)</small></h2>
           <div class="field">
             <span>نوع اللعبة الحالية</span>
             <div class="lobby-games">
@@ -1531,16 +1610,19 @@ function viewLobbyAdmin() {
 
         <details class="card tools">
           <summary>${ic('users')} أدوات التجربة السريعة</summary>
-          <p class="sub">لاعب وهمي للتجربة بس — أو تقدر تملى كل الفرق الفاضية بضغطة واحدة.</p>
+          <p class="sub">${isSolo ? 'ضيف لاعبين تجريبيين في الوضع الفردي (لحد 10 لاعبين).' : 'لاعب وهمي للتجربة بس — أو تقدر تملى كل الفرق الفاضية بضغطة واحدة.'}</p>
           <div class="row wrap-row">
-            ${v.teams.map((t) => `<button class="btn ghost sm" onclick="addTest('${t.id}')">${ic('plus')} لـ ${esc(t.name)}</button>`).join('')}
+            ${isSolo
+              ? `<button class="btn ghost sm" ${v.players.length >= 10 ? 'disabled' : ''} onclick="addTest(null)">${ic('plus')} ضيف لاعب فردي تجريبي (${v.players.length}/10)</button>`
+              : v.teams.map((t) => `<button class="btn ghost sm" onclick="addTest('${t.id}')">${ic('plus')} لـ ${esc(t.name)}</button>`).join('')}
           </div>
         </details>
       </div>
     </div>
     <div class="next-bar">
-      ${empty.length ? `<span class="why">${ic('users')} ${esc(empty.map((t) => t.name).join(' و '))} محتاج لاعب على الأقل</span>` : ''}
-      <button class="btn primary lg" ${empty.length ? 'disabled' : ''} onclick="startGame()">${ic('play')} ابدأ ${GAMES[v.game].name}${v.adminPlays ? ' (الـ AI هيحكم)' : ''}</button>
+      ${isSolo && soloNeedMore ? `<span class="why">${ic('users')} الوضع الفردي محتاج لاعبين اتنين على الأقل (حالياً ${v.teams.length})</span>` : ''}
+      ${!isSolo && empty.length ? `<span class="why">${ic('users')} ${esc(empty.map((t) => t.name).join(' و '))} محتاج لاعب على الأقل</span>` : ''}
+      <button class="btn primary lg" ${cannotStart ? 'disabled' : ''} onclick="startGame()">${ic('play')} ابدأ ${GAMES[v.game].name}${v.adminPlays ? ' (الـ AI هيحكم)' : ''}</button>
     </div>
   </section>`;
 }
@@ -1553,9 +1635,11 @@ function addTest(team) {
   api('add_test_player', { team, parts: { outfit: pick('outfit'), face: pick('face'), hat: pick('hat') } });
 }
 async function startGame() {
+  S.busy = false;
   const btn = document.querySelector('.next-bar .btn.primary');
   if (btn) { btn.disabled = true; btn.innerHTML = 'بنجهز الأسئلة...'; }
-  await api('start_game');
+  const r = await api('start_game');
+  if (!r || !r.ok) render();
 }
 
 function viewTeamPick() {
@@ -1578,23 +1662,24 @@ function viewTeamPick() {
 
 function viewLobbyPlayer() {
   const v = S.view;
+  const isSolo = v.playMode === 'solo' || (v.settings && v.settings.playMode === 'solo');
   const t = teamOf(myTeam());
   const others = v.teams.filter((x) => x.id !== myTeam());
-  return `${topbar(stepper(['الشخصية', 'الفريق', 'اللعب'], 1))}
+  return `${topbar(stepper(['الشخصية', isSolo ? 'الانتظار' : 'الفريق', 'اللعب'], 1))}
   <section class="wrap narrow lobby-player">
     <div class="card tape team-col team-${t.id}">
-      <p class="sub">إنت في</p>
+      <p class="sub">${isSolo ? 'وضع اللعب الفردي — كل لاعب لوحده' : 'إنت في'}</p>
       <h1 class="h1">${esc(t.name)}</h1>
-      ${me().captain ? `<p class="captain-banner">${ic('crown')} إنت قائد الفريق — إنت اللي هتبعت الإجابات</p>` : ''}
+      ${isSolo ? `<p class="captain-banner">${ic('crown')} إنت بتلعب بشكل فردي ضد باقي اللاعبين (${v.teams.length} / 10 لاعبين)</p>` : me().captain ? `<p class="captain-banner">${ic('crown')} إنت قائد الفريق — إنت اللي هتبعت الإجابات</p>` : ''}
       <ul class="members">${playersOf(t.id).map((p) => memberRow(p, false)).join('')}</ul>
     </div>
-    <div class="mini-teams-list">
+    ${others.length ? `<div class="mini-teams-list">
       ${others.map((other) => `<div class="card mini-team team-${other.id}"><b>${esc(other.name)}</b><div class="tp-avatars">${playersOf(other.id).map((p) => avatar(p, 'xs')).join('') || '<span class="sub">فاضي</span>'}</div></div>`).join('')}
-    </div>
+    </div>` : ''}
     <div class="waiting">${sticker('teapot', 90, 'wobble')}<p>مستنيين بداية <b>${GAMES[v.game].name}</b>${v.adminPlays ? ' (حكم AI)' : ''}<span class="dots"><i></i><i></i><i></i></span></p></div>
-    <div class="row wrap-row">
+    ${!isSolo ? `<div class="row wrap-row">
       ${others.map((other) => `<button class="btn ghost block" onclick="api('pick_team',{team:'${other.id}'})">${ic('swap')} غيّر لفريق ${esc(other.name)}</button>`).join('')}
-    </div>
+    </div>` : ''}
   </section>`;
 }
 
@@ -1621,8 +1706,11 @@ function viewKarak() {
 
 function srcLabel(src) {
   if (src === 'truth') return 'الإجابة الصح';
-  if (ALL_TEAM_IDS.includes(src)) return `كذبة ${teamOf(src).name}`;
   if (src === 'admin') return 'كذبة الحكم';
+  if (src === 'ai') return 'كذبة الـ AI';
+  const t = S.view && S.view.teams ? S.view.teams.find((x) => x.id === src) : null;
+  if (t) return `كذبة ${t.name}`;
+  if (ALL_TEAM_IDS.includes(src)) return `كذبة ${teamOf(src).name}`;
   return 'كذبة الـ AI';
 }
 

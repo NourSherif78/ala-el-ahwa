@@ -319,31 +319,33 @@ async function pickQuestions(game, cats, n, aiFresh = []) {
   const inCat = (it) => matchesCatWithAliases(it.cat, cats, false);
   const inRelatedCat = (it) => matchesCatWithAliases(it.cat, cats, true);
   const ratio = process.env.GEMINI_API_KEY ? 0.5 : 0.3;
-  const ai = shuffle(aiFresh.filter((it) => !isUsed(game, it) && inRelatedCat(it))).slice(0, Math.ceil(n * ratio));
+  const ai = shuffle((aiFresh || []).filter((it) => !isUsed(game, it) && inRelatedCat(it))).slice(0, Math.ceil(n * ratio));
   const aiIds = new Set(ai.map((x) => x.id));
   const all = [...BANKS[game], ...AI_POOL[game]].filter((it) => !aiIds.has(it.id));
   const fresh = all.filter((it) => !isUsed(game, it));
+
+  // 1) أسئلة جديدة من نفس الكتالوج اللي اختاره بالظبط
   let chosen = [...ai, ...shuffle(fresh.filter(inCat)).slice(0, n - ai.length)];
-  if (chosen.length < n) {
-    const ids = new Set(chosen.map((c) => c.id));
-    chosen.push(...shuffle(fresh.filter((it) => inRelatedCat(it) && !ids.has(it.id))).slice(0, n - chosen.length));
-  }
-  if (chosen.length < n && !(cats && cats.length && cats.every((c) => RELIGIOUS.has(c)))) {
-    let tries = 0;
-    while (chosen.length < n && tries < 1) {
-      tries++;
-      const gen = await aiGenerate(game, cats, Math.min(8, n - chosen.length + 2));
-      const ids = new Set(chosen.map((c) => c.id));
-      chosen.push(...gen.filter((g) => !ids.has(g.id)).slice(0, n - chosen.length));
-    }
-  }
-  // لو الفئات اللي اختارها خلصت، نعيد استخدام أسئلة نفس الفئات قبل ما نروح لفئات تانية
+
+  // 2) لو الكتالوج اللي اختاره اتسأل منه قبل كده وخلص، نعيد فتح أسئلة نفس الكتالوج الأول قبل ما نخرج براه
   if (chosen.length < n) {
     const ids = new Set(chosen.map((c) => c.id));
     const catPool = shuffle(all.filter((it) => inCat(it) && !ids.has(it.id))).slice(0, n - chosen.length);
     catPool.forEach((it) => { usedIdSet.delete(it.id); usedHashSet.delete(hashText(game + ':' + itemText(game, it))); });
     chosen.push(...catPool);
   }
+
+  // 3) لو عدد الأسئلة المطلوب أكبر من حجم الكتالوج الواحد، نكمّل من الكتالوجات القريبة المرتبطة بيه فوراً بدون انتظار
+  if (chosen.length < n) {
+    const ids = new Set(chosen.map((c) => c.id));
+    chosen.push(...shuffle(fresh.filter((it) => inRelatedCat(it) && !ids.has(it.id))).slice(0, n - chosen.length));
+  }
+  if (chosen.length < n) {
+    const ids = new Set(chosen.map((c) => c.id));
+    chosen.push(...shuffle(all.filter((it) => inRelatedCat(it) && !ids.has(it.id))).slice(0, n - chosen.length));
+  }
+
+  // 4) تكملة احتياطية فورية من البنك لو لسه العدد أقل من المطلوب
   if (chosen.length < n) {
     const ids = new Set(chosen.map((c) => c.id));
     chosen.push(...shuffle(fresh.filter((it) => !ids.has(it.id))).slice(0, n - chosen.length));
