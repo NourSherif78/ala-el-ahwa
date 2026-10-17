@@ -14,10 +14,15 @@ function safeRequire(p) {
   try { return require(p); } catch (e) { return []; }
 }
 
+const KARAK_ALL = [...safeRequire('./karak_a.js'), ...safeRequire('./karak_b.js'), ...safeRequire('./karak_c.js')];
 const BANKS = {
-  karak: [...safeRequire('./karak_a.js'), ...safeRequire('./karak_b.js'), ...safeRequire('./karak_c.js')],
+  karak: KARAK_ALL,
   sahlab: [...safeRequire('./sahlab.js'), ...safeRequire('./sahlab_b.js')],
-  tamr: [...safeRequire('./tamr.js').map((t) => ({ cat: 'celebs', ...t })), ...safeRequire('./tamr_b.js')]
+  tamr: [...safeRequire('./tamr.js').map((t) => ({ cat: 'celebs', ...t })), ...safeRequire('./tamr_b.js')],
+  annab: [
+    ...safeRequire('./annab.js'),
+    ...KARAK_ALL.map((k) => ({ id: 'an_' + k.id, cat: k.cat, q: k.q, truth: k.truth, bluffs: (k.bluffs || []).slice(0, 3) }))
+  ]
 };
 
 // ---------- التطبيع العربي للمقارنة ----------
@@ -63,14 +68,15 @@ function saveUsed() {
 }
 
 // أسئلة الـ AI اللي اتولدت قبل كده تتحفظ (عشان لو اتولدت ومااتسألتش تفضل متاحة)
-let AI_POOL = { karak: [], sahlab: [], tamr: [] };
+let AI_POOL = { karak: [], sahlab: [], tamr: [], annab: [] };
 try { if (fs.existsSync(AI_FILE)) AI_POOL = { ...AI_POOL, ...JSON.parse(fs.readFileSync(AI_FILE, 'utf8')) }; } catch (e) {}
+AI_POOL.annab = AI_POOL.annab || [];
 function saveAiPool() {
   try { fs.writeFileSync(AI_FILE, JSON.stringify(AI_POOL)); } catch (e) {}
 }
 
 function itemText(game, it) {
-  if (game === 'karak') return it.q;
+  if (game === 'karak' || game === 'annab') return it.q;
   if (game === 'sahlab') return it.answer;
   return it.name;
 }
@@ -206,6 +212,9 @@ function aiPrompt(game, cats, count, avoid) {
   if (game === 'karak') {
     return `اكتب ${count} أسئلة لعبة خداع جماعية زي Fibbage بالعربي. المواضيع: ${topic}. كل سؤال معلومة حقيقية مدهشة فيها فراغ ____ والإجابة الصح قصيرة (1-4 كلمات).${rel} أرجع JSON فقط بالشكل {"items":[...]} وكل عنصر: [{"cat":"اسم الموضوع","q":"... ____ ...","truth":"...","bluffs":["كذبة1","كذبة2","كذبة3","كذبة4"]}]. ماتكررش دول: ${avoid}`;
   }
+  if (game === 'annab') {
+    return `اكتب ${count} أسئلة مسابقات سرعة (4 اختيارات) بالعربي. المواضيع: ${topic}. كل سؤال واضح ومباشر ومعاه الإجابة الصح و3 اختيارات غلط مقنعة من نفس النوع.${rel} أرجع JSON فقط بالشكل {"items":[...]} وكل عنصر: [{"cat":"اسم الموضوع","q":"السؤال؟","truth":"الإجابة الصح","bluffs":["غلط1","غلط2","غلط3"]}]. ماتكررش دول: ${avoid}`;
+  }
   if (game === 'sahlab') {
     return `اكتب ${count} عناصر للعبة تخمين بالتلميحات بالعربي. المواضيع: ${topic}. كل عنصر شيء أو مكان أو شخصية مشهورة مع 5 تلميحات من الأصعب للأسهل ولا تذكر الإجابة في التلميحات، و imageQuery هو عنوان مقالة ويكيبيديا الإنجليزية عشان نجيب صورة.${rel} أرجع JSON فقط بالشكل {"items":[...]} وكل عنصر: [{"answer":"...","aliases":["..."],"imageQuery":"English Wikipedia title","hints":["...","...","...","...","..."]}]. ماتكررش: ${avoid}`;
   }
@@ -237,6 +246,11 @@ async function aiGenerate(game, catsIn, count) {
         const bl = (Array.isArray(it.bluffs) ? it.bluffs : []).map(String).filter((b) => normalizeAr(b) !== normalizeAr(it.truth));
         if (bl.length < 2) continue;
         item = { id: 'ai_k_' + hashText(q), cat: catFor(it), q, truth: String(it.truth), bluffs: bl.slice(0, 4), ai: true };
+      } else if (game === 'annab' && it.q && it.truth) {
+        const q = String(it.q).trim();
+        const bl = (Array.isArray(it.bluffs) ? it.bluffs : []).map(String).filter((b) => normalizeAr(b) !== normalizeAr(it.truth));
+        if (bl.length < 3) continue;
+        item = { id: 'ai_an_' + hashText(q), cat: catFor(it), q, truth: String(it.truth), bluffs: bl.slice(0, 3), ai: true };
       } else if (game === 'sahlab' && it.answer && Array.isArray(it.hints) && it.hints.length >= 3) {
         item = { id: 'ai_s_' + hashText(it.answer), cat: catFor(it), answer: String(it.answer), aliases: Array.isArray(it.aliases) ? it.aliases.map(String) : [], imageQuery: religious ? String(it.imageQuery || '') : String(it.imageQuery || it.answer), hints: it.hints.slice(0, 5).map(String), ai: true };
       } else if (game === 'tamr' && it.name) {

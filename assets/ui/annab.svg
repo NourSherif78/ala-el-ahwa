@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <rect width="240" height="240" fill="#F3E6D0"/>
+  <!-- Soft warm shadow on table -->
+  <ellipse cx="118" cy="202" rx="76" ry="14" fill="#DFC9A8"/>
+  <ellipse cx="95" cy="198" rx="46" ry="9" fill="#C9AD86"/>
+  <ellipse cx="168" cy="202" rx="34" ry="8" fill="#C9AD86"/>
+
+  <!-- Hibiscus petals scattered -->
+  <path d="M38 188 C30 180, 44 170, 52 180 C48 188, 42 192, 38 188Z" fill="#9E2338" stroke="#3B2A1E" stroke-width="2.5"/>
+  <path d="M54 196 C48 190, 58 182, 65 190 C62 196, 57 199, 54 196Z" fill="#7D1829" stroke="#3B2A1E" stroke-width="2.2"/>
+
+  <!-- Straw -->
+  <path d="M115 110 L138 26 L148 29 L124 112" fill="#E0B15C" stroke="#3B2A1E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="132" y1="48" x2="142" y2="51" stroke="#B4533A" stroke-width="3"/>
+  <line x1="127" y1="68" x2="137" y2="71" stroke="#B4533A" stroke-width="3"/>
+
+  <!-- Mint leaves at top of glass -->
+  <path d="M68 68 C50 48, 72 32, 86 54 C80 62, 74 68, 68 68Z" fill="#5E8B4E" stroke="#3B2A1E" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M84 62 C82 40, 106 36, 104 58 C97 63, 90 64, 84 62Z" fill="#6F7F4E" stroke="#3B2A1E" stroke-width="3" stroke-linejoin="round"/>
+
+  <!-- Chilled Annab Glass Body -->
+  <path d="M54 64 L64 186 C65 195, 125 195, 126 186 L136 64 Z" fill="#FBF5E9" stroke="#3B2A1E" stroke-width="4" stroke-linejoin="round"/>
+  <!-- Ruby Hibiscus Drink Fill -->
+  <path d="M57 82 L65 182 C66 190, 124 190, 125 182 L133 82 C115 86, 75 86, 57 82 Z" fill="#9E2338"/>
+  <!-- Deep crimson bottom gradient shade -->
+  <path d="M61 135 L65 182 C66 190, 124 190, 125 182 L129 135 Z" fill="#6D1324" opacity="0.65"/>
+
+  <!-- Ice cubes floating -->
+  <rect x="68" y="88" width="24" height="22" rx="5" transform="rotate(-10 80 99)" fill="#F9E6E8" opacity="0.85" stroke="#3B2A1E" stroke-width="2.5"/>
+  <rect x="96" y="94" width="22" height="20" rx="5" transform="rotate(12 107 104)" fill="#F9E6E8" opacity="0.8" stroke="#3B2A1E" stroke-width="2.5"/>
+  <rect x="78" y="116" width="22" height="20" rx="5" transform="rotate(5 89 126)" fill="#F4C7CE" opacity="0.55" stroke="#3B2A1E" stroke-width="2"/>
+
+  <!-- Glass Rim & Highlights -->
+  <ellipse cx="95" cy="64" rx="41" ry="8" fill="#FFFDF7" stroke="#3B2A1E" stroke-width="3.5"/>
+  <path d="M64 88 L70 172" stroke="#FFF" stroke-width="4" stroke-linecap="round" opacity="0.55"/>
+  <path d="M54 64 L64 186 C65 195, 125 195, 126 186 L136 64" fill="none" stroke="#3B2A1E" stroke-width="4" stroke-linejoin="round"/>
+
+  <!-- Cold droplets outside glass -->
+  <circle cx="50" cy="115" r="2.5" fill="#9E2338" opacity="0.7"/>
+  <circle cx="140" cy="128" r="3" fill="#9E2338" opacity="0.7"/>
+  <circle cx="137" cy="150" r="2" fill="#9E2338" opacity="0.7"/>
+
+  <!-- Game Buzzer Button next to the glass -->
+  <g transform="translate(132, 138)">
+    <!-- Buzzer Base -->
+    <path d="M6 52 L14 34 L62 34 L70 52 C70 58, 6 58, 6 52 Z" fill="#5E3E26" stroke="#3B2A1E" stroke-width="3.5" stroke-linejoin="round"/>
+    <!-- Red Buzzer Dome -->
+    <path d="M16 36 C16 14, 60 14, 60 36 Z" fill="#C83E2B" stroke="#3B2A1E" stroke-width="3.5" stroke-linejoin="round"/>
+    <!-- Dome Highlight -->
+    <path d="M24 28 C28 20, 42 19, 48 24" fill="none" stroke="#FFD6CC" stroke-width="3.5" stroke-linecap="round"/>
+    <!-- Action lines / sparks above buzzer -->
+    <line x1="38" y1="2" x2="38" y2="10" stroke="#E0B15C" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="18" y1="8" x2="24" y2="14" stroke="#E0B15C" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="58" y1="8" x2="52" y2="14" stroke="#E0B15C" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+</svg>

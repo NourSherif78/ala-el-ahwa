@@ -30,7 +30,10 @@ const IC = {
   enter: '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/>',
   snow: '<path d="M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7"/>',
   trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
   eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22"/>',
+  bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+  tv: '<rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>',
   whistle: '<circle cx="9" cy="14" r="6"/><path d="M13.5 10L22 6v5l-6 2"/><path d="M5 5l2 3"/>',
   chevL: '<path d="M15 18l-6-6 6-6"/>',
   chevR: '<path d="M9 18l6-6-6-6"/>',
@@ -60,13 +63,15 @@ const $ = (sel) => document.querySelector(sel);
 const GAMES = {
   karak: { name: 'كرك', img: '/assets/ui/karak.jpg', tag: 'لعبة الخداع', desc: 'سؤال غريب بفراغ، كل فريق يكتب إجابة مزيفة تخدع التاني، وبعدين الكل يدور على الإجابة الصح وسط 6 إجابات.' },
   sahlab: { name: 'سحلب', img: '/assets/ui/sahlab.jpg', tag: 'سلم التلميحات', desc: 'صورة مموهة و5 تلميحات بتسهل واحدة ورا التانية. خمّن بدري تاخد نقط أكتر، وكل غلطة بتجمد فريقك.' },
-  tamr: { name: 'لبن تمر هندي', img: '/assets/ui/tamr.jpg', tag: 'ساعة الشطرنج', desc: 'كل فريق عنده شخصية سرية لازم يخمنها بأسئلة أه/لأ، وساعة شطرنج بتعد على الفريق اللي عليه الدور.' }
+  tamr: { name: 'لبن تمر هندي', img: '/assets/ui/tamr.jpg', tag: 'ساعة الشطرنج', desc: 'كل فريق عنده شخصية سرية لازم يخمنها بأسئلة أه/لأ، وساعة شطرنج بتعد على الفريق اللي عليه الدور.' },
+  annab: { name: 'عنّاب', img: '/assets/ui/annab.svg', tag: 'زرار الباز · 4 اختيارات', desc: '20 سؤال بـ 4 اختيارات وزرار باز لقائد كل فريق! اللي يدوس الأول يجاوب، ولو غلط بتتشطب إجابته والفرصة تروح للفريق التاني يختار من الـ 3 الباقيين.' }
 };
 const NEW_CATS = [['anime', 'أنمي'], ['islamic_history', 'تاريخ إسلامي'], ['islamic', 'أسئلة دينية'], ['quran', 'القرآن الكريم'], ['hadith', 'الأحاديث النبوية']];
 const CATS = {
   karak: [['history', 'تاريخ'], ['geography', 'جغرافيا'], ['science', 'علوم'], ['sports', 'رياضة'], ['cinema', 'أفلام ومسلسلات'], ['food', 'أكل ومشروبات'], ['egypt', 'مصر'], ['animals', 'حيوانات'], ['weird', 'غرائب الشعوب'], ['language', 'لغة وكلمات'], ...NEW_CATS],
   sahlab: [['places', 'أماكن'], ['people', 'مشاهير'], ['food', 'أكل'], ['movies', 'أفلام'], ['things', 'أشياء'], ...NEW_CATS],
-  tamr: [['celebs', 'مشاهير ونجوم'], ...NEW_CATS]
+  tamr: [['celebs', 'مشاهير ونجوم'], ...NEW_CATS],
+  annab: [['history', 'تاريخ'], ['geography', 'جغرافيا'], ['science', 'علوم'], ['sports', 'رياضة'], ['cinema', 'أفلام ومسلسلات'], ['food', 'أكل ومشروبات'], ['egypt', 'مصر'], ['animals', 'حيوانات'], ['weird', 'غرائب الشعوب'], ['language', 'لغة وكلمات'], ...NEW_CATS]
 };
 
 // ------------------------------------------------------------------
@@ -81,13 +86,27 @@ function randId(n = 12) { const a = new Uint8Array(n); crypto.getRandomValues(a)
 const ident = LS.get('ident', null) || { pid: 'p_' + randId(6), secret: randId(12) };
 LS.set('ident', ident);
 
+const savedSetup = LS.get('setup', null) || {};
 const S = {
   screen: 'home',
   mode: null, // create | join
   code: null,
   profile: LS.get('profile', null) || { name: '', outfit: 'karak_cup', face: 'mustache_boss', hat: 'fez_tarboush' },
   avTab: 'outfit',
-  setup: LS.get('setup', null) || { game: null, teamNames: ['فريق الكرك', 'فريق السحلب'], categories: [], count: 10, writeSec: 60, voteSec: 30, hintSec: 30, chessSec: 180, useCustom: false },
+  setup: {
+    game: null,
+    teamNames: ['فريق الكرك', 'فريق السحلب'],
+    categories: [],
+    count: 10,
+    writeSec: 60,
+    voteSec: 30,
+    hintSec: 30,
+    chessSec: 180,
+    buzzSec: 20,
+    useCustom: false,
+    hideSecret: false,
+    ...savedSetup
+  },
   custom: LS.get('custom', []),
   customInRoom: false,
   view: null,
@@ -105,10 +124,13 @@ const S = {
   lastKey: null,
   resumable: null
 };
+if (!S.setup.buzzSec) S.setup.buzzSec = 20;
+S.setup.hideSecret = Boolean(S.setup.hideSecret);
 
 const NON_BLOCKING_ACTIONS = new Set([
   'adjust_score', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
-  'update_lobby', 'rename_team', 'kr_suggest', 'kr_vote_suggest', 'sh_suggest', 'tm_suggest'
+  'update_lobby', 'rename_team', 'kr_suggest', 'kr_vote_suggest', 'sh_suggest', 'tm_suggest',
+  'toggle_secret', 'an_buzz', 'an_pick', 'an_suggest', 'an_reset_buzz', 'an_pass_turn', 'an_reveal'
 ]);
 
 // ------------------------------------------------------------------
@@ -197,6 +219,7 @@ function onEvent(v) {
   if (!e || e.id === S.lastEventId) return;
   S.lastEventId = e.id;
   const tn = (id) => (v.teams.find((t) => t.id === id) || {}).name || '';
+  if (e.type === 'an_wrong_steal' || e.type === 'an_reset' || e.type === 'an_timeout_steal') S.pickOpt = null;
   const msgs = {
     join: () => v.me.role === 'admin' && `${e.name} دخل الغرفة`,
     wrong: () => e.bothFrozen ? `الفريقين اتجمدوا! التلميح الجاي بيفتح تلقائياً...` : `${tn(e.team)} جاوب غلط — اتجمد لحد التلميح الجاي!`,
@@ -209,7 +232,13 @@ function onEvent(v) {
     adjust: () => `الحكم عدّل نقاط ${tn(e.team)} (${e.delta > 0 ? '+' : ''}${e.delta})`,
     hint: () => 'اتفتح تلميح جديد — التجميد اتفك!',
     turn: () => `الدور على ${tn(e.team)}`,
-    game_changed: () => `الحكم غيّر اللعبة لـ ${GAMES[e.game] ? GAMES[e.game].name : e.game}`
+    game_changed: () => `الحكم غيّر اللعبة لـ ${GAMES[e.game] ? GAMES[e.game].name : e.game}`,
+    buzz: () => `${tn(e.team)} داس الباز الأول! دوره يختار الإجابة`,
+    an_correct: () => `${tn(e.team)} جاوب صح! الحكم يقدر يزوّد النقط براحته`,
+    an_wrong_steal: () => `إجابة ${tn(e.wrongTeam)} غلط! الفرصة راحت لـ ${tn(e.nextTeam)} يختار من الـ 3 الباقيين`,
+    an_both_wrong: () => `الإجابتين غلط! اتكشفت الإجابة الصح`,
+    an_timeout_steal: () => `وقت ${tn(e.wrongTeam)} خلص! الفرصة راحت لـ ${tn(e.nextTeam)}`,
+    an_reset: () => `الحكم فتح الباز من الأول للفريقين!`
   };
   const m = msgs[e.type] && msgs[e.type]();
   if (m) toast(m);
@@ -241,6 +270,21 @@ const isAdmin = () => S.view && S.view.me.role === 'admin';
 const me = () => (S.view ? S.view.me : {});
 const myTeam = () => me().team;
 const blankify = (q) => esc(q).replace(/_{2,}/g, '<span class="blank">؟؟؟</span>');
+
+function secretBar(label, valueHtml) {
+  const v = S.view;
+  const hidden = Boolean(v && v.settings && v.settings.hideSecret);
+  return `<div class="secret ${hidden ? 'is-hidden' : ''}">
+    ${ic(hidden ? 'eyeOff' : 'eye')}
+    <div class="secret-body">
+      <span>${esc(label)}</span>
+      <b>${hidden ? '••• مخفية (وضع التلفزيون شغال) •••' : valueHtml}</b>
+    </div>
+    <button class="btn sm secret-toggle ${hidden ? 'olive' : 'ghost'}" onclick="api('toggle_secret')" title="${hidden ? 'إظهار الإجابات على شاشة الحكم' : 'إخفاء الإجابات من شاشة الحكم (وضع التلفزيون)'}">
+      ${ic(hidden ? 'eye' : 'eyeOff')} ${hidden ? 'إظهار الإجابة' : 'إخفاء (تلفزيون)'}
+    </button>
+  </div>`;
+}
 
 function logo(size = 'lg') {
   return `<div class="logo logo-${size}">
@@ -279,6 +323,7 @@ function phaseTotal() {
   const s = v.settings;
   if (v.game === 'karak') return v.phase === 'vote' ? s.voteSec : v.phase === 'write' && v.kr && remaining() > s.writeSec ? remaining() : s.writeSec;
   if (v.game === 'sahlab') return s.hintSec;
+  if (v.game === 'annab') return s.buzzSec || 20;
   return s.chessSec;
 }
 function timerRing() {
@@ -351,7 +396,7 @@ function render() {
   else if (v.status === 'lobby') html = isAdmin() ? viewLobbyAdmin() : myTeam() ? viewLobbyPlayer() : viewTeamPick();
   else if (v.status === 'playing') {
     if (!isAdmin() && !myTeam()) html = viewTeamPick();
-    else html = v.game === 'karak' ? viewKarak() : v.game === 'sahlab' ? viewSahlab() : viewTamr();
+    else html = v.game === 'karak' ? viewKarak() : v.game === 'sahlab' ? viewSahlab() : v.game === 'annab' ? viewAnnab() : viewTamr();
     if (isAdmin()) html += adminDrawer();
   } else if (v.status === 'finished') html = viewFinal() + (isAdmin() ? adminDrawer() : '');
 
@@ -558,15 +603,20 @@ function viewSetup() {
             <span class="switch" aria-hidden="true"><span></span></span>
           </button>` : ''}
           <label class="field"><span>عدد ${g === 'tamr' ? 'الجولات' : 'الأسئلة'}: <b id="countLbl">${s.count}</b></span>
-            <input type="range" class="range" min="3" max="20" value="${s.count}" oninput="S.setup.count=+this.value;document.getElementById('countLbl').textContent=this.value"/>
+            <input type="range" class="range" min="3" max="30" value="${s.count}" oninput="S.setup.count=+this.value;document.getElementById('countLbl').textContent=this.value"/>
           </label>
           <p class="note">${ic('star')} كل سؤال بيتسأل مرة واحدة بس — عمره ما هيتكرر في أي سهرة جاية.</p>`}
       </div>
 
       <div class="card">
-        <h2 class="h2"><span class="num">4</span> الوقت</h2>
-        ${!g ? '<p class="note">اختار اللعبة الأول.</p>' : g === 'karak' ? rangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5) + rangeField('voteSec', 'وقت الاختيار', 15, 120, 5) : g === 'sahlab' ? rangeField('hintSec', 'وقت كل تلميح', 15, 120, 5) : rangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15)}
-        <p class="note warn">${ic('lock')} الوقت بيتقفل أول ما اللعبة تبدأ — مش هتقدر تغيره في النص.</p>
+        <h2 class="h2"><span class="num">4</span> الوقت وشاشة الحكم</h2>
+        ${!g ? '<p class="note">اختار اللعبة الأول.</p>' : g === 'karak' ? rangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5) + rangeField('voteSec', 'وقت الاختيار', 15, 120, 5) : g === 'sahlab' ? rangeField('hintSec', 'وقت كل تلميح', 15, 120, 5) : g === 'annab' ? rangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5) : rangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15)}
+        <button class="ai-toggle tv-toggle ${s.hideSecret ? 'on' : ''}" onclick="S.setup.hideSecret=!S.setup.hideSecret;LS.set('setup',S.setup);render()" aria-pressed="${Boolean(s.hideSecret)}">
+          <span class="tv-orb" aria-hidden="true">${ic(s.hideSecret ? 'eyeOff' : 'tv')}</span>
+          <span class="ai-txt"><b>وضع التلفزيون (إخفاء الإجابات من شاشة الحكم)</b><small>${s.hideSecret ? 'شغال — الإجابات السرية هتكون مخفية من شاشة الحكم وتقدر تظهرها بزرار في أي وقت' : 'مقفول — الإجابات الصح بتظهر للحكم من أول الجولة'}</small></span>
+          <span class="switch" aria-hidden="true"><span></span></span>
+        </button>
+        <p class="note warn">${ic('lock')} الوقت بيتقفل أول ما اللعبة تبدأ — وتقدر تغيّر إخفاء الإجابات في أي وقت من شاشة الحكم.</p>
       </div>
     </div>
 
@@ -579,7 +629,12 @@ function rangeField(key, label, min, max, step) {
   return `<label class="field"><span>${label}: <b id="lbl_${key}">${fmtSec(val)}</b></span>
     <input type="range" class="range" min="${min}" max="${max}" step="${step}" value="${val}" oninput="S.setup.${key}=+this.value;document.getElementById('lbl_${key}').textContent=fmtSec(+this.value)"/></label>`;
 }
-function pickGame(k) { S.setup.game = k; S.setup.categories = []; render(); }
+function pickGame(k) {
+  S.setup.game = k;
+  S.setup.categories = [];
+  if (k === 'annab') S.setup.count = 20;
+  render();
+}
 function toggleCat(id) { const c = S.setup.categories; const i = c.indexOf(id); i >= 0 ? c.splice(i, 1) : c.push(id); render(); }
 async function createRoom() {
   const s = S.setup;
@@ -608,7 +663,7 @@ function viewCustom() {
   <section class="wrap narrow custom">
     <div class="card tape">
       <h1 class="h1">${ic('pencil')} أسئلتك الخاصة (${GAMES[g] ? GAMES[g].name : ''})</h1>
-      <p class="sub">اكتب ${qLabel} و${aLabel}. ${g === 'karak' ? 'في كرك حط <b>____</b> مكان الإجابة في السؤال، والـ AI هيجيب إجابتين مزيفين لكل سؤال.' : ''}</p>
+      <p class="sub">اكتب ${qLabel} و${aLabel}. ${g === 'karak' ? 'في كرك حط <b>____</b> مكان الإجابة في السؤال، والـ AI هيجيب إجابتين مزيفين لكل سؤال.' : g === 'annab' ? 'في عنّاب اكتب السؤال والإجابة الصح، والسيرفر هيكمّل الـ 3 اختيارات التانيين تلقائياً.' : ''}</p>
       <div class="row wrap-row">
         <button class="btn ghost sm" onclick="presetCustom(10)">10 أسئلة</button>
         <button class="btn ghost sm" onclick="presetCustom(20)">20 سؤال</button>
@@ -690,8 +745,13 @@ function lobbyRangeField(key, label, min, max, step, val) {
 function lobbyPickGame(k) {
   S.setup.game = k;
   S.setup.categories = [];
+  const nextSettings = { categories: [] };
+  if (k === 'annab') {
+    S.setup.count = 20;
+    nextSettings.count = 20;
+  }
   LS.set('setup', S.setup);
-  api('update_lobby', { game: k, settings: { categories: [] } });
+  api('update_lobby', { game: k, settings: nextSettings });
 }
 function lobbyToggleCat(id) {
   const v = S.view;
@@ -723,7 +783,7 @@ function viewLobbyAdmin() {
   const customReady = v.customCount || S.custom.filter((c) => c.q && c.truth).length;
   const unassigned = v.players.filter((p) => !p.team);
   const empty = v.teams.filter((t) => !playersOf(t.id).length);
-  const timers = v.game === 'karak' ? `كتابة ${s.writeSec}ث · اختيار ${s.voteSec}ث` : v.game === 'sahlab' ? `كل تلميح ${s.hintSec}ث` : `ساعة ${mmss(s.chessSec)} لكل فريق`;
+  const timers = v.game === 'karak' ? `كتابة ${s.writeSec}ث · اختيار ${s.voteSec}ث` : v.game === 'sahlab' ? `كل تلميح ${s.hintSec}ث` : v.game === 'annab' ? `الباز والإجابة ${s.buzzSec || 20}ث` : `ساعة ${mmss(s.chessSec)} لكل فريق`;
   const catNames = s.useCustom ? `كاستم (${customReady} سؤال)` : s.categories.length ? s.categories.map((c) => (cats.find((x) => x[0] === c) || [c, c])[1]).join('، ') : 'كوكتيل';
   return `${topbar(stepper(['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'], 2))}
   <section class="wrap wide lobby">
@@ -740,6 +800,7 @@ function viewLobbyAdmin() {
           <div><span>العدد</span><b>${s.useCustom ? customReady : s.count}</b></div>
           <div><span>الوقت</span><b>${timers}</b></div>
           <div><span>اللاعبين</span><b>${v.players.length} / ${(v.caps || {}).room || 40}</b></div>
+          <div><span>وضع التلفزيون</span><b>${s.hideSecret ? 'إخفاء الإجابات' : 'إظهار للحكم'}</b></div>
           ${v.ai && v.ai.on ? `<div><span>الـ AI</span><b class="ai-state ${v.ai.status}">${v.ai.status === 'loading' ? '<i class="ai-dot"></i> بيجمع أسئلة جديدة...' : v.ai.status === 'ready' ? `جهّز ${v.ai.ready} سؤال جديد` : v.ai.status === 'verified' ? 'البنك الموثّق' : 'هيكمل من البنك'}</b></div>` : ''}
         </div>
         <p class="note warn">${ic('lock')} تقدر تعدّل اللعبة والأسئلة والوقت براحتك قبل ما تدوس ابدأ.</p>
@@ -800,17 +861,24 @@ function viewLobbyAdmin() {
                   <span class="switch" aria-hidden="true"><span></span></span>
                 </button>
                 <label class="field"><span>عدد ${g === 'tamr' ? 'الجولات' : 'الأسئلة'}: <b id="lcountLbl">${s.count}</b></span>
-                  <input type="range" class="range" min="3" max="20" value="${s.count}" oninput="document.getElementById('lcountLbl').textContent=this.value" onchange="lobbySetSetting('count',+this.value)"/>
+                  <input type="range" class="range" min="3" max="30" value="${s.count}" oninput="document.getElementById('lcountLbl').textContent=this.value" onchange="lobbySetSetting('count',+this.value)"/>
                 </label>`}
             </div>
 
             <div class="lobby-config-box">
-              <h3 class="h3">إعدادات الوقت</h3>
+              <h3 class="h3">إعدادات الوقت وشاشة الحكم</h3>
               ${g === 'karak'
                 ? lobbyRangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5, s.writeSec) + lobbyRangeField('voteSec', 'وقت الاختيار', 15, 120, 5, s.voteSec)
                 : g === 'sahlab'
                   ? lobbyRangeField('hintSec', 'وقت كل تلميح', 15, 120, 5, s.hintSec)
-                  : lobbyRangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15, s.chessSec)}
+                  : g === 'annab'
+                    ? lobbyRangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5, s.buzzSec || 20)
+                    : lobbyRangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15, s.chessSec)}
+              <button class="ai-toggle tv-toggle ${s.hideSecret ? 'on' : ''}" onclick="lobbySetSetting('hideSecret', ${!s.hideSecret})" aria-pressed="${Boolean(s.hideSecret)}">
+                <span class="tv-orb" aria-hidden="true">${ic(s.hideSecret ? 'eyeOff' : 'tv')}</span>
+                <span class="ai-txt"><b>وضع التلفزيون (إخفاء الإجابات من شاشة الحكم)</b><small>${s.hideSecret ? 'شغال — الإجابات مخفية من شاشة الحكم وتقدر تظهرها بزرار جوه اللعبة' : 'مقفول — الإجابات الصح بتظهر للحكم'}</small></span>
+                <span class="switch" aria-hidden="true"><span></span></span>
+              </button>
             </div>
           </div>
         </div>
@@ -993,8 +1061,9 @@ function confirmVote() { if (!S.pickOpt) return; api('kr_vote_submit', { opt: S.
 function karakAdmin(k) {
   const v = S.view;
   const ph = v.phase;
+  const hideSecret = Boolean(v.settings && v.settings.hideSecret);
   const nameOf = (pid) => (v.players.find((p) => p.id === pid) || {}).name || '';
-  const secret = `<div class="secret">${ic('eyeOff')}<div><span>الإجابة الصح (ماتورهاش لحد)</span><b>${esc(k.truth)}</b></div></div>`;
+  const secret = secretBar('الإجابة الصح (ماتورهاش لحد)', esc(k.truth));
   if (ph === 'write' || ph === 'review') {
     const teamBox = (t) => `
       <div class="src-row team-${t.id}">
@@ -1006,7 +1075,7 @@ function karakAdmin(k) {
     return `${projector(k.q)}${secret}
       <div class="card">
         <h2 class="h2">${ic('whistle')} الإجابات الست <small>${ph === 'write' ? '— الفرق بتكتب دلوقتي' : '— راجع وانشر'}</small></h2>
-        <div class="src-row truth"><span class="src-tag">الصح</span><span class="src-txt">${esc(k.truth)}</span></div>
+        <div class="src-row truth"><span class="src-tag">الصح</span><span class="src-txt">${hideSecret ? '<em>••• مخفية (وضع التلفزيون) •••</em>' : esc(k.truth)}</span></div>
         ${v.teams.map(teamBox).join('')}
         <div class="src-row admin">
           <span class="src-tag">كذبتك</span>
@@ -1026,8 +1095,8 @@ function karakAdmin(k) {
         ${k.options.map((o) => {
           const voted = v.teams.filter((t) => k.votes[t.id] === o.id);
           const sugg = v.teams.map((t) => Object.values(k.voteSuggest[t.id] || {}).filter((x) => x === o.id).length);
-          return `<div class="opt ${o.src === 'truth' ? 'truth-hint' : ''}">
-            <span class="opt-text">${esc(o.text)}</span><span class="opt-src src-${o.src}">${srcLabel(o.src)}</span>
+          return `<div class="opt ${!hideSecret && o.src === 'truth' ? 'truth-hint' : ''}">
+            <span class="opt-text">${esc(o.text)}</span>${hideSecret ? '' : `<span class="opt-src src-${o.src}">${srcLabel(o.src)}</span>`}
             <span class="pickers">${voted.map((t) => `<span class="tchip team-${t.id}">${ic('check')} ${esc(t.name)}</span>`).join('')}${sugg.map((n, i) => (n ? `<span class="tchip ghost team-${v.teams[i].id}">${n} اقتراح</span>` : '')).join('')}</span>
           </div>`;
         }).join('')}
@@ -1057,6 +1126,7 @@ function viewSahlab() {
   const sh = v.sh;
   const admin = isAdmin();
   const solved = v.phase === 'solved';
+  const hideSecret = Boolean(v.settings && v.settings.hideSecret);
   const blur = solved ? 0 : [16, 12, 8, 5, 2][Math.min(sh.hintIdx, 4)];
   const t = myTeam();
   const values = v.points.sahlab;
@@ -1064,10 +1134,10 @@ function viewSahlab() {
   const ladder = `<ol class="ladder">
     ${Array.from({ length: sh.totalHints }).map((_, i) => {
       const open = i <= sh.hintIdx || solved;
-      const txt = open ? (sh.hints[i] || (sh.allHints && sh.allHints[i])) : admin && sh.allHints ? sh.allHints[i] : null;
+      const txt = open ? (sh.hints[i] || (sh.allHints && sh.allHints[i])) : admin && !hideSecret && sh.allHints ? sh.allHints[i] : null;
       return `<li class="rung ${open ? 'open' : 'locked'} ${i === sh.hintIdx && !solved ? 'current' : ''}">
         <span class="rung-pts">${values[Math.min(i, values.length - 1)]}</span>
-        <span class="rung-txt">${txt ? esc(txt) : `${ic('lock')} تلميح ${i + 1}`}${!open && admin ? ' <small>(مقفول عند اللاعبين)</small>' : ''}</span>
+        <span class="rung-txt">${txt ? esc(txt) : `${ic('lock')} تلميح ${i + 1}`}${!open && admin && !hideSecret ? ' <small>(مقفول عند اللاعبين)</small>' : ''}</span>
       </li>`;
     }).join('')}
   </ol>`;
@@ -1100,7 +1170,7 @@ function viewSahlab() {
       const entries = Object.entries((sh.suggestions && sh.suggestions[x.id]) || {});
       return entries.length && !sh.pending[x.id] ? `<div class="card sub-sugs team-${x.id}"><span class="sub">اقتراحات ${esc(x.name)}:</span> <div class="sugs">${entries.map(([pid, txt]) => `<span class="sug"><b>${esc(nameOf(pid))}:</b> ${esc(txt)}</span>`).join('')}</div></div>` : '';
     }).join('');
-    actions = `<div class="secret">${ic('eyeOff')}<div><span>الإجابة (ماتورهاش لحد)</span><b>${esc(sh.answer)}</b></div></div>
+    actions = `${secretBar('الإجابة (ماتورهاش لحد)', esc(sh.answer))}
       ${bothFrozenBanner}
       ${v.teams.map((x) => (sh.pending[x.id] ? `<div class="card judge team-${x.id}"><span>${esc(x.name)} بيقول:</span><b class="big-txt">${esc(sh.pending[x.id])}</b>
         <div class="row"><button class="btn olive" onclick="api('sh_judge',{team:'${x.id}',correct:true})">${ic('check')} صح (+${sh.value})</button><button class="btn danger" onclick="api('sh_judge',{team:'${x.id}',correct:false})">${ic('x')} غلط (تجميد الفريق)</button></div></div>` : '')).join('')}
@@ -1150,6 +1220,7 @@ function viewTamr() {
   const admin = isAdmin();
   const t = myTeam();
   const solved = v.phase === 'solved';
+  const hideSecret = Boolean(v.settings && v.settings.hideSecret);
   const active = tm.golden || tm.turn;
   const nameOf = (pid) => (v.players.find((p) => p.id === pid) || {}).name || '';
   const clock = (id) => {
@@ -1164,6 +1235,9 @@ function viewTamr() {
   };
   const charCard = (id, label) => {
     const c = tm.chars[id];
+    if (admin && !solved && hideSecret) {
+      return `<div class="char-card hidden-char team-${id}">${ic('eyeOff')}<b>شخصية ${esc(teamOf(id).name)} مخفية</b><span>وضع التلفزيون شغال — هتظهر أول ما الجولة تتحل أو لو دست إظهار فوق</span></div>`;
+    }
     if (!c) return `<div class="char-card hidden-char">${ic('eyeOff')}<b>شخصيتكم سر!</b><span>اسألوا الفريق التاني أسئلة إجابتها أه أو لأ</span></div>`;
     const photoHtml = c.photo ? `<div class="char-photo"><img src="${esc(c.photo)}" alt="" onerror="this.parentElement.remove()"/></div>` : '';
     return `<div class="char-card team-${id}">
@@ -1173,7 +1247,8 @@ function viewTamr() {
   };
   let center = '';
   if (admin) {
-    center = `<div class="chars-2">${charCard('A', `${esc(teamOf('A').name)} لازم يخمن`)}${charCard('B', `${esc(teamOf('B').name)} لازم يخمن`)}</div>`;
+    const secretSummary = v.teams.map((x) => `${esc(x.name)}: ${esc((tm.chars[x.id] || {}).name || '')}`).join(' · ');
+    center = `${!solved ? secretBar('الشخصيات السرية للفريقين', secretSummary) : ''}<div class="chars-2">${charCard('A', `${esc(teamOf('A').name)} لازم يخمن`)}${charCard('B', `${esc(teamOf('B').name)} لازم يخمن`)}</div>`;
   } else {
     const o = t === 'A' ? 'B' : 'A';
     center = `<div class="chars-2">${charCard(t, '')}${charCard(o, `شخصية ${esc(teamOf(o).name)} — جاوبوهم بأه أو لأ بس`)}</div>`;
@@ -1224,6 +1299,173 @@ function tmGuess() { const t = (S.draft.tm || '').trim(); if (!t) return toast('
 function tmSuggest() { const t = (S.draft.tmSug || '').trim(); if (!t) return; api('tm_suggest', { text: t }).then((r) => r.ok && toast('اقتراحك وصل للقائد')); }
 
 // ==================================================================
+// 8.5) عنّاب (زرار الباز و 4 اختيارات)
+// ==================================================================
+function viewAnnab() {
+  const v = S.view;
+  const an = v.an;
+  const admin = isAdmin();
+  const t = myTeam();
+  const cap = me().captain;
+  const solved = v.phase === 'solved';
+  const hideSecret = Boolean(v.settings && v.settings.hideSecret);
+  const elim = an.eliminated || [];
+  const picks = an.picks || [];
+
+  // شريط حالة الدور / الباز
+  let banner = '';
+  if (!solved) {
+    if (an.subPhase === 'buzz') {
+      banner = `<div class="card annab-banner buzz-open">${ic('bell')}<div><b>الباز مفتوح للفريقين!</b><p class="sub">قائد الفريق اللي يدوس على زرار الباز الأول هو اللي يجاوب.</p></div></div>`;
+    } else if (an.subPhase === 'answer') {
+      banner = `<div class="card annab-banner team-${an.buzzedTeam}">${ic('bolt')}<div><b>${esc(teamOf(an.buzzedTeam).name)} داس الباز الأول!</b><p class="sub">الباز اتقفل على الفريق التاني — قائد ${esc(teamOf(an.buzzedTeam).name)} بيختار من الـ 4 اختيارات دلوقتي.</p></div></div>`;
+    } else if (an.subPhase === 'steal') {
+      const wrongT = an.firstWrongTeam || (an.buzzedTeam === 'A' ? 'B' : 'A');
+      banner = `<div class="card annab-banner steal-banner team-${an.buzzedTeam}">${ic('x')}<div><b>الإجابة غلط من ${esc(teamOf(wrongT).name)}!</b><p class="sub">الإجابة الصح لسه ماتكشفتش — الفرصة دلوقتي لـ <b>${esc(teamOf(an.buzzedTeam).name)}</b> يختار من الـ 3 اختيارات الباقيين!</p></div></div>`;
+    }
+  } else {
+    const w = an.winner ? teamOf(an.winner) : null;
+    banner = `<div class="card solved team-${an.winner || 'none'}">
+      <span class="sub">الإجابة الصح</span><h2 class="h1">${esc(an.truth)}</h2>
+      <p>${w ? `${ic('trophy')} <b>${esc(w.name)}</b> جاوبها صح ${an.attempt === 2 ? '(في فرصة التكملة من الـ 3 اختيارات!)' : '(من أول باز!)'} — الحكم يحدد النقط` : 'محدش جاب الإجابة الصح المرة دي'}</p>
+    </div>`;
+  }
+
+  // شبكة الاختيارات الأربعة
+  const canCaptainPick = !admin && !solved && cap && (an.subPhase === 'answer' || an.subPhase === 'steal') && an.buzzedTeam === t;
+  const canSuggest = !admin && !solved && !cap;
+  const letters = ['أ', 'ب', 'ج', 'د'];
+  const optsHtml = `<div class="opts annab-opts ${admin ? 'admin-opts' : ''}">
+    ${an.options.map((o, idx) => {
+      const isElim = elim.includes(o.id);
+      const isTruth = o.id === an.correctId;
+      const showTruthAdmin = admin && !solved && !hideSecret && isTruth;
+      const showTruthSolved = solved && isTruth;
+      const pickedBy = picks.find((pk) => pk.optId === o.id);
+      const isSel = canCaptainPick && S.pickOpt === o.id && !isElim;
+
+      // اقتراحات اللاعبين
+      let sugHtml = '';
+      if (admin) {
+        const counts = v.teams.map((tm) => Object.values((an.suggestions && an.suggestions[tm.id]) || {}).filter((x) => x === o.id).length);
+        sugHtml = counts.map((n, i) => (n ? `<span class="tchip ghost team-${v.teams[i].id}">${n} اقتراح</span>` : '')).join('');
+      } else {
+        const vs = an.suggestions || {};
+        const sugBy = Object.entries(vs).filter(([, id]) => id === o.id).map(([pid]) => v.players.find((p) => p.id === pid)).filter(Boolean);
+        sugHtml = sugBy.length ? `<span class="sug-avs">${sugBy.map((p) => avatar(p, 'xxs')).join('')}</span>` : '';
+      }
+
+      const cls = [
+        'opt',
+        isElim ? 'eliminated' : '',
+        showTruthSolved ? 'revealed truth correct' : '',
+        solved && !isTruth && !isElim ? 'revealed fake' : '',
+        showTruthAdmin ? 'truth-hint' : '',
+        isSel ? 'sel' : ''
+      ].filter(Boolean).join(' ');
+
+      const disabled = admin || solved || isElim || (!canCaptainPick && !canSuggest);
+      return `<button class="${cls}" data-opt-id="${o.id}" ${disabled ? 'disabled' : ''} onclick="anClickOpt('${o.id}')">
+        <div class="opt-head">
+          <span class="opt-letter">${letters[idx] || idx + 1}</span>
+          <span class="opt-text">${esc(o.text)}</span>
+        </div>
+        <div class="opt-meta">
+          ${isElim ? `<span class="opt-src src-wrong">${ic('x')} إجابة غلط${pickedBy ? ` (${esc(teamOf(pickedBy.team).name)})` : ''}</span>` : ''}
+          ${showTruthSolved || showTruthAdmin ? `<span class="opt-src src-truth">${ic('check')} الإجابة الصح</span>` : ''}
+          ${!isElim && pickedBy && pickedBy.correct ? `<span class="tchip team-${pickedBy.team}">${ic('check')} ${esc(teamOf(pickedBy.team).name)}</span>` : ''}
+          ${sugHtml}
+        </div>
+      </button>`;
+    }).join('')}
+  </div>`;
+
+  // منطقة تفاعل اللاعب أو الحكم
+  let controls = '';
+  if (admin) {
+    const scorePanel = `<div class="card judge-score-panel">
+      <h3 class="h3">${ic('trophy')} تحكم الحكم في النقاط <small>(زود أو نقص لأي فريق براحتك)</small></h3>
+      <div class="judge-score-grid">
+        ${v.teams.map((tm) => `<div class="judge-score-box team-${tm.id}">
+          <div class="js-head"><b>${esc(tm.name)}</b><span class="js-val">${tm.score}</span></div>
+          <div class="js-btns">
+            ${[10, 5, 1, -1, -5, -10].map((d) => `<button class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${tm.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+
+    const roundTools = !solved ? `<div class="card admin-tools">
+      ${an.subPhase !== 'buzz' ? `<button class="btn ghost sm" onclick="api('an_reset_buzz')">${ic('bell')} إعادة فتح الباز للفريقين</button>` : ''}
+      <button class="btn ghost sm" onclick="api('an_pass_turn')">${ic('swap')} حوّل الفرصة للفريق التاني</button>
+      <button class="btn primary sm" onclick="api('an_reveal')">${ic('bolt')} اكشف الإجابة الصح دلوقتي</button>
+    </div>` : `<div class="next-bar"><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' السؤال الجاي'}</button></div>`;
+
+    controls = `${scorePanel}${roundTools}`;
+  } else if (!solved) {
+    if (an.subPhase === 'buzz') {
+      if (cap) {
+        controls = `<div class="buzzer-wrap">
+          <button class="buzzer-btn" id="buzzerBtn" onclick="api('an_buzz')">
+            <span class="buzzer-dome">
+              ${ic('bell')}
+              <span class="buzzer-title">دوس الباز!</span>
+              <span class="buzzer-sub">إنت قائد ${esc(teamOf(t).name)} — اللي يدوس الأول يجاوب</span>
+            </span>
+          </button>
+        </div>`;
+      } else {
+        const capPlayer = v.players.find((p) => p.id === teamOf(t).captainId);
+        controls = `<div class="card buzz-wait-card">${ic('crown')}<div><b>زرار الباز عند قائد فريقك ${capPlayer ? `(${esc(capPlayer.name)})` : ''} بس!</b><p class="sub">دوس على أي اختيار من الـ 4 عشان تقترحه على القائد.</p></div></div>`;
+      }
+    } else if (an.buzzedTeam === t) {
+      if (cap) {
+        const selOpt = an.options.find((x) => x.id === S.pickOpt && !elim.includes(x.id));
+        controls = `<div class="annab-confirm-bar">
+          <button id="anConfirmBtn" class="btn primary lg block" ${selOpt ? '' : 'disabled'} onclick="anConfirmPick()">
+            ${ic('check')} ${selOpt ? `أكد الإجابة: «${esc(selOpt.text)}»` : `اختار إجابة من الـ ${an.subPhase === 'steal' ? '3 الباقيين' : '4 اختيارات'} فوق`}
+          </button>
+        </div>`;
+      } else {
+        controls = `<div class="card write-card center"><p class="sub" style="margin:0">${ic('bulb')} <b>فريقكم اللي بيجاوب دلوقتي!</b> دوس على الاختيار اللي شايفه صح فوق عشان تقترحه على القائد.</p></div>`;
+      }
+    } else {
+      controls = `<div class="card frozen-card">${ic('lock')}<div><b>${an.subPhase === 'steal' ? `فرصة التكملة عند ${esc(teamOf(an.buzzedTeam).name)}` : `الباز اتقفل — ${esc(teamOf(an.buzzedTeam).name)} داس الأول!`}</b><p class="sub">${an.subPhase === 'steal' ? 'بيختاروا دلوقتي من الـ 3 اختيارات الباقيين.' : 'لو جاوبوا غلط، إجابتهم هتتشطب والفرصة هتجيلكم تختاروا من الـ 3 الباقيين!'}</p></div></div>`;
+    }
+  } else {
+    controls = `<div class="waiting small"><p>مستنيين الحكم للسؤال الجاي<span class="dots"><i></i><i></i><i></i></span></p></div>`;
+  }
+
+  return `${topbar()}<section class="wrap game annab">${scorebar()}
+    ${projector(an.q)}
+    ${admin && !solved ? secretBar('الإجابة الصح (ماتورهاش لحد)', esc(an.truth)) : ''}
+    ${banner}
+    ${!admin && !solved && an.subPhase === 'buzz' ? controls + optsHtml : optsHtml + controls}
+  </section>`;
+}
+
+function anClickOpt(optId) {
+  const v = S.view;
+  if (!v || !v.an) return;
+  const an = v.an;
+  if ((an.eliminated || []).includes(optId)) return;
+  if (me().captain && (an.subPhase === 'answer' || an.subPhase === 'steal') && an.buzzedTeam === myTeam()) {
+    S.pickOpt = optId;
+    render();
+  }
+  api('an_suggest', { opt: optId }).then((r) => {
+    if (r.ok && !me().captain) toast('اقتراحك وصل لقائد فريقك');
+  });
+}
+function anConfirmPick() {
+  if (!S.pickOpt) return toast('اختار إجابة الأول', 'err');
+  const opt = S.pickOpt;
+  api('an_pick', { opt }).then((r) => {
+    if (r.ok) S.pickOpt = null;
+  });
+}
+
+// ==================================================================
 // 9) النهاية
 // ==================================================================
 function viewFinal() {
@@ -1252,19 +1494,21 @@ function viewFinal() {
 // ==================================================================
 function adminDrawer() {
   const v = S.view;
+  const hideSecret = Boolean(v.settings && v.settings.hideSecret);
   return `<button class="fab" onclick="S.drawer=!S.drawer;render()" aria-expanded="${S.drawer}">${ic('whistle')} لوحة الحكم</button>
   ${S.drawer ? `<div class="drawer-backdrop" onclick="S.drawer=false;render()"></div>
   <aside class="drawer" role="dialog" aria-label="لوحة الحكم">
     <div class="drawer-head"><h2 class="h2">${ic('whistle')} لوحة الحكم</h2><button class="icon-btn" aria-label="إغلاق" onclick="S.drawer=false;render()">${ic('x')}</button></div>
     ${v.status === 'playing' ? `<div class="drawer-sec">
-      <h3 class="h3">الوقت</h3>
+      <h3 class="h3">الوقت وشاشة التلفزيون</h3>
       <button class="btn ${v.pausedLeft != null ? 'primary' : 'ghost'} block" onclick="api('pause')">${v.pausedLeft != null ? ic('play') + ' كمّل اللعب' : ic('pause') + ' إيقاف مؤقت'}</button>
+      <button class="btn ${hideSecret ? 'olive' : 'ghost'} block" onclick="api('toggle_secret')">${ic(hideSecret ? 'eye' : 'eyeOff')} ${hideSecret ? 'إظهار الإجابات السرية للحكم' : 'إخفاء الإجابات (وضع التلفزيون)'}</button>
       <p class="note">${ic('lock')} تقدر تغيّر الوقت واللعبة لما ترجع لغرفة الانتظار.</p>
     </div>` : ''}
     <div class="drawer-sec">
       <h3 class="h3">تعديل النقاط (بيظهر فوراً لكل الفرق)</h3>
       ${v.teams.map((t) => `<div class="adj team-${t.id}"><b>${esc(t.name)}</b><span class="adj-score">${t.score}</span>
-        <div class="row">${[-10, -5, 5, 10].map((d) => `<button class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${t.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}</div></div>`).join('')}
+        <div class="row">${[-10, -5, -1, 1, 5, 10].map((d) => `<button class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${t.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}</div></div>`).join('')}
     </div>
     <div class="drawer-sec">
       <h3 class="h3">اللاعبين</h3>
