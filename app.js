@@ -607,10 +607,10 @@ function viewLobbyAdmin() {
     <div class="lobby-grid">
       <aside class="card tape invite">
         <h2 class="h2">${ic('link')} ادعي الشلة</h2>
-        <p class="sub">امسحوا الكود بكاميرا الموبايل — لازم تكونوا على نفس الواي فاي</p>
+        <p class="sub">امسحوا الكود بكاميرا الموبايل أو انسخوا الرابط للدخول للغرفة</p>
         <div class="qr-box"><img src="/api/qr?code=${encodeURIComponent(v.code)}" alt="QR للدخول للغرفة" width="220" height="220"/></div>
         <div class="code-big" aria-label="كود الغرفة">${esc(v.code)}</div>
-        <div class="link-row"><input class="input" readonly value="${esc(v.inviteUrl)}" onclick="this.select()"/><button class="btn olive sm" onclick="copyLink()">${ic('copy')} نسخ</button></div>
+        <div class="link-row"><input class="input" readonly value="${esc(`${location.origin}/room/${v.code}`)}" onclick="this.select()"/><button class="btn olive sm" onclick="copyLink()">${ic('copy')} نسخ</button></div>
         <div class="settings-sum">
           <div><span>اللعبة</span><b>${GAMES[v.game].name}</b></div>
           <div><span>الأسئلة</span><b>${esc(catNames)}</b></div>
@@ -651,7 +651,7 @@ function viewLobbyAdmin() {
   </section>`;
 }
 function copyLink() {
-  const u = S.view.inviteUrl;
+  const u = `${location.origin}/room/${S.view.code}`;
   (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => toast('اتنسخ الرابط')).catch(() => toast(u));
 }
 function addTest(team) {

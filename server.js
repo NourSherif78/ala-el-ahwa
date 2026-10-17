@@ -30,6 +30,18 @@ function getLanIp() {
 }
 const LAN_IP = getLanIp();
 
+function getBaseUrl(req) {
+  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '');
+  if (req && req.headers) {
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    if (host) {
+      const proto = req.headers['x-forwarded-proto'] || 'http';
+      return `${proto}://${host}`;
+    }
+  }
+  return `http://${LAN_IP}:${PORT}`;
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webp': 'image/webp'
@@ -987,7 +999,8 @@ const server = http.createServer(async (req, res) => {
 
   if (p === '/api/qr') {
     const room = ROOMS.get(clean(parsed.query.code, 10).toUpperCase());
-    const target = room ? room.inviteUrl : `http://${LAN_IP}:${PORT}/`;
+    const base = getBaseUrl(req);
+    const target = room ? `${base}/room/${room.code}` : `${base}/`;
     let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
     if (QRCode) { try { svg = await QRCode.toString(target, { type: 'svg', margin: 1, color: { dark: '#3B2A1E', light: '#FFFBF2' } }); } catch (e) {} }
     res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'no-store' });
