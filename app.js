@@ -117,6 +117,21 @@ const CATS = {
   annab: ALL_CATS
 };
 
+// كروت الكتالوج المصورة (assets/cats/<id>.png) — لو صورة مش موجودة أو فشلت تتحمّل بيظهر كارت نصي بنفس الستايل
+const CAT_IMG_VER = 'v2';
+const CAT_IMG_OK = new Set();
+function catImgOk(img, id) { CAT_IMG_OK.add(id); img.parentNode && img.parentNode.classList.add('img-ok'); }
+function catGrid(cats, selected, fn) {
+  return `<div class="cat-grid">${cats.map(([id, l]) => {
+    const on = selected.includes(id);
+    return `<button type="button" class="cat-card ${on ? 'on' : ''} ${CAT_IMG_OK.has(id) ? 'img-ok' : ''}" onclick="${fn}('${id}')" aria-pressed="${on}" title="${l}">
+      <span class="cat-fallback">${l}</span>
+      <img src="/assets/cats/${id}.png?${CAT_IMG_VER}" alt="${l}" decoding="async" draggable="false" onerror="this.parentNode.classList.remove('img-ok');this.remove()" onload="catImgOk(this,'${id}')"/>
+      <span class="cat-check" aria-hidden="true">✓</span>
+    </button>`;
+  }).join('')}</div>`;
+}
+
 // ------------------------------------------------------------------
 // الحالة المحلية
 // ------------------------------------------------------------------
@@ -799,7 +814,7 @@ function viewSetup() {
           ${S.savedPacks.filter((pk) => pk.game === g).length ? `<div class="saved-mini-note">${ic('folder')} عندك <b>${S.savedPacks.filter((pk) => pk.game === g).length}</b> باكج أسئلة محفوظ لـ ${GAMES[g].name} جاهز للاستعمال!</div>` : ''}
           ` : '<p class="note">اختار اللعبة الأول عشان تفتح صفحة أسئلتها الخاصة.</p>') : `
           ${cats.length ? `<div class="field"><span>الكتالوج الشامل (${cats.length} قسم — لو ماختارتش حاجة هيبقى كوكتيل)</span>
-            <div class="chips">${cats.map(([id, l]) => `<button class="chip ${s.categories.includes(id) ? 'on' : ''}" onclick="toggleCat('${id}')">${l}</button>`).join('')}</div></div>` : '<p class="note">اختار اللعبة الأول.</p>'}
+            ${catGrid(cats, s.categories, 'toggleCat')}</div>` : '<p class="note">اختار اللعبة الأول.</p>'}
           ${g ? `<button class="ai-toggle ${s.ai !== false ? 'on' : ''}" onclick="S.setup.ai=${s.ai === false};render()" aria-pressed="${s.ai !== false}">
             <span class="ai-orb" aria-hidden="true"><i></i><i></i><i></i></span>
             <span class="ai-txt"><b>مساعد الأسئلة الذكي (AI)</b><small>${s.ai !== false ? 'شغال — إجابات مضللة ذكية من نفس نوع الإجابة ونفس الكتالوج بالظبط (عربي 100%)' : 'مقفول — الأسئلة من البنك بس'}</small></span>
@@ -1613,7 +1628,7 @@ function viewLobbyAdmin() {
                 </div>` : `
                 <div class="field">
                   <span>الكتالوج الشامل (${cats.length} قسم — لو ماختارتش حاجة هيبقى كوكتيل)</span>
-                  <div class="chips">${cats.map(([id, l]) => `<button class="chip ${s.categories.includes(id) ? 'on' : ''}" onclick="lobbyToggleCat('${id}')">${l}</button>`).join('')}</div>
+                  ${catGrid(cats, s.categories, 'lobbyToggleCat')}
                 </div>
                 <button class="ai-toggle ${s.ai !== false ? 'on' : ''}" onclick="lobbySetSetting('ai', ${s.ai === false})" aria-pressed="${s.ai !== false}">
                   <span class="ai-orb" aria-hidden="true"><i></i><i></i><i></i></span>
