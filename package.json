@@ -1,0 +1,20 @@
+{
+  "name": "ala-el-ahwa",
+  "version": "1.0.0",
+  "description": "منصة ألعاب ويب تفاعلية للتجمعات والكافيهات بهوية المقاهي الدافئة والمريحة",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "party-game",
+    "realtime",
+    "chess-clock",
+    "arabic"
+  ],
+  "author": "Antigravity Team",
+  "license": "MIT",
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}
