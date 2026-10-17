@@ -14,13 +14,20 @@ function safeRequire(p) {
   try { return require(p); } catch (e) { return []; }
 }
 
-const KARAK_ALL = [...safeRequire('./karak_a.js'), ...safeRequire('./karak_b.js'), ...safeRequire('./karak_c.js')];
+const PACK19 = safeRequire('./pack_v19.js') || {};
+const P19_KARAK = Array.isArray(PACK19.karak) ? PACK19.karak : [];
+const P19_SAHLAB = Array.isArray(PACK19.sahlab) ? PACK19.sahlab : [];
+const P19_TAMR = Array.isArray(PACK19.tamr) ? PACK19.tamr : [];
+const P19_ANNAB = Array.isArray(PACK19.annab) ? PACK19.annab : [];
+
+const KARAK_ALL = [...safeRequire('./karak_a.js'), ...safeRequire('./karak_b.js'), ...safeRequire('./karak_c.js'), ...P19_KARAK];
 const BANKS = {
   karak: KARAK_ALL,
-  sahlab: [...safeRequire('./sahlab.js'), ...safeRequire('./sahlab_b.js')],
-  tamr: [...safeRequire('./tamr.js').map((t) => ({ cat: 'celebs', ...t })), ...safeRequire('./tamr_b.js')],
+  sahlab: [...safeRequire('./sahlab.js'), ...safeRequire('./sahlab_b.js'), ...P19_SAHLAB],
+  tamr: [...safeRequire('./tamr.js').map((t) => ({ cat: 'celebs', ...t })), ...safeRequire('./tamr_b.js'), ...P19_TAMR],
   annab: [
     ...safeRequire('./annab.js'),
+    ...P19_ANNAB,
     ...KARAK_ALL.map((k) => ({ id: 'an_' + k.id, cat: k.cat, q: k.q, truth: k.truth, bluffs: (k.bluffs || []).slice(0, 3) }))
   ]
 };
@@ -199,9 +206,39 @@ function extractJsonArray(raw) {
 const CAT_LABELS = {
   history: 'تاريخ', geography: 'جغرافيا', science: 'علوم', sports: 'رياضة', cinema: 'أفلام ومسلسلات',
   food: 'أكل ومشروبات', egypt: 'مصر', animals: 'حيوانات', weird: 'غرائب وعادات الشعوب', language: 'لغة وكلمات',
-  places: 'أماكن', people: 'مشاهير', movies: 'أفلام', things: 'أشياء', celebs: 'مشاهير',
-  anime: 'أنمي', islamic_history: 'تاريخ إسلامي', islamic: 'أسئلة دينية إسلامية', quran: 'القرآن الكريم', hadith: 'الأحاديث النبوية'
+  places: 'أماكن ومعالم', people: 'مشاهير ونجوم', movies: 'أفلام', things: 'أشياء واختراعات', celebs: 'مشاهير ونجوم',
+  anime: 'أنمي', islamic_history: 'تاريخ إسلامي', islamic: 'أسئلة دينية إسلامية', quran: 'القرآن الكريم', hadith: 'الأحاديث النبوية',
+  spacetoon: 'كرتونات سبيستون', egyptian_comedy: 'أفلام مصرية كوميدية', foreign_movies: 'أفلام أجنبية',
+  foreign_series: 'مسلسلات أجنبي', foreign_cartoons: 'كرتون أجنبي', euro_football: 'كرة القدم الأوروبية'
 };
+const CAT_ALIASES = {
+  people: ['people', 'celebs'],
+  celebs: ['celebs', 'people'],
+  cinema: ['cinema', 'movies', 'egyptian_comedy', 'foreign_movies', 'foreign_series'],
+  movies: ['movies', 'cinema', 'egyptian_comedy', 'foreign_movies'],
+  places: ['places', 'geography'],
+  geography: ['geography', 'places'],
+  things: ['things', 'science'],
+  science: ['science', 'things'],
+  sports: ['sports', 'euro_football'],
+  euro_football: ['euro_football', 'sports'],
+  spacetoon: ['spacetoon', 'anime'],
+  foreign_cartoons: ['foreign_cartoons'],
+  egyptian_comedy: ['egyptian_comedy', 'cinema', 'movies'],
+  foreign_movies: ['foreign_movies', 'movies', 'cinema'],
+  foreign_series: ['foreign_series', 'cinema']
+};
+function expandCats(cats) {
+  if (!cats || !cats.length) return [];
+  const exact = new Set(cats);
+  return [...exact];
+}
+function matchesCatWithAliases(itemCat, cats, allowRelated = false) {
+  if (!cats || !cats.length) return true;
+  if (cats.includes(itemCat)) return true;
+  if (!allowRelated) return false;
+  return cats.some((c) => (CAT_ALIASES[c] || []).includes(itemCat));
+}
 const RELIGIOUS = new Set(['islamic_history', 'islamic', 'quran', 'hadith']);
 
 function aiPrompt(game, cats, count, avoid) {
@@ -225,7 +262,7 @@ async function aiGenerate(game, catsIn, count) {
   // القرآن والأحاديث والأسئلة الدينية: من البنك الموثّق بس — الـ AI ممنوع يألف فيها
   const cats = (catsIn || []).filter((c) => !RELIGIOUS.has(c));
   if (catsIn && catsIn.length && !cats.length) return [];
-  const avoid = shuffle([...BANKS[game], ...AI_POOL[game]].filter((it) => !cats || !cats.length || cats.includes(it.cat))).slice(0, 25).map((it) => itemText(game, it)).join(' | ');
+  const avoid = shuffle([...BANKS[game], ...AI_POOL[game]].filter((it) => matchesCatWithAliases(it.cat, cats, true))).slice(0, 25).map((it) => itemText(game, it)).join(' | ');
   const prompt = aiPrompt(game, cats, count, avoid);
   const LABEL_TO_ID = Object.fromEntries(Object.entries(CAT_LABELS).map(([k, v]) => [normalizeAr(v), k]));
   const catFor = (it) => {
@@ -279,13 +316,18 @@ function prefetchAI(game, cats, n) {
  * aiFresh: أسئلة الـ AI اللي اتجمعت للغرفة دي — بتتخلط مع البنك (حوالي النص)
  */
 async function pickQuestions(game, cats, n, aiFresh = []) {
-  const inCat = (it) => !cats || !cats.length || cats.includes(it.cat);
+  const inCat = (it) => matchesCatWithAliases(it.cat, cats, false);
+  const inRelatedCat = (it) => matchesCatWithAliases(it.cat, cats, true);
   const ratio = process.env.GEMINI_API_KEY ? 0.5 : 0.3;
-  const ai = shuffle(aiFresh.filter((it) => !isUsed(game, it) && inCat(it))).slice(0, Math.ceil(n * ratio));
+  const ai = shuffle(aiFresh.filter((it) => !isUsed(game, it) && inRelatedCat(it))).slice(0, Math.ceil(n * ratio));
   const aiIds = new Set(ai.map((x) => x.id));
   const all = [...BANKS[game], ...AI_POOL[game]].filter((it) => !aiIds.has(it.id));
   const fresh = all.filter((it) => !isUsed(game, it));
   let chosen = [...ai, ...shuffle(fresh.filter(inCat)).slice(0, n - ai.length)];
+  if (chosen.length < n) {
+    const ids = new Set(chosen.map((c) => c.id));
+    chosen.push(...shuffle(fresh.filter((it) => inRelatedCat(it) && !ids.has(it.id))).slice(0, n - chosen.length));
+  }
   if (chosen.length < n && !(cats && cats.length && cats.every((c) => RELIGIOUS.has(c)))) {
     let tries = 0;
     while (chosen.length < n && tries < 1) {

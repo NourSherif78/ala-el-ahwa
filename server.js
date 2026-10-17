@@ -52,6 +52,8 @@ const PUBLIC_FILES = new Set(['/index.html', '/app.js', '/avatar.js', '/styles.c
 // ============================================================
 // إعدادات ثابتة
 // ============================================================
+const ALL_TEAM_IDS = ['A', 'B', 'C', 'D'];
+const DEFAULT_TEAM_NAMES = ['فريق الكرك', 'فريق السحلب', 'فريق العنّاب', 'فريق التمر هندي'];
 const POINTS = {
   karak: { truth: 10, fooled: 5, houseBluff: -5 },
   sahlab: [10, 8, 6, 4, 2],
@@ -68,16 +70,40 @@ const DEFAULT_SETTINGS = {
   chessSec: 180,
   buzzSec: 20,
   hideSecret: false,
-  teamNames: ['فريق الكرك', 'فريق السحلب']
+  teamCount: 2,
+  teamNames: [...DEFAULT_TEAM_NAMES],
+  adminPlays: false,
+  adminTeam: 'A'
 };
-const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], chessSec: [60, 600], buzzSec: [10, 60] };
+const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], chessSec: [60, 600], buzzSec: [10, 60], teamCount: [2, 4] };
 
 // ============================================================
-// أدوات
+// أدوات وحفظ الأسئلة الخاصة
 // ============================================================
 const rid = (n = 8) => crypto.randomBytes(n).toString('hex');
 const clamp = (v, [a, b]) => Math.max(a, Math.min(b, Number(v) || a));
 const clean = (s, max = 80) => String(s == null ? '' : s).replace(/[<>]/g, '').trim().slice(0, max);
+
+const SAVED_PACKS_FILE = path.join(BASE_DIR, 'data', 'saved_custom_packs.json');
+let SAVED_PACKS = [];
+function loadSavedPacks() {
+  try {
+    const dir = path.dirname(SAVED_PACKS_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (fs.existsSync(SAVED_PACKS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(SAVED_PACKS_FILE, 'utf8'));
+      if (Array.isArray(parsed)) SAVED_PACKS = parsed;
+    }
+  } catch (e) { SAVED_PACKS = []; }
+}
+function persistSavedPacks() {
+  try {
+    const dir = path.dirname(SAVED_PACKS_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(SAVED_PACKS_FILE, JSON.stringify(SAVED_PACKS));
+  } catch (e) {}
+}
+loadSavedPacks();
 
 function makeCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -282,11 +308,112 @@ async function warmQueueImages(items, waitFirstCount = 2) {
 // ============================================================
 const ROOMS = new Map();
 
-function newTeams(names) {
-  return [
-    { id: 'A', name: clean(names[0], 24) || DEFAULT_SETTINGS.teamNames[0], captainId: null, score: 0 },
-    { id: 'B', name: clean(names[1], 24) || DEFAULT_SETTINGS.teamNames[1], captainId: null, score: 0 }
-  ];
+function newTeams(names, teamCount = 2) {
+  const n = clamp(teamCount, LIMITS.teamCount);
+  const arr = Array.isArray(names) ? names : [];
+  return ALL_TEAM_IDS.slice(0, n).map((id, i) => ({
+    id,
+    name: clean(arr[i], 24) || DEFAULT_TEAM_NAMES[i] || `الفريق ${id}`,
+    captainId: null,
+    score: 0
+  }));
+}
+
+function teamIds(room) {
+  return room.teams.map((t) => t.id);
+}
+
+function validTeamId(room, id) {
+  const ids = teamIds(room);
+  return ids.includes(id) ? id : ids[0] || 'A';
+}
+
+function nextTeamId(room, curId) {
+  const ids = teamIds(room);
+  const idx = ids.indexOf(curId);
+  return ids[(idx + 1) % ids.length] || ids[0] || 'A';
+}
+
+function clearRoomTimers(room) {
+  if (room.sh && room.sh.autoHintTimer) { clearTimeout(room.sh.autoHintTimer); room.sh.autoHintTimer = null; }
+  if (room.autoNextTimer) { clearTimeout(room.autoNextTimer); room.autoNextTimer = null; }
+}
+
+function scheduleAutoNext(room, sec = 6) {
+  if (!room.aiJudge) return;
+  if (room.autoNextTimer) clearTimeout(room.autoNextTimer);
+  setDeadline(room, sec);
+  room.autoNextTimer = setTimeout(async () => {
+    room.autoNextTimer = null;
+    if (room.status !== 'playing') return;
+    const readyForNext = (room.game === 'karak' && room.phase === 'reveal') || (room.game !== 'karak' && room.phase === 'solved');
+    if (!readyForNext) return;
+    room.paused = false;
+    await nextRound(room);
+    broadcast(room);
+  }, sec * 1000);
+}
+
+function syncAdminPlaying(room, adminPlays, adminTeam) {
+  if (adminPlays) {
+    const tId = validTeamId(room, adminTeam || room.admin.playingTeam || room.settings.adminTeam || 'A');
+    room.aiJudge = true;
+    room.admin.playingTeam = tId;
+    room.settings.adminPlays = true;
+    room.settings.adminTeam = tId;
+    const prof = room.admin.profile || {};
+    const existing = room.players[room.admin.pid];
+    const oldTeam = existing ? existing.team : null;
+    room.players[room.admin.pid] = {
+      id: room.admin.pid,
+      secret: room.admin.secret,
+      name: prof.name || 'الحكم',
+      outfit: prof.outfit,
+      face: prof.face,
+      hat: prof.hat,
+      team: tId,
+      isHostPlayer: true,
+      conns: room.admin.conns || 1
+    };
+    if (oldTeam && oldTeam !== tId) ensureCaptain(room, oldTeam);
+    ensureCaptain(room, tId);
+  } else {
+    const oldTeam = room.admin.playingTeam || (room.players[room.admin.pid] && room.players[room.admin.pid].team);
+    room.aiJudge = false;
+    room.admin.playingTeam = null;
+    room.settings.adminPlays = false;
+    delete room.players[room.admin.pid];
+    if (oldTeam) ensureCaptain(room, oldTeam);
+  }
+}
+
+function syncRoomTeams(room, teamCount, teamNames) {
+  const n = clamp(teamCount ?? room.settings.teamCount ?? room.teams.length, LIMITS.teamCount);
+  room.settings.teamCount = n;
+  if (Array.isArray(teamNames)) {
+    room.settings.teamNames = ALL_TEAM_IDS.map((_, i) => clean(teamNames[i], 24) || room.settings.teamNames[i] || DEFAULT_TEAM_NAMES[i]);
+  }
+  const activeIds = ALL_TEAM_IDS.slice(0, n);
+  const oldMap = Object.fromEntries(room.teams.map((t) => [t.id, t]));
+  room.teams = activeIds.map((id, i) => {
+    if (oldMap[id]) {
+      oldMap[id].name = room.settings.teamNames[i] || oldMap[id].name;
+      return oldMap[id];
+    }
+    return { id, name: room.settings.teamNames[i] || DEFAULT_TEAM_NAMES[i], captainId: null, score: 0 };
+  });
+  for (const p of Object.values(room.players)) {
+    if (p.team && !activeIds.includes(p.team)) {
+      if (p.id === room.admin.pid) {
+        p.team = activeIds[0];
+        room.admin.playingTeam = activeIds[0];
+        room.settings.adminTeam = activeIds[0];
+      } else {
+        p.team = null;
+      }
+    }
+  }
+  room.teams.forEach((t) => ensureCaptain(room, t.id));
 }
 
 function createRoom(admin, game, settings, customPack) {
@@ -296,12 +423,13 @@ function createRoom(admin, game, settings, customPack) {
     code,
     seq: 1,
     inviteUrl: `http://${LAN_IP}:${PORT}/room/${code}`,
-    admin: { pid: admin.pid, secret: admin.secret, profile: admin.profile },
+    admin: { pid: admin.pid, secret: admin.secret, profile: admin.profile, playingTeam: null },
+    aiJudge: false,
     game,
     settings,
     customPack,
     status: 'lobby', // lobby | playing | finished
-    teams: newTeams(settings.teamNames),
+    teams: newTeams(settings.teamNames, settings.teamCount),
     players: {},
     kicked: new Set(),
     queue: [],
@@ -310,16 +438,20 @@ function createRoom(admin, game, settings, customPack) {
     deadline: null,
     pausedLeft: null,
     kr: null, sh: null, tm: null, an: null,
+    autoNextTimer: null,
     lastEvent: null,
     clients: new Set(),
     touched: Date.now()
   };
+  if (settings.adminPlays) {
+    syncAdminPlaying(room, true, settings.adminTeam || 'A');
+  }
   ROOMS.set(code, room);
   return room;
 }
 
 function sanitizeSettings(game, s = {}) {
-  const out = { ...DEFAULT_SETTINGS };
+  const out = { ...DEFAULT_SETTINGS, teamNames: [...DEFAULT_TEAM_NAMES] };
   const defCount = game === 'annab' ? 20 : out.count;
   out.count = clamp(s.count ?? defCount, LIMITS.count);
   out.writeSec = clamp(s.writeSec ?? out.writeSec, LIMITS.writeSec);
@@ -328,10 +460,15 @@ function sanitizeSettings(game, s = {}) {
   out.chessSec = clamp(s.chessSec ?? out.chessSec, LIMITS.chessSec);
   out.buzzSec = clamp(s.buzzSec ?? out.buzzSec, LIMITS.buzzSec);
   out.hideSecret = !!s.hideSecret;
-  out.categories = Array.isArray(s.categories) ? s.categories.map((c) => clean(c, 20)).slice(0, 20) : [];
+  out.teamCount = clamp(s.teamCount ?? out.teamCount, LIMITS.teamCount);
+  out.categories = Array.isArray(s.categories) ? s.categories.map((c) => clean(c, 24)).slice(0, 30) : [];
   out.useCustom = !!s.useCustom;
   out.ai = s.ai === undefined ? true : !!s.ai;
-  out.teamNames = Array.isArray(s.teamNames) ? [clean(s.teamNames[0], 24) || out.teamNames[0], clean(s.teamNames[1], 24) || out.teamNames[1]] : out.teamNames;
+  out.adminPlays = !!s.adminPlays;
+  out.adminTeam = ALL_TEAM_IDS.includes(s.adminTeam) ? s.adminTeam : 'A';
+  if (Array.isArray(s.teamNames)) {
+    out.teamNames = ALL_TEAM_IDS.map((_, i) => clean(s.teamNames[i], 24) || DEFAULT_TEAM_NAMES[i]);
+  }
   return out;
 }
 
@@ -364,7 +501,7 @@ function sanitizeCustom(list, game = 'karak') {
       if (game === 'sahlab') return x.hints.length > 0;
       return Boolean(x.q && x.truth);
     })
-    .slice(0, 40);
+    .slice(0, 50);
 }
 
 function teamMembers(room, teamId) {
@@ -391,7 +528,7 @@ function isCaptain(room, pid) {
   const p = room.players[pid];
   if (!p || !p.team) return false;
   const t = room.teams.find((x) => x.id === p.team);
-  return t && t.captainId === pid;
+  return Boolean(t && t.captainId === pid);
 }
 
 function event(room, type, data = {}) {
@@ -418,7 +555,8 @@ function startAiPrefetch(room) {
   if (!s.ai || s.useCustom) return;
   const REL = ['islamic_history', 'islamic', 'quran', 'hadith'];
   if (s.categories.length && s.categories.every((c) => REL.includes(c))) { room.aiStatus = 'verified'; return; }
-  const need = room.game === 'tamr' ? s.count * 2 : s.count;
+  const tCount = Math.max(2, room.teams.length);
+  const need = room.game === 'tamr' ? s.count * tCount : s.count;
   room.aiStatus = 'loading';
   room.aiJob = Q.prefetchAI(room.game, s.categories, need).then((list) => {
     room.aiReady = list.length;
@@ -433,6 +571,7 @@ function startAiPrefetch(room) {
 // ============================================================
 async function startGame(room) {
   const s = room.settings;
+  const tCount = Math.max(2, room.teams.length);
   let items = [];
   if (s.useCustom && room.customPack.length) {
     items = room.customPack.map((c, i) => {
@@ -463,14 +602,16 @@ async function startGame(room) {
         });
       }
     }
-    if (room.game === 'tamr' && items.length % 2 === 1) {
-      items.push({ ...items[0], id: 'custom_pair_' + items.length });
+    if (room.game === 'tamr') {
+      while (items.length < tCount || items.length % tCount !== 0) {
+        const src = items[items.length % room.customPack.length];
+        items.push({ ...src, id: 'custom_pair_' + items.length });
+      }
     }
   } else {
-    const need = room.game === 'tamr' ? s.count * 2 : s.count;
+    const need = room.game === 'tamr' ? s.count * tCount : s.count;
     let aiFresh = [];
     if (s.ai && room.aiJob) {
-      // نستنى الـ AI بحد أقصى 6 ثواني — لو اتأخر نكمل بالبنك
       aiFresh = await Promise.race([room.aiJob, new Promise((r) => setTimeout(() => r([]), 6000))]);
     }
     items = await Q.pickQuestions(room.game, s.categories, need, aiFresh || []);
@@ -480,9 +621,9 @@ async function startGame(room) {
 
   room.queue = items;
   if (room.game === 'sahlab' || room.game === 'tamr') {
-    await warmQueueImages(items, room.game === 'tamr' ? 2 : 1);
+    await warmQueueImages(items, room.game === 'tamr' ? tCount : 1);
   }
-  room.totalRounds = room.game === 'tamr' ? Math.floor(items.length / 2) : items.length;
+  room.totalRounds = room.game === 'tamr' ? Math.max(1, Math.floor(items.length / tCount)) : items.length;
   room.teams.forEach((t) => (t.score = 0));
   room.status = 'playing';
   room.round = -1;
@@ -490,7 +631,7 @@ async function startGame(room) {
 }
 
 async function nextRound(room) {
-  if (room.sh && room.sh.autoHintTimer) { clearTimeout(room.sh.autoHintTimer); room.sh.autoHintTimer = null; }
+  clearRoomTimers(room);
   room.round++;
   if (room.round >= room.totalRounds) return finishGame(room);
   if (room.game === 'karak') startKarakRound(room);
@@ -500,20 +641,22 @@ async function nextRound(room) {
 }
 
 function finishGame(room) {
-  if (room.sh && room.sh.autoHintTimer) { clearTimeout(room.sh.autoHintTimer); room.sh.autoHintTimer = null; }
+  clearRoomTimers(room);
   room.status = 'finished';
   room.phase = 'final';
   setDeadline(room, 0);
-  const [a, b] = room.teams;
-  event(room, 'final', { winner: a.score === b.score ? null : a.score > b.score ? 'A' : 'B' });
+  const sorted = [...room.teams].sort((a, b) => b.score - a.score);
+  const topTie = sorted.length >= 2 && sorted[0].score === sorted[1].score;
+  event(room, 'final', { winner: topTie ? null : sorted[0].id });
 }
 
 // ============================================================
-// كرك
+// كرك (يدعم 2 أو 3 أو 4 فرق + تحكيم AI تلقائي)
 // ============================================================
 function startKarakRound(room) {
   const item = room.queue[room.round];
   Q.markUsed('karak', item);
+  const ids = teamIds(room);
   const bl = Q.shuffle(item.bluffs || []);
   room.kr = {
     q: item.q,
@@ -522,13 +665,13 @@ function startKarakRound(room) {
     aiBluffs: bl.slice(0, 2),
     spareBluffs: bl.slice(2),
     adminBluff: '',
-    teamBluff: { A: '', B: '' },
-    teamBluffBy: { A: null, B: null },
-    autoFilled: { A: false, B: false },
-    suggestions: { A: {}, B: {} },
+    teamBluff: Object.fromEntries(ids.map((id) => [id, ''])),
+    teamBluffBy: Object.fromEntries(ids.map((id) => [id, null])),
+    autoFilled: Object.fromEntries(ids.map((id) => [id, false])),
+    suggestions: Object.fromEntries(ids.map((id) => [id, {}])),
     options: [],
-    voteSuggest: { A: {}, B: {} },
-    votes: { A: null, B: null },
+    voteSuggest: Object.fromEntries(ids.map((id) => [id, {}])),
+    votes: Object.fromEntries(ids.map((id) => [id, null])),
     results: null
   };
   while (room.kr.aiBluffs.length < 2) room.kr.aiBluffs.push(...Q.fallbackBluffs(item.truth, 2 - room.kr.aiBluffs.length));
@@ -539,39 +682,50 @@ function startKarakRound(room) {
 
 function spareBluff(room, avoid) {
   const kr = room.kr;
-  const taken = new Set(avoid.map(Q.normalizeAr));
+  const taken = new Set(avoid.filter(Boolean).map(Q.normalizeAr));
   while (kr.spareBluffs.length) {
     const b = kr.spareBluffs.shift();
     if (!taken.has(Q.normalizeAr(b))) return b;
   }
-  const fb = Q.fallbackBluffs(kr.truth, 12).find((b) => !taken.has(Q.normalizeAr(b)));
+  const fb = Q.fallbackBluffs(kr.truth, 14).find((b) => !taken.has(Q.normalizeAr(b)));
   return fb || 'معلومة مش معروفة';
 }
 
 function karakCheckWriteDone(room) {
   const kr = room.kr;
-  if (kr.teamBluff.A && kr.teamBluff.B) {
+  const ids = teamIds(room);
+  if (ids.every((id) => kr.teamBluff[id])) {
+    if (room.aiJudge) {
+      karakPublish(room);
+    } else {
+      room.phase = 'review';
+      setDeadline(room, 0);
+      event(room, 'review');
+    }
+  }
+}
+
+function karakWriteTimeout(room) {
+  const kr = room.kr;
+  const ids = teamIds(room);
+  for (const t of ids) {
+    if (!kr.teamBluff[t]) {
+      kr.teamBluff[t] = spareBluff(room, [kr.truth, ...Object.values(kr.teamBluff), ...kr.aiBluffs]);
+      kr.autoFilled[t] = true;
+    }
+  }
+  if (room.aiJudge) {
+    karakPublish(room);
+  } else {
     room.phase = 'review';
     setDeadline(room, 0);
     event(room, 'review');
   }
 }
 
-function karakWriteTimeout(room) {
-  const kr = room.kr;
-  for (const t of ['A', 'B']) {
-    if (!kr.teamBluff[t]) {
-      kr.teamBluff[t] = spareBluff(room, [kr.truth, kr.teamBluff.A, kr.teamBluff.B, ...kr.aiBluffs]);
-      kr.autoFilled[t] = true;
-    }
-  }
-  room.phase = 'review';
-  setDeadline(room, 0);
-  event(room, 'review');
-}
-
 function karakPublish(room) {
   const kr = room.kr;
+  const ids = teamIds(room);
   const list = [{ src: 'truth', text: kr.truth }];
   const seen = new Set([Q.normalizeAr(kr.truth)]);
   const push = (src, text) => {
@@ -580,9 +734,12 @@ function karakPublish(room) {
     seen.add(Q.normalizeAr(t));
     list.push({ src, text: t });
   };
-  push(kr.autoFilled.A ? 'ai' : 'A', kr.teamBluff.A);
-  push(kr.autoFilled.B ? 'ai' : 'B', kr.teamBluff.B);
-  push(kr.adminBluff ? 'admin' : 'ai', kr.adminBluff || spareBluff(room, [...seen]));
+  for (const id of ids) {
+    push(kr.autoFilled[id] ? 'ai' : id, kr.teamBluff[id]);
+  }
+  if (!room.aiJudge || kr.adminBluff) {
+    push(kr.adminBluff ? 'admin' : 'ai', kr.adminBluff || spareBluff(room, [...seen]));
+  }
   kr.aiBluffs.forEach((b) => push('ai', b));
   kr.options = Q.shuffle(list).map((o, i) => ({ id: 'o' + i, ...o }));
   room.phase = 'vote';
@@ -592,30 +749,39 @@ function karakPublish(room) {
 
 function karakReveal(room) {
   const kr = room.kr;
+  const ids = teamIds(room);
   const P = POINTS.karak;
-  const delta = { A: 0, B: 0 };
+  const delta = Object.fromEntries(ids.map((id) => [id, 0]));
   const lines = [];
-  for (const t of ['A', 'B']) {
+  for (const t of ids) {
     const v = kr.options.find((o) => o.id === kr.votes[t]);
     if (!v) { lines.push({ team: t, kind: 'none', pts: 0 }); continue; }
-    if (v.src === 'truth') { delta[t] += P.truth; lines.push({ team: t, kind: 'truth', pts: P.truth, opt: v.id }); }
-    else if (v.src === 'A' || v.src === 'B') { delta[v.src] += P.fooled; lines.push({ team: t, kind: 'fooled', by: v.src, pts: P.fooled, opt: v.id }); }
-    else { delta[t] += P.houseBluff; lines.push({ team: t, kind: 'house', src: v.src, pts: P.houseBluff, opt: v.id }); }
+    if (v.src === 'truth') {
+      delta[t] += P.truth;
+      lines.push({ team: t, kind: 'truth', pts: P.truth, opt: v.id });
+    } else if (ids.includes(v.src)) {
+      delta[v.src] = (delta[v.src] || 0) + P.fooled;
+      lines.push({ team: t, kind: 'fooled', by: v.src, pts: P.fooled, opt: v.id });
+    } else {
+      delta[t] += P.houseBluff;
+      lines.push({ team: t, kind: 'house', src: v.src, pts: P.houseBluff, opt: v.id });
+    }
   }
-  addScore(room, 'A', delta.A);
-  addScore(room, 'B', delta.B);
+  for (const t of ids) addScore(room, t, delta[t] || 0);
   kr.results = { delta, lines };
   room.phase = 'reveal';
   setDeadline(room, 0);
   event(room, 'reveal', { delta });
+  scheduleAutoNext(room, 7);
 }
 
 // ============================================================
-// سحلب
+// سحلب (يدعم 2 أو 3 أو 4 فرق + تحكيم AI تلقائي)
 // ============================================================
 async function startSahlabRound(room) {
   const item = room.queue[room.round];
   Q.markUsed('sahlab', item);
+  const ids = teamIds(room);
   let initialPhoto = item.customPhoto || null;
   if (!item.custom && item.imageQuery) {
     initialPhoto = await Promise.race([
@@ -628,9 +794,9 @@ async function startSahlabRound(room) {
     aliases: item.aliases || [],
     hints: item.hints,
     hintIdx: 0,
-    frozen: { A: false, B: false },
-    pending: { A: null, B: null },
-    suggestions: { A: {}, B: {} },
+    frozen: Object.fromEntries(ids.map((id) => [id, false])),
+    pending: Object.fromEntries(ids.map((id) => [id, null])),
+    suggestions: Object.fromEntries(ids.map((id) => [id, {}])),
     guesses: [],
     winner: null,
     photo: initialPhoto,
@@ -658,15 +824,22 @@ function sahlabMatches(sh, text) {
   });
 }
 
+function sahlabAllFrozen(room) {
+  const sh = room.sh;
+  if (!sh) return false;
+  return teamIds(room).every((id) => Boolean(sh.frozen[id]));
+}
+
 function sahlabNextHint(room) {
   const sh = room.sh;
   if (!sh) return;
+  const ids = teamIds(room);
   if (sh.autoHintTimer) { clearTimeout(sh.autoHintTimer); sh.autoHintTimer = null; }
   if (sh.hintIdx >= sh.hints.length - 1) return sahlabSolve(room, null);
   sh.hintIdx++;
-  sh.frozen = { A: false, B: false };
-  sh.pending = { A: null, B: null };
-  sh.suggestions = { A: {}, B: {} };
+  sh.frozen = Object.fromEntries(ids.map((id) => [id, false]));
+  sh.pending = Object.fromEntries(ids.map((id) => [id, null]));
+  sh.suggestions = Object.fromEntries(ids.map((id) => [id, {}]));
   setDeadline(room, room.settings.hintSec);
   event(room, 'hint', { idx: sh.hintIdx });
 }
@@ -674,25 +847,27 @@ function sahlabNextHint(room) {
 function sahlabSolve(room, teamId) {
   const sh = room.sh;
   if (!sh) return;
+  const ids = teamIds(room);
   if (sh.autoHintTimer) { clearTimeout(sh.autoHintTimer); sh.autoHintTimer = null; }
   sh.winner = teamId;
   const pts = teamId ? POINTS.sahlab[Math.min(sh.hintIdx, POINTS.sahlab.length - 1)] : 0;
   if (teamId) addScore(room, teamId, pts);
-  sh.pending = { A: null, B: null };
-  sh.suggestions = { A: {}, B: {} };
+  sh.pending = Object.fromEntries(ids.map((id) => [id, null]));
+  sh.suggestions = Object.fromEntries(ids.map((id) => [id, {}]));
   sh.wonPts = pts;
   room.phase = 'solved';
   setDeadline(room, 0);
   event(room, 'solved', { team: teamId, pts });
+  scheduleAutoNext(room, 6);
 }
 
 function sahlabScheduleBothFrozen(room) {
   const sh = room.sh;
-  if (!sh || !(sh.frozen.A && sh.frozen.B)) return;
+  if (!sh || !sahlabAllFrozen(room)) return;
   if (sh.autoHintTimer) clearTimeout(sh.autoHintTimer);
   setDeadline(room, 2);
   sh.autoHintTimer = setTimeout(() => {
-    if (room.status === 'playing' && room.game === 'sahlab' && room.phase === 'play' && room.sh === sh && sh.frozen.A && sh.frozen.B) {
+    if (room.status === 'playing' && room.game === 'sahlab' && room.phase === 'play' && room.sh === sh && sahlabAllFrozen(room)) {
       sahlabNextHint(room);
       broadcast(room);
     }
@@ -707,34 +882,39 @@ function sahlabJudge(room, teamId, correct) {
   sh.pending[teamId] = null;
   if (correct) return sahlabSolve(room, teamId);
   sh.frozen[teamId] = true;
-  const bothFrozen = !!(sh.frozen.A && sh.frozen.B);
+  const bothFrozen = sahlabAllFrozen(room);
   event(room, 'wrong', { team: teamId, text: pend, bothFrozen });
   if (bothFrozen) sahlabScheduleBothFrozen(room);
 }
 
 // ============================================================
-// لبن تمر هندي
+// لبن تمر هندي (يدعم 2 أو 3 أو 4 فرق + تحكيم AI تلقائي)
 // ============================================================
 async function startTamrRound(room) {
-  const a = room.queue[room.round * 2];
-  const b = room.queue[room.round * 2 + 1];
-  Q.markUsed('tamr', a);
-  Q.markUsed('tamr', b);
-  const [photoA, photoB] = await Promise.race([
-    Promise.all([
-      a.custom ? Promise.resolve(a.customPhoto || null) : (a.imageQuery ? wikiImage(a.imageQuery, a.name) : Promise.resolve(null)),
-      b.custom ? Promise.resolve(b.customPhoto || null) : (b.imageQuery ? wikiImage(b.imageQuery, b.name) : Promise.resolve(null))
-    ]),
-    new Promise((r) => setTimeout(() => r([a.custom ? (a.customPhoto || null) : null, b.custom ? (b.customPhoto || null) : null]), 2600))
+  const ids = teamIds(room);
+  const tCount = ids.length;
+  const roundItems = ids.map((_, idx) => room.queue[room.round * tCount + idx] || room.queue[(room.round * tCount + idx) % room.queue.length]);
+  roundItems.forEach((it) => Q.markUsed('tamr', it));
+
+  const photos = await Promise.race([
+    Promise.all(roundItems.map((it) => (it.custom ? Promise.resolve(it.customPhoto || null) : (it.imageQuery ? wikiImage(it.imageQuery, it.name) : Promise.resolve(null))))),
+    new Promise((r) => setTimeout(() => r(roundItems.map((it) => (it.custom ? (it.customPhoto || null) : null))), 2600))
   ]);
+
+  const chars = {};
+  ids.forEach((id, idx) => {
+    const it = roundItems[idx];
+    chars[id] = { name: it.name, brief: it.brief || '', photo: photos[idx] || null };
+  });
+
   room.tm = {
-    chars: { A: { name: a.name, brief: a.brief || '', photo: photoA }, B: { name: b.name, brief: b.brief || '', photo: photoB } },
-    turn: room.round % 2 ? 'B' : 'A',
-    clocks: { A: room.settings.chessSec, B: room.settings.chessSec },
+    chars,
+    turn: ids[room.round % tCount] || 'A',
+    clocks: Object.fromEntries(ids.map((id) => [id, room.settings.chessSec])),
     lastTick: Date.now(),
     golden: null,
     pending: null,
-    suggestions: { A: {}, B: {} },
+    suggestions: Object.fromEntries(ids.map((id) => [id, {}])),
     guesses: [],
     winner: null,
     wonPts: 0,
@@ -745,12 +925,17 @@ async function startTamrRound(room) {
   setDeadline(room, 0);
   event(room, 'round', { round: room.round });
   const tm = room.tm;
-  if (!a.custom && a.imageQuery && !photoA) {
-    wikiImage(a.imageQuery, a.name).then((img) => { if (img && room.tm === tm && !tm.chars.A.photo) { tm.chars.A.photo = img; broadcast(room); } });
-  }
-  if (!b.custom && b.imageQuery && !photoB) {
-    wikiImage(b.imageQuery, b.name).then((img) => { if (img && room.tm === tm && !tm.chars.B.photo) { tm.chars.B.photo = img; broadcast(room); } });
-  }
+  ids.forEach((id, idx) => {
+    const it = roundItems[idx];
+    if (!it.custom && it.imageQuery && !photos[idx]) {
+      wikiImage(it.imageQuery, it.name).then((img) => {
+        if (img && room.tm === tm && tm.chars[id] && !tm.chars[id].photo) {
+          tm.chars[id].photo = img;
+          broadcast(room);
+        }
+      });
+    }
+  });
 }
 
 function tamrMatches(name, text) {
@@ -769,6 +954,7 @@ function tamrSolve(room, teamId, pts, reason) {
   if (teamId) addScore(room, teamId, pts);
   room.phase = 'solved';
   event(room, 'solved', { team: teamId, pts, reason });
+  scheduleAutoNext(room, 6);
 }
 
 function tamrJudge(room, correct) {
@@ -780,22 +966,22 @@ function tamrJudge(room, correct) {
   tm.lastTick = Date.now();
   if (correct) return tamrSolve(room, team, POINTS.tamr.guess, 'guess');
   if (tm.golden === team) {
-    // الفرصة الذهبية ضاعت — الدور يكمل عادي على نفس الفريق
     tm.golden = null;
     tm.turn = team;
     event(room, 'wrong', { team, text });
   } else {
-    tm.golden = otherTeam(team);
+    tm.golden = nextTeamId(room, team);
     event(room, 'golden', { team: tm.golden, wrongTeam: team, text });
   }
 }
 
 // ============================================================
-// عنّاب (زرار الباز + 4 اختيارات)
+// عنّاب (زرار الباز + 4 اختيارات · يدعم 2 أو 3 أو 4 فرق + تحكيم AI تلقائي)
 // ============================================================
 function startAnnabRound(room) {
   const item = room.queue[room.round];
   Q.markUsed('annab', item);
+  const ids = teamIds(room);
   const seen = new Set([Q.normalizeAr(item.truth)]);
   const baseBluffs = item.custom ? (item.bluffs || []) : Q.shuffle(item.bluffs || []);
   const wrongPool = [...baseBluffs, ...Q.fallbackBluffs(item.truth, 10)];
@@ -823,61 +1009,82 @@ function startAnnabRound(room) {
     correctId,
     subPhase: 'buzz', // 'buzz' | 'answer' | 'steal'
     buzzedTeam: null,
+    firstWrongTeam: null,
+    triedTeams: [],
     attempt: 0,
     eliminated: [],
     picks: [],
-    suggestions: { A: {}, B: {} },
-    winner: null
+    suggestions: Object.fromEntries(ids.map((id) => [id, {}])),
+    winner: null,
+    wonPts: 0
   };
   room.phase = 'play';
   setDeadline(room, 0);
   event(room, 'round', { round: room.round });
 }
 
-function annabHandlePick(room, teamId, opt) {
+function annabAdvanceAfterMiss(room, wrongTeam, text, isTimeout = false) {
   const an = room.an;
-  const correct = opt.id === an.correctId;
-  an.picks.push({ team: teamId, optId: opt.id, text: opt.text, correct, attempt: an.attempt });
-  an.suggestions = { A: {}, B: {} };
-  if (correct) {
-    an.winner = teamId;
-    room.phase = 'solved';
-    setDeadline(room, 0);
-    event(room, 'an_correct', { team: teamId, text: opt.text });
-    return;
-  }
-  if (!an.eliminated.includes(opt.id)) an.eliminated.push(opt.id);
-  if (an.attempt === 1) {
-    const nextTeam = otherTeam(teamId);
-    an.buzzedTeam = nextTeam;
-    an.attempt = 2;
-    an.subPhase = 'steal';
-    setDeadline(room, room.settings.buzzSec);
-    event(room, 'an_wrong_steal', { wrongTeam: teamId, team: nextTeam, text: opt.text });
-  } else {
+  const ids = teamIds(room);
+  if (!an.triedTeams.includes(wrongTeam)) an.triedTeams.push(wrongTeam);
+  an.firstWrongTeam = wrongTeam;
+  const remainingTeams = ids.filter((id) => !an.triedTeams.includes(id));
+  const remainingWrongOpts = 3 - an.eliminated.length;
+
+  if (remainingTeams.length === 0 || remainingWrongOpts <= 0) {
     an.winner = null;
     room.phase = 'solved';
     setDeadline(room, 0);
-    event(room, 'an_both_wrong', { wrongTeam: teamId, text: opt.text });
+    event(room, 'an_both_wrong', { wrongTeam, text });
+    scheduleAutoNext(room, 6);
+    return;
   }
+
+  if (remainingTeams.length === 1) {
+    const nextTeam = remainingTeams[0];
+    an.buzzedTeam = nextTeam;
+    an.attempt = an.triedTeams.length + 1;
+    an.subPhase = 'steal';
+    setDeadline(room, room.settings.buzzSec);
+    event(room, isTimeout ? 'an_timeout_steal' : 'an_wrong_steal', { wrongTeam, nextTeam, team: nextTeam, text });
+  } else {
+    // في حالة 3 أو 4 فرق ولسه أكتر من فريق ماجاوبش: الباز يفتح للفرق الباقية
+    an.buzzedTeam = null;
+    an.attempt = an.triedTeams.length;
+    an.subPhase = 'buzz';
+    setDeadline(room, 0);
+    event(room, isTimeout ? 'an_timeout_steal' : 'an_wrong_steal', { wrongTeam, nextTeam: null, text });
+  }
+}
+
+function annabHandlePick(room, teamId, opt) {
+  const an = room.an;
+  const ids = teamIds(room);
+  const correct = opt.id === an.correctId;
+  an.picks.push({ team: teamId, optId: opt.id, text: opt.text, correct, attempt: an.attempt });
+  an.suggestions = Object.fromEntries(ids.map((id) => [id, {}]));
+  if (correct) {
+    an.winner = teamId;
+    if (room.aiJudge) {
+      const pts = an.triedTeams.length === 0 ? POINTS.annab.first : POINTS.annab.steal;
+      addScore(room, teamId, pts);
+      an.wonPts = pts;
+    }
+    room.phase = 'solved';
+    setDeadline(room, 0);
+    event(room, 'an_correct', { team: teamId, text: opt.text, pts: an.wonPts || 0 });
+    scheduleAutoNext(room, 6);
+    return;
+  }
+  if (!an.eliminated.includes(opt.id)) an.eliminated.push(opt.id);
+  annabAdvanceAfterMiss(room, teamId, opt.text, false);
 }
 
 function annabTimeout(room) {
   const an = room.an;
   if (!an || room.phase !== 'play') return;
-  if (an.subPhase === 'answer' && an.buzzedTeam) {
-    const prev = an.buzzedTeam;
-    const nextTeam = otherTeam(prev);
-    an.buzzedTeam = nextTeam;
-    an.attempt = 2;
-    an.subPhase = 'steal';
-    setDeadline(room, room.settings.buzzSec);
-    event(room, 'an_timeout_steal', { wrongTeam: prev, team: nextTeam });
-  } else if (an.subPhase === 'steal') {
-    an.winner = null;
-    room.phase = 'solved';
-    setDeadline(room, 0);
-    event(room, 'an_both_wrong', { wrongTeam: an.buzzedTeam });
+  if ((an.subPhase === 'answer' || an.subPhase === 'steal') && an.buzzedTeam) {
+    annabAdvanceAfterMiss(room, an.buzzedTeam, null, true);
   }
 }
 
@@ -895,9 +1102,9 @@ setInterval(() => {
       if (now - tm.lastTick >= 1000) {
         const steps = Math.floor((now - tm.lastTick) / 1000);
         tm.lastTick += steps * 1000;
-        tm.clocks[tm.turn] = Math.max(0, tm.clocks[tm.turn] - steps);
+        tm.clocks[tm.turn] = Math.max(0, (tm.clocks[tm.turn] || 0) - steps);
         if (tm.clocks[tm.turn] === 0) {
-          tamrSolve(room, otherTeam(tm.turn), POINTS.tamr.timeout, 'timeout');
+          tamrSolve(room, nextTeamId(room, tm.turn), POINTS.tamr.timeout, 'timeout');
           shouldBroadcast = true;
         }
       }
@@ -914,7 +1121,6 @@ setInterval(() => {
     }
     if (shouldBroadcast) broadcast(room);
   }
-  // تنظيف الغرف القديمة (6 ساعات بدون نشاط)
   for (const [code, room] of ROOMS) if (now - room.touched > 6 * 3600e3 && room.clients.size === 0) ROOMS.delete(code);
 }, 250);
 
@@ -922,9 +1128,27 @@ setInterval(() => {
 // العرض المخصص لكل مستخدم (فلترة الأسرار)
 // ============================================================
 function viewFor(room, pid) {
-  const isAdmin = room.admin.pid === pid;
+  const isHost = room.admin.pid === pid;
+  const adminPlaying = Boolean(room.aiJudge && room.admin.playingTeam);
+  // أثناء اللعب: لو الأدمن منضم لفريق، بيتعامل كلاعب عشان مايتحرقش عليه السؤال والـ AI هو اللي بيحكم
+  const isJudgeView = isHost && !(adminPlaying && room.status === 'playing');
   const me = room.players[pid] || null;
-  const myTeam = me ? me.team : null;
+  const myTeam = me ? me.team : (isHost && adminPlaying ? room.admin.playingTeam : null);
+  const ids = teamIds(room);
+
+  let meObj;
+  if (isHost) {
+    if (adminPlaying && room.status === 'playing') {
+      meObj = { role: 'player', isHost: true, id: pid, team: myTeam, captain: isCaptain(room, pid) };
+    } else {
+      meObj = { role: 'admin', isHost: true, id: pid, team: myTeam, captain: myTeam ? isCaptain(room, pid) : false };
+    }
+  } else if (me) {
+    meObj = { role: 'player', isHost: false, id: pid, team: myTeam, captain: isCaptain(room, pid) };
+  } else {
+    meObj = { role: 'guest', isHost: false, id: pid };
+  }
+
   const v = {
     now: Date.now(),
     seq: room.seq || 1,
@@ -938,12 +1162,34 @@ function viewFor(room, pid) {
     deadline: room.deadline,
     pausedLeft: room.pausedLeft,
     settings: { ...room.settings },
+    aiJudge: !!room.aiJudge,
+    adminPlays: !!room.aiJudge,
+    adminTeam: room.admin.playingTeam || null,
+    adminPlayingTeam: room.admin.playingTeam || null,
     customCount: room.customPack.length,
-    customPack: isAdmin ? room.customPack : undefined,
+    customPack: isHost ? room.customPack : undefined,
     teams: room.teams.map((t) => ({ ...t })),
-    players: Object.values(room.players).map((p) => ({ id: p.id, name: p.name, outfit: p.outfit, face: p.face, hat: p.hat, team: p.team, isTest: !!p.isTest, online: p.isTest || p.conns > 0 })),
-    admin: { name: room.admin.profile.name, outfit: room.admin.profile.outfit, face: room.admin.profile.face, hat: room.admin.profile.hat, online: room.admin.conns > 0 },
-    me: isAdmin ? { role: 'admin', id: pid } : me ? { role: 'player', id: pid, team: myTeam, captain: isCaptain(room, pid) } : { role: 'guest', id: pid },
+    players: Object.values(room.players).map((p) => ({
+      id: p.id,
+      name: p.name,
+      outfit: p.outfit,
+      face: p.face,
+      hat: p.hat,
+      team: p.team,
+      isTest: !!p.isTest,
+      isHostPlayer: !!p.isHostPlayer,
+      isAdminPlayer: !!p.isHostPlayer,
+      online: p.isTest || p.isHostPlayer || p.conns > 0
+    })),
+    admin: {
+      name: room.admin.profile.name,
+      outfit: room.admin.profile.outfit,
+      face: room.admin.profile.face,
+      hat: room.admin.profile.hat,
+      playingTeam: room.admin.playingTeam || null,
+      online: room.admin.conns > 0
+    },
+    me: meObj,
     lastEvent: room.lastEvent,
     points: POINTS,
     ai: { on: !!room.settings.ai && !room.settings.useCustom, status: room.aiStatus || 'off', ready: room.aiReady || 0, used: room.aiUsed || 0 },
@@ -955,17 +1201,30 @@ function viewFor(room, pid) {
     const kr = room.kr;
     const reveal = room.phase === 'reveal';
     const k = { q: kr.q, cat: kr.cat };
-    if (isAdmin) {
-      Object.assign(k, { truth: kr.truth, aiBluffs: kr.aiBluffs, adminBluff: kr.adminBluff, teamBluff: kr.teamBluff, autoFilled: kr.autoFilled, suggestions: kr.suggestions, voteSuggest: kr.voteSuggest, votes: kr.votes, results: kr.results });
-      k.submitted = { A: !!kr.teamBluff.A, B: !!kr.teamBluff.B };
+    const submittedMap = Object.fromEntries(ids.map((id) => [id, !!kr.teamBluff[id]]));
+    const votedMap = Object.fromEntries(ids.map((id) => [id, !!kr.votes[id]]));
+    if (isJudgeView) {
+      Object.assign(k, {
+        truth: kr.truth,
+        aiBluffs: kr.aiBluffs,
+        adminBluff: kr.adminBluff,
+        teamBluff: kr.teamBluff,
+        autoFilled: kr.autoFilled,
+        suggestions: kr.suggestions,
+        voteSuggest: kr.voteSuggest,
+        votes: kr.votes,
+        results: kr.results
+      });
+      k.submitted = submittedMap;
+      k.voted = votedMap;
       k.options = kr.options;
     } else {
-      k.submitted = { A: !!kr.teamBluff.A, B: !!kr.teamBluff.B };
-      k.voted = { A: !!kr.votes.A, B: !!kr.votes.B };
+      k.submitted = submittedMap;
+      k.voted = votedMap;
       if (myTeam) {
         k.myBluff = kr.teamBluff[myTeam];
-        k.suggestions = kr.suggestions[myTeam];
-        k.voteSuggest = kr.voteSuggest[myTeam];
+        k.suggestions = kr.suggestions[myTeam] || {};
+        k.voteSuggest = kr.voteSuggest[myTeam] || {};
         k.myVote = kr.votes[myTeam];
       }
       k.options = kr.options.map((o) => {
@@ -976,7 +1235,7 @@ function viewFor(room, pid) {
       });
       if (reveal) Object.assign(k, { truth: kr.truth, votes: kr.votes, results: kr.results });
     }
-    if (reveal && isAdmin) k.votes = kr.votes;
+    if (reveal && isJudgeView) k.votes = kr.votes;
     v.kr = k;
   }
 
@@ -989,15 +1248,15 @@ function viewFor(room, pid) {
       hintIdx: sh.hintIdx,
       value: POINTS.sahlab[Math.min(sh.hintIdx, POINTS.sahlab.length - 1)],
       frozen: sh.frozen,
-      pending: isAdmin ? sh.pending : { A: !!sh.pending.A, B: !!sh.pending.B },
+      pending: isJudgeView ? sh.pending : Object.fromEntries(ids.map((id) => [id, !!sh.pending[id]])),
       myPending: myTeam ? sh.pending[myTeam] : null,
-      suggestions: isAdmin ? sh.suggestions : myTeam ? (sh.suggestions && sh.suggestions[myTeam]) || {} : {},
-      guesses: sh.guesses.map((g) => ({ team: g.team, text: isAdmin || solved || g.team === myTeam ? g.text : '؟؟؟', correct: g.correct, hint: g.hint })),
+      suggestions: isJudgeView ? sh.suggestions : myTeam ? (sh.suggestions && sh.suggestions[myTeam]) || {} : {},
+      guesses: sh.guesses.map((g) => ({ team: g.team, text: isJudgeView || solved || g.team === myTeam ? g.text : '؟؟؟', correct: g.correct, hint: g.hint })),
       photo: sh.photo,
       winner: sh.winner,
       wonPts: sh.wonPts || 0
     };
-    if (isAdmin || solved) { v.sh.answer = sh.answer; v.sh.allHints = isAdmin ? sh.hints : undefined; }
+    if (isJudgeView || solved) { v.sh.answer = sh.answer; v.sh.allHints = isJudgeView ? sh.hints : undefined; }
     if (solved) v.sh.hints = sh.hints;
   }
 
@@ -1011,18 +1270,22 @@ function viewFor(room, pid) {
       lastTick: tm.lastTick || Date.now(),
       turnRunning,
       golden: tm.golden,
-      pending: tm.pending ? { team: tm.pending.team, text: isAdmin || tm.pending.team === myTeam ? tm.pending.text : null } : null,
-      suggestions: isAdmin ? tm.suggestions : myTeam ? (tm.suggestions && tm.suggestions[myTeam]) || {} : {},
+      pending: tm.pending ? { team: tm.pending.team, text: isJudgeView || tm.pending.team === myTeam ? tm.pending.text : null } : null,
+      suggestions: isJudgeView ? tm.suggestions : myTeam ? (tm.suggestions && tm.suggestions[myTeam]) || {} : {},
       guesses: tm.guesses,
       winner: tm.winner,
       wonPts: tm.wonPts,
       reason: tm.reason,
       paused: !!room.paused || room.pausedLeft != null
     };
-    // كل فريق بيشوف شخصية الفريق التاني (اللي هيجاوب عنها) — ومايشوفش شخصيته
-    if (isAdmin || solved) v.tm.chars = tm.chars;
-    else if (myTeam) v.tm.chars = { [otherTeam(myTeam)]: tm.chars[otherTeam(myTeam)] };
-    else v.tm.chars = {};
+    // كل فريق بيشوف شخصيات الفرق التانية (اللي هيجاوب عنها) — ومايشوفش شخصيته
+    if (isJudgeView || solved) {
+      v.tm.chars = tm.chars;
+    } else if (myTeam) {
+      v.tm.chars = Object.fromEntries(Object.entries(tm.chars).filter(([k]) => k !== myTeam));
+    } else {
+      v.tm.chars = {};
+    }
   }
 
   if (room.game === 'annab' && room.an) {
@@ -1035,13 +1298,15 @@ function viewFor(room, pid) {
       subPhase: an.subPhase,
       buzzedTeam: an.buzzedTeam,
       firstWrongTeam: an.firstWrongTeam,
+      triedTeams: an.triedTeams || [],
       attempt: an.attempt,
       eliminated: an.eliminated,
       picks: an.picks,
       winner: an.winner,
-      suggestions: isAdmin ? an.suggestions : myTeam ? (an.suggestions && an.suggestions[myTeam]) || {} : {}
+      wonPts: an.wonPts || 0,
+      suggestions: isJudgeView ? an.suggestions : myTeam ? (an.suggestions && an.suggestions[myTeam]) || {} : {}
     };
-    if (isAdmin || solved) {
+    if (isJudgeView || solved) {
       v.an.correctId = an.correctId;
       v.an.truth = an.truth;
     }
@@ -1086,6 +1351,7 @@ async function handleAction(b) {
   if (!room) ERR('الغرفة دي مش موجودة أو اتقفلت');
   room.touched = Date.now();
   const admin = authAdmin(room, b);
+  const ids = teamIds(room);
 
   // ---------- انضمام لاعب ----------
   if (action === 'join') {
@@ -1107,10 +1373,14 @@ async function handleAction(b) {
 
   if (action === 'pick_team') {
     const p = authPlayer(room, b) || ERR('ادخل الغرفة الأول');
-    if (!['A', 'B'].includes(b.team)) ERR('فريق غير صحيح');
+    if (!ids.includes(b.team)) ERR('فريق غير صحيح');
     if (p.team !== b.team) assertTeamRoom(room, b.team, p.id);
     const old = p.team;
     p.team = b.team;
+    if (p.id === room.admin.pid) {
+      room.admin.playingTeam = b.team;
+      room.settings.adminTeam = b.team;
+    }
     if (old && old !== b.team) ensureCaptain(room, old);
     ensureCaptain(room, b.team);
     return { room };
@@ -1121,10 +1391,11 @@ async function handleAction(b) {
   if (p && action.startsWith('kr_') && room.game === 'karak' && room.kr) {
     const kr = room.kr;
     const t = p.team;
-    if (!t) ERR('اختار فريق الأول');
+    if (!t || !ids.includes(t)) ERR('اختار فريق الأول');
     if (action === 'kr_suggest' && room.phase === 'write') {
       const txt = clean(b.text, 60);
       if (txt && Q.normalizeAr(txt) === Q.normalizeAr(kr.truth)) ERR('دي الإجابة الصح! اكتب حاجة تانية تخدع بيها');
+      if (!kr.suggestions[t]) kr.suggestions[t] = {};
       if (txt) kr.suggestions[t][p.id] = txt; else delete kr.suggestions[t][p.id];
       return { room };
     }
@@ -1142,6 +1413,7 @@ async function handleAction(b) {
     if (action === 'kr_vote_suggest' && room.phase === 'vote') {
       const o = kr.options.find((x) => x.id === b.opt);
       if (!o || o.src === t) ERR('ماينفعش تختار إجابة فريقك');
+      if (!kr.voteSuggest[t]) kr.voteSuggest[t] = {};
       kr.voteSuggest[t][p.id] = o.id;
       return { room };
     }
@@ -1150,18 +1422,19 @@ async function handleAction(b) {
       const o = kr.options.find((x) => x.id === b.opt);
       if (!o || o.src === t) ERR('ماينفعش تختار إجابة فريقك');
       kr.votes[t] = o.id;
-      if (kr.votes.A && kr.votes.B) karakReveal(room);
+      if (ids.every((id) => kr.votes[id])) karakReveal(room);
       return { room };
     }
-    ERR('مش وقته دلوقتي');
+    if (!admin) ERR('مش وقته دلوقتي');
   }
   if (p && (action === 'sh_guess' || action === 'sh_suggest') && room.game === 'sahlab' && room.sh && room.phase === 'play') {
     const sh = room.sh;
-    if (!p.team) ERR('اختار فريق الأول');
+    if (!p.team || !ids.includes(p.team)) ERR('اختار فريق الأول');
     if (sh.frozen[p.team]) ERR('فريقكم متجمد لحد التلميح الجاي');
     if (action === 'sh_suggest') {
       const txt = clean(b.text, 60);
-      if (!sh.suggestions) sh.suggestions = { A: {}, B: {} };
+      if (!sh.suggestions) sh.suggestions = {};
+      if (!sh.suggestions[p.team]) sh.suggestions[p.team] = {};
       if (txt) sh.suggestions[p.team][p.id] = txt; else delete sh.suggestions[p.team][p.id];
       return { room };
     }
@@ -1169,16 +1442,23 @@ async function handleAction(b) {
     if (sh.pending[p.team]) ERR('مستنيين حكم الحكم على تخمينكم');
     const txt = clean(b.text, 60) || ERR('اكتب التخمين');
     sh.pending[p.team] = txt;
-    if (sahlabMatches(sh, txt)) sahlabJudge(room, p.team, true);
-    else event(room, 'guess', { team: p.team, text: txt });
+    if (sahlabMatches(sh, txt)) {
+      sahlabJudge(room, p.team, true);
+    } else if (room.aiJudge) {
+      // في وضع الـ AI Judge: يصنّف الإجابة فوراً
+      sahlabJudge(room, p.team, false);
+    } else {
+      event(room, 'guess', { team: p.team, text: txt });
+    }
     return { room };
   }
-  if (p && action.startsWith('tm_') && room.game === 'tamr' && room.tm && room.phase === 'play') {
+  if (p && action.startsWith('tm_') && !['tm_judge', 'tm_force_pass', 'tm_penalty', 'tm_end_golden'].includes(action) && room.game === 'tamr' && room.tm && room.phase === 'play') {
     const tm = room.tm;
-    if (!p.team) ERR('اختار فريق الأول');
+    if (!p.team || !ids.includes(p.team)) ERR('اختار فريق الأول');
     if (action === 'tm_suggest') {
       const txt = clean(b.text, 60);
-      if (!tm.suggestions) tm.suggestions = { A: {}, B: {} };
+      if (!tm.suggestions) tm.suggestions = {};
+      if (!tm.suggestions[p.team]) tm.suggestions[p.team] = {};
       if (txt) tm.suggestions[p.team][p.id] = txt; else delete tm.suggestions[p.team][p.id];
       return { room };
     }
@@ -1187,7 +1467,7 @@ async function handleAction(b) {
     if (p.team !== active) ERR('مش دوركم');
     if (action === 'tm_pass') {
       if (tm.golden) ERR('استخدموا الفرصة الذهبية الأول');
-      tm.turn = otherTeam(tm.turn);
+      tm.turn = nextTeamId(room, tm.turn);
       tm.lastTick = Date.now();
       event(room, 'turn', { team: tm.turn });
       return { room };
@@ -1197,26 +1477,33 @@ async function handleAction(b) {
       const txt = clean(b.text, 60) || ERR('اكتب اسم الشخصية');
       tm.pending = { team: p.team, text: txt };
       tm.lastTick = Date.now();
-      if (tamrMatches(tm.chars[p.team].name, txt)) tamrJudge(room, true);
-      else event(room, 'guess', { team: p.team, text: txt });
+      if (tamrMatches(tm.chars[p.team].name, txt)) {
+        tamrJudge(room, true);
+      } else if (room.aiJudge) {
+        tamrJudge(room, false);
+      } else {
+        event(room, 'guess', { team: p.team, text: txt });
+      }
       return { room };
     }
   }
-  if (p && action.startsWith('an_') && room.game === 'annab' && room.an && room.phase === 'play') {
+  if (p && ['an_suggest', 'an_buzz', 'an_pick'].includes(action) && room.game === 'annab' && room.an && room.phase === 'play') {
     const an = room.an;
-    if (!p.team) ERR('اختار فريق الأول');
+    if (!p.team || !ids.includes(p.team)) ERR('اختار فريق الأول');
     if (action === 'an_suggest') {
       const o = an.options.find((x) => x.id === b.opt);
       if (!o || an.eliminated.includes(o.id)) ERR('الاختيار ده مش متاح');
-      if (!an.suggestions) an.suggestions = { A: {}, B: {} };
+      if (!an.suggestions) an.suggestions = {};
+      if (!an.suggestions[p.team]) an.suggestions[p.team] = {};
       an.suggestions[p.team][p.id] = o.id;
       return { room };
     }
     if (action === 'an_buzz') {
       if (!isCaptain(room, p.id)) ERR('قائد الفريق بس هو اللي بيدوس زرار الباز');
-      if (an.subPhase !== 'buzz' || an.buzzedTeam) ERR(`${(room.teams.find((x) => x.id === an.buzzedTeam) || {}).name || 'الفريق التاني'} سبق وداس الباز!`);
+      if ((an.triedTeams || []).includes(p.team)) ERR('فريقكم جاوب على السؤال ده خلاص');
+      if (an.subPhase !== 'buzz' || an.buzzedTeam) ERR(`${(room.teams.find((x) => x.id === an.buzzedTeam) || {}).name || 'فريق تاني'} سبق وداس الباز!`);
       an.buzzedTeam = p.team;
-      an.attempt = 1;
+      an.attempt = (an.triedTeams || []).length + 1;
       an.subPhase = 'answer';
       setDeadline(room, room.settings.buzzSec);
       event(room, 'buzz', { team: p.team });
@@ -1233,7 +1520,7 @@ async function handleAction(b) {
     }
   }
 
-  // ---------- أكشنز الحكم ----------
+  // ---------- أكشنز الحكم / مضيف الغرفة ----------
   if (!admin) ERR('الأكشن ده للحكم بس');
 
   switch (action) {
@@ -1241,11 +1528,28 @@ async function handleAction(b) {
       room.settings.hideSecret = b.hideSecret !== undefined ? !!b.hideSecret : !room.settings.hideSecret;
       break;
     }
+    case 'admin_join_team': {
+      const targetTeam = validTeamId(room, b.team || room.admin.playingTeam || 'A');
+      assertTeamRoom(room, targetTeam, room.admin.pid);
+      syncAdminPlaying(room, true, targetTeam);
+      event(room, 'admin_joined_team', { team: targetTeam, name: room.admin.profile.name });
+      break;
+    }
+    case 'admin_become_judge': {
+      syncAdminPlaying(room, false, null);
+      event(room, 'admin_became_judge', { name: room.admin.profile.name });
+      break;
+    }
+    case 'set_team_count': {
+      if (room.status === 'playing') ERR('انهي الجولة الحالية الأول عشان تغير عدد الفرق');
+      syncRoomTeams(room, b.teamCount || b.count, b.teamNames);
+      break;
+    }
     case 'update_lobby': {
       if (room.status === 'playing') ERR('انهي الجولة الحالية الأول عشان تغير اللعبة أو الإعدادات');
       room.status = 'lobby';
       room.phase = null;
-      if (room.sh && room.sh.autoHintTimer) clearTimeout(room.sh.autoHintTimer);
+      clearRoomTimers(room);
       room.kr = room.sh = room.tm = room.an = null;
       room.round = -1;
       setDeadline(room, 0);
@@ -1263,9 +1567,9 @@ async function handleAction(b) {
         merged.count = 20;
       }
       room.settings = sanitizeSettings(room.game, merged);
-      if (b.settings && Array.isArray(b.settings.teamNames)) {
-        room.teams[0].name = clean(b.settings.teamNames[0], 24) || room.teams[0].name;
-        room.teams[1].name = clean(b.settings.teamNames[1], 24) || room.teams[1].name;
+      syncRoomTeams(room, room.settings.teamCount, b.settings && b.settings.teamNames);
+      if (b.settings && b.settings.adminPlays !== undefined) {
+        syncAdminPlaying(room, !!b.settings.adminPlays, b.settings.adminTeam || room.admin.playingTeam || 'A');
       }
       startAiPrefetch(room);
       if (room.game !== oldGame) event(room, 'game_changed', { game: room.game });
@@ -1274,21 +1578,30 @@ async function handleAction(b) {
     case 'set_captain': {
       const target = room.players[b.target];
       if (!target || !target.team) ERR('اللاعب مش في فريق');
-      room.teams.find((t) => t.id === target.team).captainId = target.id;
+      const tm = room.teams.find((t) => t.id === target.team);
+      if (tm) tm.captainId = target.id;
       break;
     }
     case 'move_player': {
       const target = room.players[b.target] || ERR('لاعب غير موجود');
       const old = target.team;
-      const dest = ['A', 'B'].includes(b.team) ? b.team : otherTeam(old || 'B');
+      const dest = ids.includes(b.team) ? b.team : nextTeamId(room, old || ids[ids.length - 1]);
       if (dest !== old) assertTeamRoom(room, dest, target.id);
       target.team = dest;
+      if (target.id === room.admin.pid) {
+        room.admin.playingTeam = dest;
+        room.settings.adminTeam = dest;
+      }
       if (old) ensureCaptain(room, old);
       ensureCaptain(room, target.team);
       break;
     }
     case 'kick': {
       const target = room.players[b.target] || ERR('لاعب غير موجود');
+      if (target.id === room.admin.pid) {
+        syncAdminPlaying(room, false, null);
+        break;
+      }
       const old = target.team;
       delete room.players[target.id];
       if (!target.isTest) room.kicked.add(target.id);
@@ -1297,17 +1610,22 @@ async function handleAction(b) {
     }
     case 'rename_team': {
       if (room.status === 'playing') ERR('الإعدادات مقفولة أثناء اللعب');
+      const idx = ALL_TEAM_IDS.indexOf(b.team);
       const t = room.teams.find((x) => x.id === b.team);
-      if (t) t.name = clean(b.name, 24) || t.name;
+      if (t) {
+        t.name = clean(b.name, 24) || t.name;
+        if (idx >= 0) room.settings.teamNames[idx] = t.name;
+      }
       break;
     }
     case 'add_test_player': {
       if (Object.keys(room.players).length >= MAX_PLAYERS) ERR(`الغرفة كاملة (${MAX_PLAYERS} لاعب)`);
-      if (['A', 'B'].includes(b.team)) assertTeamRoom(room, b.team, null);
+      const targetTeam = ids.includes(b.team) ? b.team : null;
+      if (targetTeam) assertTeamRoom(room, targetTeam, null);
       const n = Object.values(room.players).filter((x) => x.isTest).length + 1;
       const parts = b.parts || {};
       const id = 'test_' + rid(4);
-      room.players[id] = { id, secret: rid(8), name: 'لاعب تجريبي ' + n, outfit: parts.outfit, face: parts.face, hat: parts.hat, team: ['A', 'B'].includes(b.team) ? b.team : null, isTest: true, conns: 0 };
+      room.players[id] = { id, secret: rid(8), name: 'لاعب تجريبي ' + n, outfit: parts.outfit, face: parts.face, hat: parts.hat, team: targetTeam, isTest: true, conns: 0 };
       if (room.players[id].team) ensureCaptain(room, room.players[id].team);
       break;
     }
@@ -1337,14 +1655,14 @@ async function handleAction(b) {
     case 'adjust_score': {
       const d = Math.round(Number(b.delta) || 0);
       if (!d || Math.abs(d) > 100) ERR('قيمة غير مسموحة');
-      const teamId = b.team === 'B' ? 'B' : 'A';
+      const teamId = validTeamId(room, b.team);
       addScore(room, teamId, d);
       const t = room.teams.find((x) => x.id === teamId);
       event(room, 'adjust', { team: teamId, delta: d, score: t ? t.score : 0 });
       break;
     }
     case 'end_to_lobby': {
-      if (room.sh && room.sh.autoHintTimer) clearTimeout(room.sh.autoHintTimer);
+      clearRoomTimers(room);
       room.status = 'lobby';
       room.phase = null;
       room.kr = room.sh = room.tm = room.an = null;
@@ -1357,7 +1675,7 @@ async function handleAction(b) {
       break;
     }
     case 'close_room': {
-      if (room.sh && room.sh.autoHintTimer) clearTimeout(room.sh.autoHintTimer);
+      clearRoomTimers(room);
       event(room, 'closed');
       room.status = 'closed';
       broadcast(room);
@@ -1376,12 +1694,12 @@ async function handleAction(b) {
     case 'kr_regen_ai': {
       if (!room.kr || !['write', 'review'].includes(room.phase)) ERR('مش وقته');
       const i = Number(b.index) === 1 ? 1 : 0;
-      room.kr.aiBluffs[i] = spareBluff(room, [room.kr.truth, ...room.kr.aiBluffs, room.kr.teamBluff.A, room.kr.teamBluff.B, room.kr.adminBluff]);
+      room.kr.aiBluffs[i] = spareBluff(room, [room.kr.truth, ...room.kr.aiBluffs, ...Object.values(room.kr.teamBluff), room.kr.adminBluff]);
       break;
     }
     case 'kr_reject': {
       if (!room.kr || room.phase !== 'review') ERR('مش وقته');
-      const t = b.team === 'B' ? 'B' : 'A';
+      const t = validTeamId(room, b.team);
       room.kr.teamBluff[t] = '';
       room.kr.autoFilled[t] = false;
       room.phase = 'write';
@@ -1392,7 +1710,7 @@ async function handleAction(b) {
     case 'kr_publish': {
       if (!room.kr || !['review', 'write'].includes(room.phase)) ERR('مش وقته');
       if (room.phase === 'write') karakWriteTimeout(room);
-      karakPublish(room);
+      if (room.phase !== 'vote') karakPublish(room);
       break;
     }
     case 'kr_force_reveal': {
@@ -1404,16 +1722,16 @@ async function handleAction(b) {
     // سحلب
     case 'sh_judge': {
       if (!room.sh || room.phase !== 'play') ERR('مش وقته');
-      sahlabJudge(room, b.team === 'B' ? 'B' : 'A', !!b.correct);
+      sahlabJudge(room, validTeamId(room, b.team), !!b.correct);
       break;
     }
     case 'sh_toggle_freeze': {
       if (!room.sh || room.phase !== 'play') ERR('مش وقته');
-      const t = b.team === 'B' ? 'B' : 'A';
+      const t = validTeamId(room, b.team);
       room.sh.frozen[t] = b.frozen !== undefined ? !!b.frozen : !room.sh.frozen[t];
       if (room.sh.frozen[t]) {
         room.sh.pending[t] = null;
-        const bothFrozen = !!(room.sh.frozen.A && room.sh.frozen.B);
+        const bothFrozen = sahlabAllFrozen(room);
         event(room, 'wrong', { team: t, bothFrozen });
         if (bothFrozen) sahlabScheduleBothFrozen(room);
       } else {
@@ -1437,18 +1755,18 @@ async function handleAction(b) {
     case 'tm_force_pass': {
       if (!room.tm || room.phase !== 'play') ERR('مش وقته');
       room.tm.golden = null;
-      room.tm.turn = otherTeam(room.tm.turn);
+      room.tm.turn = nextTeamId(room, room.tm.turn);
       room.tm.lastTick = Date.now();
       event(room, 'turn', { team: room.tm.turn });
       break;
     }
     case 'tm_penalty': {
       if (!room.tm || room.phase !== 'play') ERR('مش وقته');
-      const t = b.team === 'B' ? 'B' : 'A';
-      room.tm.clocks[t] = Math.max(0, room.tm.clocks[t] - 15);
+      const t = validTeamId(room, b.team);
+      room.tm.clocks[t] = Math.max(0, (room.tm.clocks[t] || 0) - 15);
       room.tm.lastTick = Date.now();
       event(room, 'penalty', { team: t, left: room.tm.clocks[t] });
-      if (room.tm.clocks[t] === 0) tamrSolve(room, otherTeam(t), POINTS.tamr.timeout, 'timeout');
+      if (room.tm.clocks[t] === 0) tamrSolve(room, nextTeamId(room, t), POINTS.tamr.timeout, 'timeout');
       break;
     }
     case 'tm_end_golden': {
@@ -1464,18 +1782,19 @@ async function handleAction(b) {
       room.phase = 'play';
       room.an.subPhase = 'buzz';
       room.an.buzzedTeam = null;
+      room.an.triedTeams = [];
       room.an.attempt = 0;
       room.an.eliminated = [];
       room.an.picks = [];
       room.an.winner = null;
-      room.an.suggestions = { A: {}, B: {} };
+      room.an.suggestions = Object.fromEntries(ids.map((id) => [id, {}]));
       setDeadline(room, 0);
       event(room, 'an_reset', {});
       break;
     }
     case 'an_pass_turn': {
       if (!room.an || room.phase !== 'play') ERR('مش وقته');
-      const nextTeam = otherTeam(room.an.buzzedTeam || 'A');
+      const nextTeam = nextTeamId(room, room.an.buzzedTeam || ids[0]);
       room.an.buzzedTeam = nextTeam;
       room.an.attempt = room.an.attempt === 1 ? 2 : 1;
       room.an.subPhase = room.an.attempt === 2 ? 'steal' : 'answer';
@@ -1487,6 +1806,7 @@ async function handleAction(b) {
       if (!room.an) ERR('مش وقته');
       room.phase = 'solved';
       setDeadline(room, 0);
+      scheduleAutoNext(room, 6);
       break;
     }
 
@@ -1523,6 +1843,36 @@ function json(res, code, obj) {
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   let p = decodeURI(parsed.pathname || '/');
+
+  if (p === '/api/custom-packs') {
+    if (req.method === 'GET') {
+      return json(res, 200, { ok: true, packs: SAVED_PACKS });
+    }
+    if (req.method === 'POST') {
+      const b = await readBody(req);
+      if (b.action === 'save') {
+        const game = ['karak', 'sahlab', 'tamr', 'annab'].includes(b.game) ? b.game : 'karak';
+        const items = sanitizeCustom(b.items, game);
+        if (!items.length) return json(res, 200, { ok: false, error: 'مفيش أسئلة مكتوبة عشان تتحفظ' });
+        const name = clean(b.name, 50) || `باقة ${game} (${items.length})`;
+        const id = clean(b.id, 40) || ('pack_' + rid(5));
+        const pack = { id, name, game, count: items.length, items, updatedAt: Date.now() };
+        const existingIdx = SAVED_PACKS.findIndex((x) => x.id === id);
+        if (existingIdx >= 0) SAVED_PACKS[existingIdx] = pack;
+        else SAVED_PACKS.unshift(pack);
+        if (SAVED_PACKS.length > 100) SAVED_PACKS = SAVED_PACKS.slice(0, 100);
+        persistSavedPacks();
+        return json(res, 200, { ok: true, pack, packs: SAVED_PACKS });
+      }
+      if (b.action === 'delete') {
+        const id = clean(b.id, 40);
+        SAVED_PACKS = SAVED_PACKS.filter((x) => x.id !== id);
+        persistSavedPacks();
+        return json(res, 200, { ok: true, packs: SAVED_PACKS });
+      }
+      return json(res, 400, { ok: false, error: 'أكشن غير معروف' });
+    }
+  }
 
   if (p === '/api/action' && req.method === 'POST') {
     const b = await readBody(req);
