@@ -1317,3 +1317,39 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
 .status-pill.team-S2, .status-pill.team-S6, .status-pill.team-S10, .tchip.team-S2, .tchip.team-S6, .tchip.team-S10 { border-color: var(--teamB); }
 .status-pill.team-S3, .status-pill.team-S7, .tchip.team-S3, .tchip.team-S7 { border-color: var(--teamC); }
 .status-pill.team-S4, .status-pill.team-S8, .tchip.team-S4, .tchip.team-S8 { border-color: var(--teamD); }
+
+/* ================================================================
+   6) مستويات الصعوبة (سهل · متوسط · صعب)
+   ================================================================ */
+.diff-seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.diff-btn {
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 10px 12px;
+  border-radius: 12px;
+  transition: transform .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.diff-btn.diff-easy.on {
+  background: var(--olive);
+  color: #fff;
+  box-shadow: 0 3px 0 var(--olive-d);
+}
+.diff-btn.diff-medium.on {
+  background: #D98A2B;
+  color: #fff;
+  box-shadow: 0 3px 0 #9E5F14;
+}
+.diff-btn.diff-hard.on {
+  background: var(--berry);
+  color: #fff;
+  box-shadow: 0 3px 0 #6B1F2B;
+}
+.diff-note {
+  margin-top: 6px;
+  font-size: .86rem;
+}
+

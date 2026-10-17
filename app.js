@@ -69,6 +69,12 @@ const $ = (sel) => document.querySelector(sel);
 const ALL_TEAM_IDS = ['A', 'B', 'C', 'D'];
 const TEAM_LABELS = { A: 'الفريق أ', B: 'الفريق ب', C: 'الفريق ج', D: 'الفريق د' };
 const DEFAULT_TEAM_NAMES = ['فريق الكرك', 'فريق السحلب', 'فريق العنّاب', 'فريق التمر هندي'];
+const DIFF_LABELS = { easy: 'سهل', medium: 'متوسط', hard: 'صعب' };
+const DIFF_DESCS = {
+  easy: 'سهل: أسئلة مشهورة ومباشرة ومعروفة للكل (بدون أرقام معقدة أو تفاصيل غامضة)',
+  medium: 'متوسط: توازن ممتع بين الأسئلة المشهورة والمعلومات الشيقة',
+  hard: 'صعب: تحدي للمحترفين — تفاصيل دقيقة وأرقام وتواريخ ومعلومات نادرة'
+};
 
 const GAMES = {
   karak: { name: 'كرك', img: '/assets/ui/karak.png', tag: 'لعبة الخداع', desc: 'سؤال غريب بفراغ، كل فريق يكتب إجابة مزيفة تخدع التاني وبعدين الكل يدور على الإجابة الصح وسط 6 إجابات.' },
@@ -140,6 +146,7 @@ const S = {
   setup: {
     game: null,
     playMode: 'teams',
+    difficulty: 'medium',
     teamCount: 2,
     teamNames: [...DEFAULT_TEAM_NAMES],
     adminPlays: false,
@@ -176,6 +183,7 @@ const S = {
 };
 if (!S.setup.buzzSec) S.setup.buzzSec = 20;
 if (S.setup.playMode !== 'solo') S.setup.playMode = 'teams';
+if (!['easy', 'medium', 'hard'].includes(S.setup.difficulty)) S.setup.difficulty = 'medium';
 if (!S.setup.teamCount || S.setup.teamCount < 2 || S.setup.teamCount > 4) S.setup.teamCount = 2;
 if (!Array.isArray(S.setup.teamNames)) S.setup.teamNames = [...DEFAULT_TEAM_NAMES];
 while (S.setup.teamNames.length < 4) S.setup.teamNames.push(DEFAULT_TEAM_NAMES[S.setup.teamNames.length]);
@@ -476,7 +484,8 @@ function scorebar() {
       ${bump ? `<span class="bump ${bump > 0 ? 'up' : 'down'}">${bump > 0 ? '+' : ''}${bump}</span>` : ''}
     </div>`;
   };
-  const midHtml = `<div class="score-mid"><span class="round-pill">${GAMES[v.game].name} · الجولة ${Math.max(1, v.round + 1)} من ${v.totalRounds}${v.aiJudge ? ' · الـ AI بيحكم' : ''}</span>${timerRing()}</div>`;
+  const diffLbl = DIFF_LABELS[(v.settings && v.settings.difficulty) || 'medium'] || 'متوسط';
+  const midHtml = `<div class="score-mid"><span class="round-pill">${GAMES[v.game].name} · المستوى: ${diffLbl} · الجولة ${Math.max(1, v.round + 1)} من ${v.totalRounds}${v.aiJudge ? ' · الـ AI بيحكم' : ''}</span>${timerRing()}</div>`;
   if (v.teams.length === 2) {
     const [a, b] = v.teams;
     return `<div class="scorebar">${cell(a)}${midHtml}${cell(b)}</div>`;
@@ -767,7 +776,17 @@ function viewSetup() {
       </div>
 
       <div class="card">
-        <h2 class="h2"><span class="num">3</span> الأسئلة</h2>
+        <h2 class="h2"><span class="num">3</span> الأسئلة ومستوى الصعوبة</h2>
+        <div class="field">
+          <span>مستوى صعوبة الأسئلة <small>(متاح في الأربع ألعاب)</small></span>
+          <div class="seg diff-seg">
+            ${['easy', 'medium', 'hard'].map((d) => `
+              <button type="button" class="diff-btn diff-${d} ${(s.difficulty || 'medium') === d ? 'on' : ''}" onclick="setSetupDifficulty('${d}')">
+                ${DIFF_LABELS[d]}
+              </button>`).join('')}
+          </div>
+          <p class="note diff-note">${ic('star')} <span>${DIFF_DESCS[s.difficulty || 'medium']}</span></p>
+        </div>
         <div class="seg">
           <button class="${!s.useCustom ? 'on' : ''}" onclick="S.setup.useCustom=false;render()">بنك الأسئلة</button>
           <button class="${s.useCustom ? 'on' : ''}" onclick="S.setup.useCustom=true;render()">أسئلتك الخاصة (كاستم)</button>
@@ -783,7 +802,7 @@ function viewSetup() {
             <div class="chips">${cats.map(([id, l]) => `<button class="chip ${s.categories.includes(id) ? 'on' : ''}" onclick="toggleCat('${id}')">${l}</button>`).join('')}</div></div>` : '<p class="note">اختار اللعبة الأول.</p>'}
           ${g ? `<button class="ai-toggle ${s.ai !== false ? 'on' : ''}" onclick="S.setup.ai=${s.ai === false};render()" aria-pressed="${s.ai !== false}">
             <span class="ai-orb" aria-hidden="true"><i></i><i></i><i></i></span>
-            <span class="ai-txt"><b>مساعد الأسئلة الذكي (AI)</b><small>${s.ai !== false ? 'شغال — هيجمع أسئلة وصور جديدة من الكتالوج اللي اخترته ويخلطها مع البنك. (القرآن والأحاديث والأسئلة الدينية من البنك الموثّق بس)' : 'مقفول — الأسئلة من البنك بس'}</small></span>
+            <span class="ai-txt"><b>مساعد الأسئلة الذكي (AI)</b><small>${s.ai !== false ? 'شغال — إجابات مضللة ذكية من نفس نوع الإجابة ونفس الكتالوج بالظبط (عربي 100%)' : 'مقفول — الأسئلة من البنك بس'}</small></span>
             <span class="switch" aria-hidden="true"><span></span></span>
           </button>` : ''}
           <label class="field"><span>عدد ${g === 'tamr' ? 'الجولات' : 'الأسئلة'}: <b id="countLbl">${s.count}</b></span>
@@ -806,6 +825,11 @@ function viewSetup() {
 
     <div class="next-bar"><button class="btn primary lg" onclick="createRoom()">${ic('next')} اعمل الغرفة وابعت الدعوة</button></div>
   </section>`;
+}
+function setSetupDifficulty(diff) {
+  S.setup.difficulty = ['easy', 'medium', 'hard'].includes(diff) ? diff : 'medium';
+  LS.set('setup', S.setup);
+  render();
 }
 function setSetupPlayMode(mode) {
   S.setup.playMode = mode === 'solo' ? 'solo' : 'teams';
@@ -1453,6 +1477,7 @@ function viewLobbyAdmin() {
         <div class="link-row"><input class="input" readonly value="${esc(`${location.origin}/room/${v.code}`)}" onclick="this.select()"/><button class="btn olive sm" onclick="copyLink()">${ic('copy')} نسخ</button></div>
         <div class="settings-sum">
           <div><span>اللعبة</span><b>${GAMES[v.game].name}</b></div>
+          <div><span>مستوى الصعوبة</span><b>${DIFF_LABELS[s.difficulty || 'medium']}</b></div>
           <div><span>نظام اللعب</span><b>${isSolo ? `فردي (${v.players.length} / 10 لاعبين)` : `فرق (${tc} فرق)`}</b></div>
           <div><span>وضع الأدمن</span><b>${v.adminPlays ? (isSolo ? 'لاعب فردي (حكم AI)' : `لاعب مع ${esc(teamOf(v.adminTeam).name)} (حكم AI)`) : 'حكم بشري'}</b></div>
           <div><span>الأسئلة</span><b>${esc(catNames)}</b></div>
@@ -1460,9 +1485,9 @@ function viewLobbyAdmin() {
           <div><span>الوقت</span><b>${timers}</b></div>
           <div><span>اللاعبين</span><b>${v.players.length} / ${(v.caps || {}).room || (isSolo ? 10 : 40)}</b></div>
           <div><span>وضع التلفزيون</span><b>${s.hideSecret ? 'إخفاء الإجابات' : 'إظهار للحكم'}</b></div>
-          ${v.ai && v.ai.on ? `<div><span>الـ AI</span><b class="ai-state ${v.ai.status}">${v.ai.status === 'loading' ? '<i class="ai-dot"></i> بيجمع أسئلة جديدة...' : v.ai.status === 'ready' ? `جهّز ${v.ai.ready} سؤال جديد` : v.ai.status === 'verified' ? 'البنك الموثّق' : 'هيكمل من البنك'}</b></div>` : ''}
+          ${v.ai && v.ai.on ? `<div><span>الـ AI</span><b class="ai-state ${v.ai.status}">${v.ai.status === 'loading' ? '<i class="ai-dot"></i> بيجمع أسئلة جديدة...' : v.ai.status === 'ready' ? `جاهز (عربي 100%)` : v.ai.status === 'verified' ? 'البنك الموثّق' : 'هيكمل من البنك'}</b></div>` : ''}
         </div>
-        <p class="note warn">${ic('lock')} تقدر تعدّل اللعبة، نظام اللعب (فردي/فرق)، والأسئلة براحتك قبل ما تدوس ابدأ.</p>
+        <p class="note warn">${ic('lock')} تقدر تعدّل اللعبة، مستوى الصعوبة (سهل/متوسط/صعب)، نظام اللعب (فردي/فرق)، والأسئلة براحتك قبل ما تدوس ابدأ.</p>
       </aside>
 
       <div class="lobby-main">
@@ -1566,7 +1591,17 @@ function viewLobbyAdmin() {
 
           <div class="lobby-config-cols">
             <div class="lobby-config-box">
-              <h3 class="h3">الأسئلة والكتالوج الشامل</h3>
+              <h3 class="h3">الأسئلة ومستوى الصعوبة والكتالوج</h3>
+              <div class="field">
+                <span>مستوى الصعوبة <small>(سهل · متوسط · صعب)</small></span>
+                <div class="seg diff-seg">
+                  ${['easy', 'medium', 'hard'].map((d) => `
+                    <button type="button" class="diff-btn diff-${d} ${(s.difficulty || 'medium') === d ? 'on' : ''}" onclick="lobbySetSetting('difficulty','${d}')">
+                      ${DIFF_LABELS[d]}
+                    </button>`).join('')}
+                </div>
+                <p class="note diff-note">${ic('star')} <span>${DIFF_DESCS[s.difficulty || 'medium']}</span></p>
+              </div>
               <div class="seg">
                 <button class="${!s.useCustom ? 'on' : ''}" onclick="lobbySetCustom(false)">بنك الأسئلة</button>
                 <button class="${s.useCustom ? 'on' : ''}" onclick="lobbySetCustom(true)">أسئلتك الخاصة (كاستم)</button>
@@ -1582,7 +1617,7 @@ function viewLobbyAdmin() {
                 </div>
                 <button class="ai-toggle ${s.ai !== false ? 'on' : ''}" onclick="lobbySetSetting('ai', ${s.ai === false})" aria-pressed="${s.ai !== false}">
                   <span class="ai-orb" aria-hidden="true"><i></i><i></i><i></i></span>
-                  <span class="ai-txt"><b>مساعد الأسئلة الذكي (AI)</b><small>${s.ai !== false ? 'شغال — بيجمع أسئلة جديدة على حسب الكتالوج' : 'مقفول — الأسئلة من البنك بس'}</small></span>
+                  <span class="ai-txt"><b>مساعد الأسئلة الذكي (AI)</b><small>${s.ai !== false ? 'شغال — إجابات مضللة من نفس نوع الإجابة ونفس الكتالوج بالظبط' : 'مقفول — الأسئلة من البنك بس'}</small></span>
                   <span class="switch" aria-hidden="true"><span></span></span>
                 </button>
                 <label class="field"><span>عدد ${g === 'tamr' ? 'الجولات' : 'الأسئلة'}: <b id="lcountLbl">${s.count}</b></span>
@@ -1867,7 +1902,9 @@ function viewSahlab() {
   const admin = isAdmin();
   const solved = v.phase === 'solved';
   const hideSecret = Boolean(v.settings && v.settings.hideSecret);
-  const blur = solved ? 0 : [16, 12, 8, 5, 2][Math.min(sh.hintIdx, 4)];
+  const diff = (v.settings && v.settings.difficulty) || 'medium';
+  const blurSteps = diff === 'easy' ? [11, 8, 5, 3, 1] : diff === 'hard' ? [22, 16, 11, 7, 3] : [16, 12, 8, 5, 2];
+  const blur = solved ? 0 : blurSteps[Math.min(sh.hintIdx, 4)];
   const t = myTeam();
   const values = v.points.sahlab;
   const nameOf = (pid) => (v.players.find((p) => p.id === pid) || {}).name || '';

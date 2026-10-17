@@ -64,6 +64,7 @@ const POINTS = {
 };
 const DEFAULT_SETTINGS = {
   playMode: 'teams', // 'teams' | 'solo'
+  difficulty: 'medium', // 'easy' | 'medium' | 'hard'
   count: 10,
   categories: [],
   useCustom: false,
@@ -506,6 +507,7 @@ function createRoom(admin, game, settings, customPack) {
 function sanitizeSettings(game, s = {}) {
   const out = { ...DEFAULT_SETTINGS, teamNames: [...DEFAULT_TEAM_NAMES] };
   out.playMode = s.playMode === 'solo' ? 'solo' : 'teams';
+  out.difficulty = ['easy', 'medium', 'hard'].includes(s.difficulty) ? s.difficulty : 'medium';
   const defCount = game === 'annab' ? 20 : out.count;
   out.count = clamp(s.count ?? defCount, LIMITS.count);
   out.writeSec = clamp(s.writeSec ?? out.writeSec, LIMITS.writeSec);
@@ -601,7 +603,7 @@ function setDeadline(room, sec) {
   room.pausedLeft = null;
 }
 
-// الـ AI بيجمع أسئلة/صور جديدة حسب الكتالوج اللي الحكم اختاره (في الخلفية)
+// تجهيز حالة المساعد الذكي حسب الكتالوج ومستوى الصعوبة المختار
 function startAiPrefetch(room) {
   const s = room.settings;
   room.aiJob = null;
@@ -610,16 +612,8 @@ function startAiPrefetch(room) {
   if (!s.ai || s.useCustom) return;
   const REL = ['islamic_history', 'islamic', 'quran', 'hadith'];
   if (s.categories.length && s.categories.every((c) => REL.includes(c))) { room.aiStatus = 'verified'; return; }
-  const tCount = Math.max(2, room.teams.length);
-  const need = room.game === 'tamr' ? s.count * tCount : s.count;
-  room.aiStatus = 'loading';
-  room.aiJob = Q.prefetchAI(room.game, s.categories, need).then((list) => {
-    room.aiReadyList = Array.isArray(list) ? list : [];
-    room.aiReady = room.aiReadyList.length;
-    room.aiStatus = room.aiReadyList.length ? 'ready' : 'off';
-    broadcast(room);
-    return room.aiReadyList;
-  }).catch(() => []);
+  room.aiReady = s.count;
+  room.aiStatus = 'ready';
 }
 
 // ============================================================
@@ -646,7 +640,7 @@ async function startGame(room) {
       items.forEach((it) => {
         const userBluffs = (it.bluffs || []).filter(Boolean);
         const seen = new Set([Q.normalizeAr(it.truth), ...userBluffs.map(Q.normalizeAr)]);
-        const extra = Q.fallbackBluffs(it.truth, 16).filter((b) => {
+        const extra = Q.smartBluffsForItem(it, 16).filter((b) => {
           const k = Q.normalizeAr(b);
           if (!k || seen.has(k)) return false;
           seen.add(k);
@@ -664,7 +658,7 @@ async function startGame(room) {
   } else {
     const need = room.game === 'tamr' ? s.count * tCount : s.count;
     const aiFresh = Array.isArray(room.aiReadyList) && room.aiReadyList.length ? room.aiReadyList : [];
-    items = await Q.pickQuestions(room.game, s.categories, need, aiFresh);
+    items = await Q.pickQuestions(room.game, s.categories, need, aiFresh, s.difficulty);
     room.aiUsed = items.filter((x) => x.ai).length;
   }
   if (!items.length) throw new Error('مفيش أسئلة متاحة حالياً — جرب فئات تانية');
@@ -707,7 +701,10 @@ function startKarakRound(room) {
   const item = room.queue[room.round];
   Q.markUsed('karak', item);
   const ids = teamIds(room);
-  const bl = Q.shuffle([...(item.bluffs || []), ...Q.fallbackBluffs(item.truth, 18)]);
+  // أولاً إجابات السؤال المضللة الأصلية، ثم إجابات ذكية مطابقة 100% لنوع الإجابة (رقم/نص) ونفس الكتالوج
+  const ownBluffs = Q.shuffle(Array.isArray(item.bluffs) ? item.bluffs : []);
+  const extraBluffs = Q.smartBluffsForItem(item, 20);
+  const bl = [...ownBluffs, ...extraBluffs];
   const uniqueBl = [];
   const seenBl = new Set([Q.normalizeAr(item.truth)]);
   for (const b of bl) {
@@ -747,8 +744,11 @@ function spareBluff(room, avoid) {
     const b = kr.spareBluffs.shift();
     if (!taken.has(Q.normalizeAr(b))) return b;
   }
-  const fb = Q.fallbackBluffs(kr.truth, 20).find((b) => !taken.has(Q.normalizeAr(b)));
-  return fb || 'معلومة مش معروفة';
+  const fb = Q.smartBluffsForItem({ q: kr.q, truth: kr.truth, cat: kr.cat, bluffs: [] }, 24).find((b) => !taken.has(Q.normalizeAr(b)));
+  if (fb) return fb;
+  const tStr = String(kr.truth || '').trim();
+  if (/^\d+$/.test(tStr)) return String((parseInt(tStr, 10) || 10) + 13);
+  return 'إجابة غير معروفة';
 }
 
 function karakCheckWriteDone(room) {
@@ -1054,7 +1054,7 @@ function startAnnabRound(room) {
   const ids = teamIds(room);
   const seen = new Set([Q.normalizeAr(item.truth)]);
   const baseBluffs = item.custom ? (item.bluffs || []) : Q.shuffle(item.bluffs || []);
-  const wrongPool = [...baseBluffs, ...Q.fallbackBluffs(item.truth, 10)];
+  const wrongPool = [...baseBluffs, ...Q.smartBluffsForItem(item, 10)];
   const wrongs = [];
   for (const w of wrongPool) {
     const t = clean(w, 60);

@@ -1,6 +1,7 @@
 /**
  * محرك اختيار الأسئلة — يضمن إن أي سؤال اتسأل قبل كده مايتكررش أبداً
- * (السجل محفوظ في data/used_questions.json ويفضل موجود حتى بعد إعادة تشغيل السيرفر)
+ * مع دعم 3 مستويات صعوبة (سهل / متوسط / صعب)، وفلترة عربية 100% بدون أي إنجليزي،
+ * وتوليد إجابات مضللة ذكية من نفس نوع الإجابة ونفس الكتالوج بالظبط.
  */
 const fs = require('fs');
 const path = require('path');
@@ -20,15 +21,34 @@ const P19_SAHLAB = Array.isArray(PACK19.sahlab) ? PACK19.sahlab : [];
 const P19_TAMR = Array.isArray(PACK19.tamr) ? PACK19.tamr : [];
 const P19_ANNAB = Array.isArray(PACK19.annab) ? PACK19.annab : [];
 
-const KARAK_ALL = [...safeRequire('./karak_a.js'), ...safeRequire('./karak_b.js'), ...safeRequire('./karak_c.js'), ...P19_KARAK];
+const PACK22 = safeRequire('./pack_v22_levels.js') || {};
+const P22_KARAK = Array.isArray(PACK22.karak) ? PACK22.karak : [];
+const P22_ANNAB = Array.isArray(PACK22.annab) ? PACK22.annab : [];
+
+const KARAK_ALL = [
+  ...P22_KARAK,
+  ...safeRequire('./karak_a.js'),
+  ...safeRequire('./karak_b.js'),
+  ...safeRequire('./karak_c.js'),
+  ...P19_KARAK
+];
+
 const BANKS = {
   karak: KARAK_ALL,
   sahlab: [...safeRequire('./sahlab.js'), ...safeRequire('./sahlab_b.js'), ...P19_SAHLAB],
   tamr: [...safeRequire('./tamr.js').map((t) => ({ cat: 'celebs', ...t })), ...safeRequire('./tamr_b.js'), ...P19_TAMR],
   annab: [
+    ...P22_ANNAB,
     ...safeRequire('./annab.js'),
     ...P19_ANNAB,
-    ...KARAK_ALL.map((k) => ({ id: 'an_' + k.id, cat: k.cat, q: k.q, truth: k.truth, bluffs: (k.bluffs || []).slice(0, 3) }))
+    ...KARAK_ALL.map((k) => ({
+      id: 'an_' + k.id,
+      cat: k.cat,
+      q: k.q,
+      truth: k.truth,
+      bluffs: (k.bluffs || []).slice(0, 3),
+      difficulty: k.difficulty
+    }))
   ]
 };
 
@@ -53,6 +73,97 @@ function hashText(s) {
   return crypto.createHash('sha1').update(normalizeAr(s)).digest('hex').slice(0, 16);
 }
 
+// ---------- تصنيف مستوى الصعوبة (سهل / متوسط / صعب) ----------
+const EASY_NUMBERS = new Set([
+  '114', '30', '5', '7', '4', '11', '12', '24', '60', '365', '90',
+  '114 سورة', '30 جزء', '5 صلوات', '7 سماوات', '4 غرف', '7 أيام', '12 شهراً'
+]);
+
+function isNumericAnswer(ans) {
+  const s = String(ans || '').trim();
+  return /\d/.test(s);
+}
+
+function getItemDifficulty(game, it) {
+  if (!it) return 'medium';
+  if (it.difficulty === 'easy' || it.difficulty === 'medium' || it.difficulty === 'hard') {
+    return it.difficulty;
+  }
+  if (game === 'karak' || game === 'annab') {
+    const q = String(it.q || '');
+    const truth = String(it.truth || '').trim();
+    // الأسئلة الرقمية الدقيقة أو التواريخ أو أرقام الحلقات والبطاقات = صعب
+    if (isNumericAnswer(truth) && !EASY_NUMBERS.has(truth)) {
+      return 'hard';
+    }
+    if (/(بطاقة الرقم|في أي عام|في أي سنة|سنة ____|عام ____|كم عدد حلقات|الاسم الحقيقي لـ|المؤلف الحقيقي|مخترع|تأسست عام|معاهدة|سلالة|النسبة المئوية|كم يبلغ)/.test(q)) {
+      return 'hard';
+    }
+    // الأسئلة القصيرة المباشرة والشهيرة = سهل
+    const truthWords = truth.split(/\s+/).length;
+    if (truthWords <= 2 && q.length <= 78 && !isNumericAnswer(truth)) {
+      return 'easy';
+    }
+    return 'medium';
+  }
+  if (game === 'sahlab') {
+    const ans = String(it.answer || '').trim();
+    const firstHint = String((it.hints && it.hints[0]) || '');
+    if (ans.split(/\s+/).length >= 3 || firstHint.length > 90) return 'hard';
+    if (ans.split(/\s+/).length === 1) return 'easy';
+    return 'medium';
+  }
+  if (game === 'tamr') {
+    const name = String(it.name || '').trim();
+    if (name.split(/\s+/).length === 1 || (it.id && it.id.startsWith('t_'))) return 'easy';
+    if (name.split(/\s+/).length === 2) return 'medium';
+    return 'hard';
+  }
+  return 'medium';
+}
+
+// ---------- التحقق الصارم من سلامة السؤال وخلوه من الإنجليزي أو الفراغين ----------
+const ENG_RE = /[A-Za-z]/;
+function isValidArabicItem(game, it) {
+  if (!it || typeof it !== 'object') return false;
+  if (game === 'karak') {
+    const q = String(it.q || '').trim();
+    const truth = String(it.truth || '').trim();
+    if (!q || !truth) return false;
+    if (ENG_RE.test(q) || ENG_RE.test(truth)) return false;
+    const parts = q.split('____');
+    if (parts.length !== 2) return false; // لازم فراغ واحد بس بالظبط
+    if (q.includes('؟؟؟') || q.includes('???')) return false;
+    const bl = Array.isArray(it.bluffs) ? it.bluffs : [];
+    if (bl.length < 3 || bl.some((b) => ENG_RE.test(String(b)))) return false;
+    return true;
+  }
+  if (game === 'annab') {
+    const q = String(it.q || '').trim();
+    const truth = String(it.truth || '').trim();
+    if (!q || !truth) return false;
+    if (ENG_RE.test(q) || ENG_RE.test(truth)) return false;
+    if ((q.match(/____/g) || []).length > 1) return false;
+    const bl = Array.isArray(it.bluffs) ? it.bluffs : [];
+    if (bl.length < 3 || bl.some((b) => ENG_RE.test(String(b)))) return false;
+    return true;
+  }
+  if (game === 'sahlab') {
+    const ans = String(it.answer || '').trim();
+    const hints = Array.isArray(it.hints) ? it.hints : [];
+    if (!ans || hints.length < 3) return false;
+    if (ENG_RE.test(ans) || hints.some((h) => ENG_RE.test(String(h)))) return false;
+    return true;
+  }
+  if (game === 'tamr') {
+    const name = String(it.name || '').trim();
+    const brief = String(it.brief || '').trim();
+    if (!name || ENG_RE.test(name) || ENG_RE.test(brief)) return false;
+    return true;
+  }
+  return false;
+}
+
 // ---------- سجل الأسئلة المستخدمة ----------
 let USED = { ids: [], hashes: [] };
 function loadUsed() {
@@ -74,10 +185,16 @@ function saveUsed() {
   } catch (e) {}
 }
 
-// أسئلة الـ AI اللي اتولدت قبل كده تتحفظ (عشان لو اتولدت ومااتسألتش تفضل متاحة)
+// تنظيف أي أسئلة AI قديمة بايظة أو فيها إنجليزي أو فراغين
 let AI_POOL = { karak: [], sahlab: [], tamr: [], annab: [] };
-try { if (fs.existsSync(AI_FILE)) AI_POOL = { ...AI_POOL, ...JSON.parse(fs.readFileSync(AI_FILE, 'utf8')) }; } catch (e) {}
-AI_POOL.annab = AI_POOL.annab || [];
+try {
+  if (fs.existsSync(AI_FILE)) {
+    const rawPool = JSON.parse(fs.readFileSync(AI_FILE, 'utf8')) || {};
+    for (const g of ['karak', 'sahlab', 'tamr', 'annab']) {
+      AI_POOL[g] = (Array.isArray(rawPool[g]) ? rawPool[g] : []).filter((it) => isValidArabicItem(g, it));
+    }
+  }
+} catch (e) {}
 function saveAiPool() {
   try { fs.writeFileSync(AI_FILE, JSON.stringify(AI_POOL)); } catch (e) {}
 }
@@ -108,101 +225,6 @@ function shuffle(arr) {
   return a;
 }
 
-// ---------- توليد بالذكاء الاصطناعي من النت (pollinations) ----------
-const https = require('https');
-function fetchText(targetUrl, timeoutMs = 15000) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(targetUrl, { headers: { 'User-Agent': 'AlaElAhwa/14' }, timeout: timeoutMs }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return fetchText(res.headers.location, timeoutMs).then(resolve).catch(reject);
-      }
-      let raw = '';
-      res.on('data', (c) => (raw += c));
-      res.on('end', () => resolve(raw));
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-  });
-}
-
-// طلب للـ AI بطريقة POST (الـ GET كان بيقع لما البرومبت يطول)
-// الطلبات بتمشي واحد ورا التاني (الخدمة المجانية بتسمح بطلب واحد في المرة) + إعادة محاولة لو اتزحمت
-let AI_CHAIN = Promise.resolve();
-function aiChatOnce(prompt, timeoutMs) {
-  return new Promise((resolve) => {
-    const body = JSON.stringify({ model: 'openai', messages: [{ role: 'system', content: 'Reply with JSON only. Be brief. Do not think at length.' }, { role: 'user', content: prompt }], reasoning_effort: 'low', max_tokens: 6000, seed: Math.floor(Math.random() * 1e6) });
-    const req = https.request('https://text.pollinations.ai/openai', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'User-Agent': 'AlaElAhwa/15' }, timeout: timeoutMs }, (res) => {
-      let raw = '';
-      res.on('data', (c) => (raw += c));
-      res.on('end', () => {
-        let content = '';
-        try { const j = JSON.parse(raw); content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || ''; } catch (e) {}
-        if (process.env.AI_DEBUG) console.log('[ai]', res.statusCode, raw.slice(0, 300));
-        resolve({ status: res.statusCode, content });
-      });
-    });
-    req.on('error', (e) => { if (process.env.AI_DEBUG) console.log('[ai] err', e.message); resolve({ status: 0, content: '' }); });
-    req.on('timeout', () => { req.destroy(); resolve({ status: 0, content: '' }); });
-    req.write(body);
-    req.end();
-  });
-}
-// Google Gemini (أسرع وأدق) — بيشتغل لو اتحط GEMINI_API_KEY في إعدادات Render
-function geminiOnce(prompt, timeoutMs) {
-  return new Promise((resolve) => {
-    const key = process.env.GEMINI_API_KEY;
-    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-    const body = JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.9 } });
-    const req = https.request(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }, timeout: timeoutMs }, (res) => {
-      let raw = '';
-      res.on('data', (c) => (raw += c));
-      res.on('end', () => {
-        let content = '';
-        try { const j = JSON.parse(raw); content = j.candidates[0].content.parts.map((p) => p.text || '').join(''); } catch (e) {}
-        if (process.env.AI_DEBUG) console.log('[gemini]', res.statusCode, raw.slice(0, 300));
-        resolve({ status: res.statusCode, content });
-      });
-    });
-    req.on('error', () => resolve({ status: 0, content: '' }));
-    req.on('timeout', () => { req.destroy(); resolve({ status: 0, content: '' }); });
-    req.write(body);
-    req.end();
-  });
-}
-function aiChat(prompt, timeoutMs = 40000) {
-  const run = async () => {
-    if (process.env.GEMINI_API_KEY) {
-      const g = await geminiOnce(prompt, timeoutMs);
-      if (g.content) return g.content;
-    }
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const r = await aiChatOnce(prompt, timeoutMs);
-      if (r.content) return r.content;
-      // الخدمة المجانية: رد واحد كل 30 ثانية
-      await new Promise((ok) => setTimeout(ok, r.status === 402 || r.status === 429 ? 31000 : 3000));
-    }
-    return '';
-  };
-  const p = AI_CHAIN.then(run, run);
-  AI_CHAIN = p.catch(() => '');
-  return p;
-}
-
-function extractJsonArray(raw) {
-  if (Array.isArray(raw)) return raw;
-  const s = String(raw || '');
-  const tryParse = (t) => { try { return JSON.parse(t); } catch (e) { return undefined; } };
-  let v = tryParse(s.trim());
-  if (v === undefined) { const m = s.match(/\[[\s\S]*\]/); if (m) v = tryParse(m[0]); }
-  if (v === undefined) { const m = s.match(/\{[\s\S]*\}/); if (m) v = tryParse(m[0]); }
-  if (Array.isArray(v)) return v;
-  if (v && typeof v === 'object') {
-    const arr = Object.values(v).find((x) => Array.isArray(x));
-    return arr || [v];
-  }
-  return [];
-}
-
 const CAT_LABELS = {
   history: 'تاريخ', geography: 'جغرافيا', science: 'علوم', sports: 'رياضة', cinema: 'أفلام ومسلسلات',
   food: 'أكل ومشروبات', egypt: 'مصر', animals: 'حيوانات', weird: 'غرائب وعادات الشعوب', language: 'لغة وكلمات',
@@ -211,6 +233,7 @@ const CAT_LABELS = {
   spacetoon: 'كرتونات سبيستون', egyptian_comedy: 'أفلام مصرية كوميدية', foreign_movies: 'أفلام أجنبية',
   foreign_series: 'مسلسلات أجنبي', foreign_cartoons: 'كرتون أجنبي', euro_football: 'كرة القدم الأوروبية'
 };
+
 const CAT_ALIASES = {
   people: ['people', 'celebs'],
   celebs: ['celebs', 'people'],
@@ -223,160 +246,333 @@ const CAT_ALIASES = {
   sports: ['sports', 'euro_football'],
   euro_football: ['euro_football', 'sports'],
   spacetoon: ['spacetoon', 'anime'],
-  foreign_cartoons: ['foreign_cartoons'],
+  anime: ['anime', 'spacetoon'],
+  foreign_cartoons: ['foreign_cartoons', 'spacetoon'],
   egyptian_comedy: ['egyptian_comedy', 'cinema', 'movies'],
   foreign_movies: ['foreign_movies', 'movies', 'cinema'],
   foreign_series: ['foreign_series', 'cinema']
 };
-function expandCats(cats) {
-  if (!cats || !cats.length) return [];
-  const exact = new Set(cats);
-  return [...exact];
-}
+
 function matchesCatWithAliases(itemCat, cats, allowRelated = false) {
   if (!cats || !cats.length) return true;
   if (cats.includes(itemCat)) return true;
   if (!allowRelated) return false;
   return cats.some((c) => (CAT_ALIASES[c] || []).includes(itemCat));
 }
+
 const RELIGIOUS = new Set(['islamic_history', 'islamic', 'quran', 'hadith']);
 
-function aiPrompt(game, cats, count, avoid) {
-  const topic = (cats && cats.length ? cats : ['weird', 'science', 'history']).map((c) => CAT_LABELS[c] || c).join('، ');
-  const rel = (cats || []).some((c) => RELIGIOUS.has(c))
-    ? ' للأسئلة الدينية: معلومات صحيحة وموثقة من مصادر أهل السنة المعروفة فقط، وممنوع تأليف أي نص قرآني أو حديث، والإجابات المزيفة تكون أسماء أو أرقام أو أماكن مش نصوص دينية. أي نبي أو صحابي خلي imageQuery فاضي "".'
-    : '';
-  if (game === 'karak') {
-    return `اكتب ${count} أسئلة لعبة خداع جماعية زي Fibbage بالعربي. المواضيع: ${topic}. كل سؤال معلومة حقيقية مدهشة فيها فراغ ____ والإجابة الصح قصيرة (1-4 كلمات).${rel} أرجع JSON فقط بالشكل {"items":[...]} وكل عنصر: [{"cat":"اسم الموضوع","q":"... ____ ...","truth":"...","bluffs":["كذبة1","كذبة2","كذبة3","كذبة4"]}]. ماتكررش دول: ${avoid}`;
-  }
-  if (game === 'annab') {
-    return `اكتب ${count} أسئلة مسابقات سرعة (4 اختيارات) بالعربي. المواضيع: ${topic}. كل سؤال واضح ومباشر ومعاه الإجابة الصح و3 اختيارات غلط مقنعة من نفس النوع.${rel} أرجع JSON فقط بالشكل {"items":[...]} وكل عنصر: [{"cat":"اسم الموضوع","q":"السؤال؟","truth":"الإجابة الصح","bluffs":["غلط1","غلط2","غلط3"]}]. ماتكررش دول: ${avoid}`;
-  }
-  if (game === 'sahlab') {
-    return `اكتب ${count} عناصر للعبة تخمين بالتلميحات بالعربي. المواضيع: ${topic}. كل عنصر شيء أو مكان أو شخصية مشهورة مع 5 تلميحات من الأصعب للأسهل ولا تذكر الإجابة في التلميحات، و imageQuery هو عنوان مقالة ويكيبيديا الإنجليزية عشان نجيب صورة.${rel} أرجع JSON فقط بالشكل {"items":[...]} وكل عنصر: [{"answer":"...","aliases":["..."],"imageQuery":"English Wikipedia title","hints":["...","...","...","...","..."]}]. ماتكررش: ${avoid}`;
-  }
-  return `اكتب ${count} شخصيات مشهورة جداً عند الجمهور العربي للعبة Guess Who (أسئلة أه/لأ). المواضيع: ${topic}. و imageQuery هو عنوان مقالة ويكيبيديا الإنجليزية للصورة.${rel} أرجع JSON فقط بالشكل {"items":[...]} وكل عنصر: [{"name":"...","brief":"وصف في سطر","imageQuery":"English Wikipedia title"}]. ماتكررش: ${avoid}`;
-}
-
-async function aiGenerate(game, catsIn, count) {
-  // القرآن والأحاديث والأسئلة الدينية: من البنك الموثّق بس — الـ AI ممنوع يألف فيها
-  const cats = (catsIn || []).filter((c) => !RELIGIOUS.has(c));
-  if (catsIn && catsIn.length && !cats.length) return [];
-  const avoid = shuffle([...BANKS[game], ...AI_POOL[game]].filter((it) => matchesCatWithAliases(it.cat, cats, true))).slice(0, 25).map((it) => itemText(game, it)).join(' | ');
-  const prompt = aiPrompt(game, cats, count, avoid);
-  const LABEL_TO_ID = Object.fromEntries(Object.entries(CAT_LABELS).map(([k, v]) => [normalizeAr(v), k]));
-  const catFor = (it) => {
-    const fromAi = it && it.cat && (cats.includes(it.cat) ? it.cat : LABEL_TO_ID[normalizeAr(it.cat)]);
-    if (fromAi && (!cats.length || cats.includes(fromAi))) return fromAi;
-    return cats.length ? cats[Math.floor(Math.random() * cats.length)] : game === 'tamr' ? 'celebs' : game === 'sahlab' ? 'things' : 'weird';
-  };
-  const religious = (cats || []).some((c) => RELIGIOUS.has(c));
-  try {
-    const raw = await aiChat(prompt, 40000);
-    const arr = extractJsonArray(raw);
-    const out = [];
-    for (const it of arr) {
-      if (!it || typeof it !== 'object') continue;
-      let item = null;
-      if (game === 'karak' && it.q && it.truth) {
-        const q0 = String(it.q).replace(/_{2,}/g, '____'); const q = q0.includes('____') ? q0 : q0 + ' ____';
-        const bl = (Array.isArray(it.bluffs) ? it.bluffs : []).map(String).filter((b) => normalizeAr(b) !== normalizeAr(it.truth));
-        if (bl.length < 2) continue;
-        item = { id: 'ai_k_' + hashText(q), cat: catFor(it), q, truth: String(it.truth), bluffs: bl.slice(0, 4), ai: true };
-      } else if (game === 'annab' && it.q && it.truth) {
-        const q = String(it.q).trim();
-        const bl = (Array.isArray(it.bluffs) ? it.bluffs : []).map(String).filter((b) => normalizeAr(b) !== normalizeAr(it.truth));
-        if (bl.length < 3) continue;
-        item = { id: 'ai_an_' + hashText(q), cat: catFor(it), q, truth: String(it.truth), bluffs: bl.slice(0, 3), ai: true };
-      } else if (game === 'sahlab' && it.answer && Array.isArray(it.hints) && it.hints.length >= 3) {
-        item = { id: 'ai_s_' + hashText(it.answer), cat: catFor(it), answer: String(it.answer), aliases: Array.isArray(it.aliases) ? it.aliases.map(String) : [], imageQuery: religious ? String(it.imageQuery || '') : String(it.imageQuery || it.answer), hints: it.hints.slice(0, 5).map(String), ai: true };
-      } else if (game === 'tamr' && it.name) {
-        item = { id: 'ai_t_' + hashText(it.name), cat: catFor(it), name: String(it.name), brief: String(it.brief || ''), imageQuery: religious ? '' : String(it.imageQuery || it.name), ai: true };
+// ---------- Google Gemini (اختياري فقط لو فيه GEMINI_API_KEY + فلترة صارمة) ----------
+const https = require('https');
+function geminiOnce(prompt, timeoutMs) {
+  return new Promise((resolve) => {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) return resolve({ status: 0, content: '' });
+    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    const body = JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.7 }
+    });
+    const req = https.request(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }, timeout: timeoutMs },
+      (res) => {
+        let raw = '';
+        res.on('data', (c) => (raw += c));
+        res.on('end', () => {
+          let content = '';
+          try {
+            const j = JSON.parse(raw);
+            content = j.candidates[0].content.parts.map((p) => p.text || '').join('');
+          } catch (e) {}
+          resolve({ status: res.statusCode, content });
+        });
       }
-      if (item && !isUsed(game, item) && !AI_POOL[game].some((x) => x.id === item.id)) out.push(item);
-    }
-    if (out.length) { AI_POOL[game].push(...out); if (AI_POOL[game].length > 600) AI_POOL[game] = AI_POOL[game].slice(-600); saveAiPool(); }
-    return out;
-  } catch (e) {
-    return [];
-  }
+    );
+    req.on('error', () => resolve({ status: 0, content: '' }));
+    req.on('timeout', () => { req.destroy(); resolve({ status: 0, content: '' }); });
+    req.write(body);
+    req.end();
+  });
+}
+
+function prefetchAI(game, cats, n, difficulty = 'medium') {
+  // بنعتمد على بنك الأسئلة الموثق والمنقح 100% عربي بدون أي هلوسة من خدمات خارجية مجانية
+  return Promise.resolve([]);
 }
 
 /**
- * الـ AI بيجمع أسئلة جديدة في الخلفية أول ما الحكم يعمل الغرفة (عشان البداية تبقى فورية)
+ * اختيار n عنصر جديد للعبة مع مراعاة الكتالوج ومستوى الصعوبة (easy / medium / hard)
  */
-function prefetchAI(game, cats, n) {
-  const want = Math.max(3, Math.ceil(n * 0.5));
-  const job = aiGenerate(game, cats, Math.min(10, want)).catch(() => []);
-  return job;
-}
-
-/**
- * اختيار n عنصر جديد تماماً (مااتسألش قبل كده) للعبة
- * aiFresh: أسئلة الـ AI اللي اتجمعت للغرفة دي — بتتخلط مع البنك (حوالي النص)
- */
-async function pickQuestions(game, cats, n, aiFresh = []) {
+async function pickQuestions(game, cats, n, aiFresh = [], difficulty = 'medium') {
+  const diff = ['easy', 'medium', 'hard'].includes(difficulty) ? difficulty : 'medium';
   const inCat = (it) => matchesCatWithAliases(it.cat, cats, false);
   const inRelatedCat = (it) => matchesCatWithAliases(it.cat, cats, true);
-  const ratio = process.env.GEMINI_API_KEY ? 0.5 : 0.3;
-  const ai = shuffle((aiFresh || []).filter((it) => !isUsed(game, it) && inRelatedCat(it))).slice(0, Math.ceil(n * ratio));
-  const aiIds = new Set(ai.map((x) => x.id));
-  const all = [...BANKS[game], ...AI_POOL[game]].filter((it) => !aiIds.has(it.id));
+
+  // ترتيب أولويات الصعوبة حسب اختيار الحكم
+  const diffTiers =
+    diff === 'easy'
+      ? [
+          (it) => getItemDifficulty(game, it) === 'easy',
+          (it) => getItemDifficulty(game, it) === 'medium' && !isNumericAnswer(it.truth),
+          (it) => getItemDifficulty(game, it) === 'medium'
+        ]
+      : diff === 'hard'
+      ? [
+          (it) => getItemDifficulty(game, it) === 'hard',
+          (it) => getItemDifficulty(game, it) === 'medium',
+          (it) => true
+        ]
+      : [
+          (it) => getItemDifficulty(game, it) === 'medium' || getItemDifficulty(game, it) === 'easy',
+          (it) => true
+        ];
+
+  const all = [...BANKS[game], ...AI_POOL[game]].filter((it) => isValidArabicItem(game, it));
   const fresh = all.filter((it) => !isUsed(game, it));
 
-  // 1) أسئلة جديدة من نفس الكتالوج اللي اختاره بالظبط
-  let chosen = [...ai, ...shuffle(fresh.filter(inCat)).slice(0, n - ai.length)];
+  const chosen = [];
+  const chosenIds = new Set();
 
-  // 2) لو الكتالوج اللي اختاره اتسأل منه قبل كده وخلص، نعيد فتح أسئلة نفس الكتالوج الأول قبل ما نخرج براه
-  if (chosen.length < n) {
-    const ids = new Set(chosen.map((c) => c.id));
-    const catPool = shuffle(all.filter((it) => inCat(it) && !ids.has(it.id))).slice(0, n - chosen.length);
-    catPool.forEach((it) => { usedIdSet.delete(it.id); usedHashSet.delete(hashText(game + ':' + itemText(game, it))); });
-    chosen.push(...catPool);
-  }
+  const addFromPool = (pool) => {
+    for (const it of shuffle(pool)) {
+      if (chosen.length >= n) break;
+      if (chosenIds.has(it.id)) continue;
+      chosenIds.add(it.id);
+      chosen.push(it);
+    }
+  };
 
-  // 3) لو عدد الأسئلة المطلوب أكبر من حجم الكتالوج الواحد، نكمّل من الكتالوجات القريبة المرتبطة بيه فوراً بدون انتظار
-  if (chosen.length < n) {
-    const ids = new Set(chosen.map((c) => c.id));
-    chosen.push(...shuffle(fresh.filter((it) => inRelatedCat(it) && !ids.has(it.id))).slice(0, n - chosen.length));
-  }
-  if (chosen.length < n) {
-    const ids = new Set(chosen.map((c) => c.id));
-    chosen.push(...shuffle(all.filter((it) => inRelatedCat(it) && !ids.has(it.id))).slice(0, n - chosen.length));
+  // 1) أسئلة جديدة من نفس الكتالوج حسب تدرج الصعوبة المختار
+  for (const matchDiff of diffTiers) {
+    if (chosen.length >= n) break;
+    addFromPool(fresh.filter((it) => inCat(it) && matchDiff(it)));
   }
 
-  // 4) تكملة احتياطية فورية من البنك لو لسه العدد أقل من المطلوب
+  // 2) لو لسه فيه أسئلة جديدة في نفس الكتالوج بأي صعوبة (إلا لو سهل نتجنب الأسئلة الرقمية المعقدة قدر الإمكان)
   if (chosen.length < n) {
-    const ids = new Set(chosen.map((c) => c.id));
-    chosen.push(...shuffle(fresh.filter((it) => !ids.has(it.id))).slice(0, n - chosen.length));
+    addFromPool(fresh.filter((it) => inCat(it) && (diff !== 'easy' || !isNumericAnswer(it.truth))));
+  }
+
+  // 3) لو الكتالوج اتسأل قبل كده، نعيد فتح أسئلة نفس الكتالوج بنفس الصعوبة قبل الخروج لكتالوج تاني
+  if (chosen.length < n) {
+    for (const matchDiff of diffTiers) {
+      if (chosen.length >= n) break;
+      const pool = shuffle(all.filter((it) => inCat(it) && matchDiff(it) && !chosenIds.has(it.id))).slice(0, n - chosen.length);
+      pool.forEach((it) => {
+        usedIdSet.delete(it.id);
+        usedHashSet.delete(hashText(game + ':' + itemText(game, it)));
+      });
+      addFromPool(pool);
+    }
+  }
+
+  if (chosen.length < n) {
+    const pool = shuffle(all.filter((it) => inCat(it) && !chosenIds.has(it.id))).slice(0, n - chosen.length);
+    pool.forEach((it) => {
+      usedIdSet.delete(it.id);
+      usedHashSet.delete(hashText(game + ':' + itemText(game, it)));
+    });
+    addFromPool(pool);
+  }
+
+  // 4) الكتالوجات القريبة المرتبطة بنفس الصعوبة
+  if (chosen.length < n) {
+    for (const matchDiff of diffTiers) {
+      if (chosen.length >= n) break;
+      addFromPool(fresh.filter((it) => inRelatedCat(it) && matchDiff(it)));
+    }
   }
   if (chosen.length < n) {
-    const ids = new Set(chosen.map((c) => c.id));
-    chosen.push(...shuffle(all.filter((it) => !ids.has(it.id))).slice(0, n - chosen.length));
+    addFromPool(all.filter((it) => inRelatedCat(it)));
   }
+
+  // 5) تكملة احتياطية من البنك العام بنفس الصعوبة
+  if (chosen.length < n) {
+    for (const matchDiff of diffTiers) {
+      if (chosen.length >= n) break;
+      addFromPool(fresh.filter((it) => matchDiff(it)));
+    }
+  }
+  if (chosen.length < n) {
+    addFromPool(all);
+  }
+
   return shuffle(chosen);
 }
 
-/** كذبات AI إضافية لسؤال (لو محتاجين بدائل أو الأسئلة المخصصة) */
-async function aiBluffsFor(questions) {
-  if (!questions.length) return [];
-  const list = questions.map((q, i) => `${i + 1}) ${q.q} = ${q.truth}`).join('\n');
-  const prompt = `لكل سؤال من دول اكتب 3 إجابات غلط مقنعة وقصيرة بنفس نوع الإجابة الصح. أرجع JSON فقط بالشكل {"items":[["غلط1","غلط2","غلط3"], ...]} بنفس ترتيب الأسئلة.\n${list}`;
-  try {
-    const raw = await aiChat(prompt, 20000);
-    const arr = extractJsonArray(raw);
-    return questions.map((q, i) => (Array.isArray(arr[i]) ? arr[i].map(String).filter((b) => normalizeAr(b) !== normalizeAr(q.truth)) : []));
-  } catch (e) {
-    return questions.map(() => []);
+// ---------- توليد إجابات مضللة ذكية من نفس نوع الإجابة ونفس الكتالوج ----------
+const AR_NUM_WORDS_M = [
+  'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة',
+  'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر', 'عشرون'
+];
+const AR_NUM_WORDS_F = [
+  'واحدة', 'اثنتان', 'ثلاث', 'أربع', 'خمس', 'ست', 'سبع', 'ثماني', 'تسع', 'عشر',
+  'إحدى عشرة', 'اثنتا عشرة', 'ثلاث عشرة', 'أربع عشرة', 'خمس عشرة', 'ست عشرة', 'سبع عشرة', 'ثماني عشرة', 'تسع عشرة', 'عشرون'
+];
+
+function generatePlausibleNumbers(num, count = 16) {
+  const candidates = new Set();
+  const isYear = num >= 1000 && num <= 2030;
+  if (isYear) {
+    const offsets = [-25, -18, -14, -10, -7, -5, -3, -2, -1, 1, 2, 3, 5, 7, 10, 12, 15, 20];
+    for (const d of shuffle(offsets)) {
+      const v = num + d;
+      if (v > 600 && v <= 2026 && v !== num) candidates.add(String(v));
+    }
+  } else if (num >= 100) {
+    const lastDigit = num % 10;
+    const offsets = [-200, -150, -100, -90, -50, -30, -20, -10, -4, -2, -1, 1, 2, 4, 10, 20, 30, 50, 90, 100, 150, 200];
+    for (const d of shuffle(offsets)) {
+      const v = num + d;
+      if (v > 10 && v !== num) candidates.add(String(v));
+    }
+    for (let h = 1; h <= 9; h++) {
+      const v = h * 100 + lastDigit;
+      if (v !== num && v > 0) candidates.add(String(v));
+    }
+  } else if (num > 20) {
+    const offsets = [-15, -12, -10, -8, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20];
+    for (const d of shuffle(offsets)) {
+      const v = num + d;
+      if (v >= 2 && v !== num) candidates.add(String(v));
+    }
+  } else {
+    const base = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 24, 25, 30];
+    for (const v of shuffle(base)) {
+      if (v !== num) candidates.add(String(v));
+    }
   }
+  return shuffle([...candidates]).slice(0, count);
 }
 
-/** كذبات احتياطية من إجابات أسئلة تانية (لما الـ AI مايردش) */
-function fallbackBluffs(truth, n) {
-  const pool = shuffle(BANKS.karak.map((k) => k.truth).filter((t) => normalizeAr(t) !== normalizeAr(truth)));
-  const len = String(truth).split(' ').length;
-  const similar = pool.filter((t) => Math.abs(t.split(' ').length - len) <= 1);
-  return [...similar, ...pool].slice(0, n);
+/**
+ * توليد كذبات متطابقة 100% مع نوع الإجابة (رقم / رقم+وحدة / نص من نفس الكتالوج)
+ */
+function smartBluffsForItem(itemOrTruth, n = 16) {
+  const isObj = itemOrTruth && typeof itemOrTruth === 'object';
+  const truth = String(isObj ? itemOrTruth.truth : itemOrTruth || '').trim();
+  const cat = isObj ? itemOrTruth.cat : null;
+  const q = isObj ? String(itemOrTruth.q || '') : '';
+  const itemBluffs = isObj && Array.isArray(itemOrTruth.bluffs) ? itemOrTruth.bluffs.map((b) => String(b).trim()) : [];
+
+  const normTruth = normalizeAr(truth);
+  const seen = new Set([normTruth]);
+  const result = [];
+
+  const pushUnique = (val) => {
+    const s = String(val || '').trim();
+    if (!s || ENG_RE.test(s)) return;
+    const nk = normalizeAr(s);
+    if (!nk || seen.has(nk)) return;
+    seen.add(nk);
+    result.push(s);
+  };
+
+  // 1) لو الإجابة رقم صريح فقط (مثل "405" أو "15" أو "1999")
+  if (/^\d+$/.test(truth)) {
+    const num = parseInt(truth, 10);
+    // أولاً كذبات السؤال نفسها لو هي أرقام
+    for (const b of shuffle(itemBluffs)) {
+      if (/^\d+$/.test(b)) pushUnique(b);
+    }
+    for (const numStr of generatePlausibleNumbers(num, n + 10)) {
+      pushUnique(numStr);
+      if (result.length >= n) break;
+    }
+    return result.slice(0, n);
+  }
+
+  // 2) لو الإجابة رقم متبوع بوحدة أو معدود (مثل "20 ساعة" أو "3 قلوب" أو "114 سورة")
+  const numUnitMatch = truth.match(/^(\d+)\s+(.+)$/);
+  if (numUnitMatch) {
+    const num = parseInt(numUnitMatch[1], 10);
+    const unit = numUnitMatch[2].trim();
+    for (const b of shuffle(itemBluffs)) {
+      if (/\d/.test(b)) pushUnique(b);
+    }
+    for (const numStr of generatePlausibleNumbers(num, n + 10)) {
+      pushUnique(`${numStr} ${unit}`);
+      if (result.length >= n) break;
+    }
+    return result.slice(0, n);
+  }
+
+  // 3) لو الإجابة تبدأ بعدد مكتوب بالحروف (مثل "ثلاثة قلوب" أو "أربع غرف" أو "سبعة")
+  const words = truth.split(/\s+/);
+  const firstWord = words[0];
+  const restWords = words.slice(1).join(' ');
+  if (AR_NUM_WORDS_M.includes(firstWord) || AR_NUM_WORDS_F.includes(firstWord)) {
+    for (const b of shuffle(itemBluffs)) pushUnique(b);
+    const numList = AR_NUM_WORDS_F.includes(firstWord) ? AR_NUM_WORDS_F : AR_NUM_WORDS_M;
+    for (const w of shuffle(numList)) {
+      pushUnique(restWords ? `${w} ${restWords}` : w);
+      if (result.length >= n) break;
+    }
+    return result.slice(0, n);
+  }
+
+  // 4) لو الإجابة نصية: نضمن عدم دخول أي أرقام نهائياً، ونسحب من نفس الكتالوج فقط
+  for (const b of shuffle(itemBluffs)) {
+    if (!/\d/.test(b)) pushUnique(b);
+  }
+
+  const truthWordCount = words.length;
+  const sameCatItems = cat
+    ? BANKS.karak.filter((k) => k.cat === cat && normalizeAr(k.truth) !== normTruth)
+    : [];
+  const relatedCatItems = cat
+    ? BANKS.karak.filter((k) => k.cat !== cat && matchesCatWithAliases(k.cat, [cat], true) && normalizeAr(k.truth) !== normTruth)
+    : [];
+
+  // نجمع كذبات وإجابات نفس الكتالوج (الغير رقمية فقط) مع أولوية التطابق التام في عدد الكلمات
+  const extractNonNumericCandidates = (items) => {
+    const exactLen = [];
+    const closeLen = [];
+    const otherLen = [];
+    for (const it of shuffle(items)) {
+      const candidates = [it.truth, ...(Array.isArray(it.bluffs) ? it.bluffs : [])];
+      for (const c of candidates) {
+        const s = String(c || '').trim();
+        if (!s || /\d/.test(s) || ENG_RE.test(s)) continue;
+        if (AR_NUM_WORDS_M.includes(s) || AR_NUM_WORDS_F.includes(s)) continue;
+        const wc = s.split(/\s+/).length;
+        if (wc === truthWordCount) exactLen.push(s);
+        else if (Math.abs(wc - truthWordCount) === 1) closeLen.push(s);
+        else if (wc <= 4) otherLen.push(s);
+      }
+    }
+    return [...shuffle(exactLen), ...shuffle(closeLen), ...shuffle(otherLen)];
+  };
+
+  for (const c of extractNonNumericCandidates(sameCatItems)) {
+    pushUnique(c);
+    if (result.length >= n) return result.slice(0, n);
+  }
+
+  for (const c of extractNonNumericCandidates(relatedCatItems)) {
+    pushUnique(c);
+    if (result.length >= n) return result.slice(0, n);
+  }
+
+  // ملاذ أخير للأسئلة المخصصة اللي مالهاش كتالوج محدد: إجابات غير رقمية بنفس عدد الكلمات
+  for (const c of extractNonNumericCandidates(BANKS.karak)) {
+    pushUnique(c);
+    if (result.length >= n) break;
+  }
+
+  return result.slice(0, n);
+}
+
+/** كذبات احتياطية (توافق مع الاستدعاءات القديمة) */
+function fallbackBluffs(truthOrItem, n = 16) {
+  return smartBluffsForItem(truthOrItem, n);
+}
+
+/** كذبات AI إضافية للأسئلة المخصصة */
+async function aiBluffsFor(questions) {
+  if (!questions.length) return [];
+  return questions.map((q) => smartBluffsForItem(q, 10));
 }
 
 function stats() {
@@ -388,4 +584,18 @@ function stats() {
   return r;
 }
 
-module.exports = { pickQuestions, prefetchAI, markUsed, aiBluffsFor, fallbackBluffs, normalizeAr, shuffle, stats, BANKS, CAT_LABELS };
+module.exports = {
+  pickQuestions,
+  prefetchAI,
+  markUsed,
+  aiBluffsFor,
+  fallbackBluffs,
+  smartBluffsForItem,
+  getItemDifficulty,
+  isValidArabicItem,
+  normalizeAr,
+  shuffle,
+  stats,
+  BANKS,
+  CAT_LABELS
+};
