@@ -99,7 +99,7 @@ const CHARACTER_PARTS = {
     }
   ],
 
-  // 40 وش كرتوني معبر (تظهر بوضوح في الشبكة وتركب فوراً على الشخصية)
+  // 66 وش كرتوني معبر (تظهر بوضوح في الشبكة وتركب فوراً على الشخصية)
   face: [
     { id: 'mustache_boss', name: 'شنب العمدة' },
     { id: 'nerd_glasses', name: 'نظارة العبقري' },
@@ -140,6 +140,32 @@ const CHARACTER_PARTS = {
     { id: 'scar_warrior', name: 'ندبة المحارب' },
     { id: 'bubblegum_pop', name: 'فقاعة اللبان' },
     { id: 'unibrow_funny', name: 'الحاجب المتصل' },
+    { id: 'scared_tears', name: 'مرعوب ودموعه نازلة' },
+    { id: 'nerd_teeth', name: 'الدحيح بالنظارة' },
+    { id: 'nervous_sweat', name: 'متوتر وعرقان' },
+    { id: 'evil_goatee', name: 'الشرير بالسكسوكة' },
+    { id: 'ski_goggles', name: 'نظارة التزلج' },
+    { id: 'yummy_tongue', name: 'طعمها حلو' },
+    { id: 'puffy_cheeks', name: 'خدود منفوخة' },
+    { id: 'wailing_cry', name: 'عياط بصوت عالي' },
+    { id: 'dizzy_tongue', name: 'دايخ ولسانه برا' },
+    { id: 'sick_thermo', name: 'عيان بالترمومتر' },
+    { id: 'nauseous_green', name: 'مقلوبة معدته' },
+    { id: 'frozen_cold', name: 'متلج من البرد' },
+    { id: 'bearded_wink', name: 'غمزة باللحية' },
+    { id: 'money_tongue', name: 'عيون الدولار' },
+    { id: 'blushing_red', name: 'وشه احمر' },
+    { id: 'smug_lids', name: 'نظرة الواثق' },
+    { id: 'zipper_mouth', name: 'بقه مقفول بسوستة' },
+    { id: 'fire_angry', name: 'غضبان نار' },
+    { id: 'whistle_note', name: 'بيصفر ورايق' },
+    { id: 'black_eye', name: 'عينه مزرقة' },
+    { id: 'ninja_headband', name: 'عصابة المقاتل' },
+    { id: 'surprised_o', name: 'مندهش' },
+    { id: 'meh_yawn', name: 'زهقان وبيتاوب' },
+    { id: 'pipe_relaxed', name: 'البايب الرايق' },
+    { id: 'unimpressed', name: 'مش مقتنع' },
+    { id: 'musketeer', name: 'شنب الفارس' },
     { id: 'king_beard', name: 'لحية الحكيم' }
   ],
 
@@ -522,6 +548,280 @@ function renderFaceVector(faceId) {
           <circle cx="102" cy="144" r="8" fill="${stroke}"/>
           <circle cx="158" cy="144" r="8" fill="${stroke}"/>
           <path d="M108 170 Q130 184 152 170" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+        </g>`;
+    case 'scared_tears':
+      return `
+        <g>
+          <path d="M86 124 Q100 116 114 124 M146 124 Q160 116 174 124" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="102" cy="142" r="14" fill="#FFF" stroke="${stroke}" stroke-width="4"/>
+          <circle cx="158" cy="142" r="14" fill="#FFF" stroke="${stroke}" stroke-width="4"/>
+          <circle cx="102" cy="144" r="4.5" fill="${stroke}"/>
+          <circle cx="158" cy="144" r="4.5" fill="${stroke}"/>
+          <path d="M84 152 Q78 164 84 170 Q90 164 84 152 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.2"/>
+          <path d="M176 152 Q170 164 176 170 Q182 164 176 152 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.2"/>
+          <path d="M110 186 Q110 166 130 166 Q150 166 150 186 Z" fill="#9E2A2B" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M118 186 Q130 178 142 186" fill="#FF8FA3"/>
+        </g>`;
+    case 'nerd_teeth':
+      return `
+        <g>
+          <path d="M86 120 Q100 112 114 120 M146 120 Q160 112 174 120" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="102" cy="142" r="16" fill="#E8F4F8" stroke="${stroke}" stroke-width="4.5"/>
+          <circle cx="158" cy="142" r="16" fill="#E8F4F8" stroke="${stroke}" stroke-width="4.5"/>
+          <path d="M118 140 Q130 134 142 140" fill="none" stroke="${stroke}" stroke-width="4"/>
+          <circle cx="102" cy="143" r="6" fill="${stroke}"/>
+          <circle cx="158" cy="143" r="6" fill="${stroke}"/>
+          <path d="M106 168 Q130 186 154 168" fill="#9E2A2B" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <rect x="120" y="169" width="9" height="11" rx="2" fill="#FFF" stroke="${stroke}" stroke-width="2.2"/>
+          <rect x="131" y="169" width="9" height="11" rx="2" fill="#FFF" stroke="${stroke}" stroke-width="2.2"/>
+        </g>`;
+    case 'nervous_sweat':
+      return `
+        <g>
+          <path d="M88 130 Q100 122 114 128 M146 128 Q160 122 172 130" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <ellipse cx="102" cy="144" rx="10" ry="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <ellipse cx="158" cy="144" rx="10" ry="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <circle cx="104" cy="146" r="4.5" fill="${stroke}"/>
+          <circle cx="156" cy="146" r="4.5" fill="${stroke}"/>
+          <path d="M106 174 L114 168 L122 176 L130 168 L138 176 L146 168 L154 174 L146 182 L114 182 Z" fill="#FFF" stroke="${stroke}" stroke-width="3.2" stroke-linejoin="round"/>
+          <path d="M176 118 Q168 132 176 138 Q184 132 176 118 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.4"/>
+        </g>`;
+    case 'evil_goatee':
+      return `
+        <g>
+          <path d="M84 126 L116 138 M176 126 L144 138" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
+          <path d="M92 144 Q102 138 112 144" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <path d="M148 144 Q158 138 168 144" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="102" cy="146" r="4" fill="${stroke}"/>
+          <circle cx="158" cy="146" r="4" fill="${stroke}"/>
+          <path d="M104 166 Q130 184 158 162" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <path d="M118 182 Q130 188 142 182 L130 202 Z" fill="#3B2314" stroke="${stroke}" stroke-width="3" stroke-linejoin="round"/>
+        </g>`;
+    case 'ski_goggles':
+      return `
+        <g>
+          <rect x="72" y="136" width="116" height="8" rx="4" fill="#3B3B3B" stroke="${stroke}" stroke-width="2.5"/>
+          <path d="M82 128 Q130 120 178 128 Q184 140 178 154 Q154 160 130 150 Q106 160 82 154 Q76 140 82 128 Z" fill="#2B2D42" stroke="#9AA5B1" stroke-width="5"/>
+          <path d="M92 134 L104 148 M148 134 L160 148" stroke="#FFF" stroke-width="3" stroke-linecap="round" opacity=".8"/>
+          <ellipse cx="130" cy="176" rx="8" ry="10" fill="#9E2A2B" stroke="${stroke}" stroke-width="3.5"/>
+        </g>`;
+    case 'yummy_tongue':
+      return `
+        <g>
+          <path d="M88 144 Q102 132 116 144 M144 144 Q158 132 172 144" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <path d="M104 168 Q130 184 156 166" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <path d="M138 174 Q150 172 152 184 Q148 194 140 188 Q134 182 138 174 Z" fill="#FF6B8B" stroke="${stroke}" stroke-width="3"/>
+          <circle cx="164" cy="186" r="2.5" fill="#B5743A"/><circle cx="170" cy="180" r="2" fill="#B5743A"/>
+        </g>`;
+    case 'puffy_cheeks':
+      return `
+        <g>
+          <path d="M90 140 Q102 132 114 140 M146 140 Q158 132 170 140" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <path d="M84 150 Q70 164 84 180 M176 150 Q190 164 176 180" fill="none" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/>
+          <ellipse cx="90" cy="166" rx="10" ry="7" fill="#FF8FA3" opacity=".5"/>
+          <ellipse cx="170" cy="166" rx="10" ry="7" fill="#FF8FA3" opacity=".5"/>
+          <path d="M120 172 Q130 166 140 172 Q130 180 120 172 Z" fill="#9E2A2B" stroke="${stroke}" stroke-width="3"/>
+          <circle cx="112" cy="178" r="2" fill="${stroke}"/><circle cx="148" cy="178" r="2" fill="${stroke}"/>
+        </g>`;
+    case 'wailing_cry':
+      return `
+        <g>
+          <path d="M86 130 Q100 140 114 132 M146 132 Q160 140 174 130" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <path d="M90 146 Q102 140 114 146 M146 146 Q158 140 170 146" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <path d="M84 150 Q76 162 82 168 Q90 162 84 150 Z M92 156 Q86 166 90 172 Q96 166 92 156 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2"/>
+          <path d="M176 150 Q184 162 178 168 Q170 162 176 150 Z M168 156 Q174 166 170 172 Q164 166 168 156 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2"/>
+          <path d="M104 194 Q104 162 130 162 Q156 162 156 194 Z" fill="#7A1F20" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M112 194 Q130 182 148 194" fill="#FF8FA3"/>
+          <rect x="116" y="164" width="28" height="6" rx="2" fill="#FFF"/>
+        </g>`;
+    case 'dizzy_tongue':
+      return `
+        <g>
+          <path d="M102 142 m-11 0 a11 11 0 1 0 22 0 a8 8 0 1 0 -16 0 a5 5 0 1 0 10 0 a2 2 0 1 0 -4 0" fill="none" stroke="${stroke}" stroke-width="3"/>
+          <path d="M158 142 m-11 0 a11 11 0 1 0 22 0 a8 8 0 1 0 -16 0 a5 5 0 1 0 10 0 a2 2 0 1 0 -4 0" fill="none" stroke="${stroke}" stroke-width="3"/>
+          <path d="M104 170 Q130 160 156 170" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <path d="M120 168 Q132 168 142 172 Q146 190 134 192 Q122 190 120 168 Z" fill="#FF6B8B" stroke="${stroke}" stroke-width="3"/>
+          <line x1="131" y1="172" x2="132" y2="184" stroke="${stroke}" stroke-width="2"/>
+        </g>`;
+    case 'sick_thermo':
+      return `
+        <g>
+          <ellipse cx="130" cy="160" rx="50" ry="34" fill="#FF8FA3" opacity=".35"/>
+          <path d="M88 136 Q102 130 116 136 M144 136 Q158 130 172 136" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <path d="M90 144 L114 144 Q110 152 102 152 Q94 152 90 144 Z" fill="${stroke}"/>
+          <path d="M146 144 L170 144 Q166 152 158 152 Q150 152 146 144 Z" fill="${stroke}"/>
+          <path d="M110 178 Q130 170 150 178" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <rect x="140" y="170" width="34" height="7" rx="3.5" transform="rotate(-18 140 170)" fill="#FFF" stroke="${stroke}" stroke-width="2.5"/>
+          <circle cx="173" cy="160" r="5" fill="#E63946" stroke="${stroke}" stroke-width="2"/>
+        </g>`;
+    case 'nauseous_green':
+      return `
+        <g>
+          <ellipse cx="130" cy="158" rx="52" ry="40" fill="#9FB8C8" opacity=".55"/>
+          <path d="M88 132 Q102 126 116 134 M144 134 Q158 126 172 132" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <path d="M90 146 Q102 140 114 146" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <path d="M146 146 Q158 140 170 146" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="102" cy="149" r="4" fill="${stroke}"/><circle cx="158" cy="149" r="4" fill="${stroke}"/>
+          <path d="M108 180 Q116 172 124 180 Q132 188 140 180 Q148 172 154 180" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+        </g>`;
+    case 'frozen_cold':
+      return `
+        <g>
+          <ellipse cx="130" cy="156" rx="52" ry="42" fill="#90CDF4" opacity=".55"/>
+          <path d="M88 128 Q100 120 114 130 M146 130 Q160 120 172 128" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="102" cy="144" r="10" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <circle cx="158" cy="144" r="10" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <circle cx="102" cy="145" r="4" fill="${stroke}"/><circle cx="158" cy="145" r="4" fill="${stroke}"/>
+          <rect x="106" y="168" width="48" height="16" rx="5" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <path d="M106 176 L154 176 M118 168 L118 184 M130 168 L130 184 M142 168 L142 184" stroke="${stroke}" stroke-width="2.2"/>
+          <path d="M80 164 l-6 4 l6 4 l-6 4 M180 164 l6 4 l-6 4 l6 4" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round"/>
+        </g>`;
+    case 'bearded_wink':
+      return `
+        <g>
+          <path d="M84 126 Q100 116 116 126 M144 126 Q160 116 176 126" fill="none" stroke="#3B2314" stroke-width="7" stroke-linecap="round"/>
+          <path d="M90 142 Q102 134 114 142" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <circle cx="158" cy="142" r="7.5" fill="${stroke}"/><circle cx="155" cy="139" r="2.5" fill="#FFF"/>
+          <path d="M80 150 Q84 196 130 200 Q176 196 180 150 Q170 166 154 162 Q130 176 106 162 Q90 166 80 150 Z" fill="#4A2C18" stroke="${stroke}" stroke-width="3.5" stroke-linejoin="round"/>
+          <path d="M104 162 Q118 152 130 160 Q142 152 156 162 Q144 168 130 164 Q116 168 104 162 Z" fill="#3B2314" stroke="${stroke}" stroke-width="3"/>
+          <path d="M116 174 Q130 184 144 174 Z" fill="#FFF" stroke="${stroke}" stroke-width="2.5"/>
+        </g>`;
+    case 'money_tongue':
+      return `
+        <g>
+          <path d="M88 124 Q102 116 116 124 M144 124 Q158 116 172 124" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <text x="102" y="154" text-anchor="middle" font-size="30" font-weight="900" fill="#2E7D32" stroke="${stroke}" stroke-width="1.5" font-family="Arial, sans-serif">$</text>
+          <text x="158" y="154" text-anchor="middle" font-size="30" font-weight="900" fill="#2E7D32" stroke="${stroke}" stroke-width="1.5" font-family="Arial, sans-serif">$</text>
+          <path d="M104 166 Q130 186 156 166 Z" fill="#9E2A2B" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M120 174 Q132 172 142 176 Q144 194 132 194 Q120 192 120 174 Z" fill="#FF6B8B" stroke="${stroke}" stroke-width="3"/>
+        </g>`;
+    case 'blushing_red':
+      return `
+        <g>
+          <ellipse cx="130" cy="158" rx="50" ry="36" fill="#FF6B6B" opacity=".35"/>
+          <path d="M88 144 Q102 132 116 144 M144 144 Q158 132 172 144" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <ellipse cx="88" cy="160" rx="12" ry="7" fill="#E63946" opacity=".55"/>
+          <ellipse cx="172" cy="160" rx="12" ry="7" fill="#E63946" opacity=".55"/>
+          <path d="M84 156 l6 -4 M90 160 l6 -4 M164 156 l6 -4 M170 160 l6 -4" stroke="#C1121F" stroke-width="2" stroke-linecap="round"/>
+          <path d="M110 170 Q130 186 150 170" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+        </g>`;
+    case 'smug_lids':
+      return `
+        <g>
+          <path d="M86 128 Q102 120 116 130 M144 126 Q160 116 174 124" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <ellipse cx="102" cy="146" rx="12" ry="8" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <ellipse cx="158" cy="146" rx="12" ry="8" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <path d="M90 143 L114 143 L114 140 Q102 136 90 140 Z M146 143 L170 143 L170 140 Q158 136 146 140 Z" fill="#E6C9A8" stroke="${stroke}" stroke-width="2.5"/>
+          <circle cx="106" cy="148" r="3.5" fill="${stroke}"/><circle cx="162" cy="148" r="3.5" fill="${stroke}"/>
+          <path d="M110 172 Q134 182 156 164" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+        </g>`;
+    case 'zipper_mouth':
+      return `
+        <g>
+          <path d="M88 126 Q102 118 116 126 M144 126 Q158 118 172 126" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="102" cy="144" r="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <circle cx="158" cy="144" r="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <circle cx="102" cy="145" r="5" fill="${stroke}"/><circle cx="158" cy="145" r="5" fill="${stroke}"/>
+          <rect x="100" y="170" width="60" height="10" rx="3" fill="#ADB5BD" stroke="${stroke}" stroke-width="3"/>
+          <path d="M106 170 v10 M112 170 v10 M118 170 v10 M124 170 v10 M130 170 v10 M136 170 v10 M142 170 v10 M148 170 v10 M154 170 v10" stroke="${stroke}" stroke-width="1.8"/>
+          <rect x="156" y="172" width="14" height="18" rx="3" transform="rotate(-20 156 172)" fill="#ADB5BD" stroke="${stroke}" stroke-width="2.8"/>
+        </g>`;
+    case 'fire_angry':
+      return `
+        <g>
+          <ellipse cx="130" cy="160" rx="52" ry="38" fill="#E63946" opacity=".35"/>
+          <path d="M84 132 Q88 112 96 122 Q100 106 108 120 Q114 110 118 136 Z" fill="#FB8500" stroke="#C1121F" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M176 132 Q172 112 164 122 Q160 106 152 120 Q146 110 142 136 Z" fill="#FB8500" stroke="#C1121F" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M86 136 L118 144 M174 136 L142 144" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
+          <ellipse cx="104" cy="152" rx="9" ry="7" fill="#FFD166" stroke="${stroke}" stroke-width="3"/>
+          <ellipse cx="156" cy="152" rx="9" ry="7" fill="#FFD166" stroke="${stroke}" stroke-width="3"/>
+          <circle cx="105" cy="153" r="3.5" fill="${stroke}"/><circle cx="155" cy="153" r="3.5" fill="${stroke}"/>
+          <path d="M108 190 Q108 170 130 170 Q152 170 152 190 Z" fill="#7A1F20" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+          <rect x="114" y="172" width="32" height="6" rx="2" fill="#FFF"/>
+        </g>`;
+    case 'whistle_note':
+      return `
+        <g>
+          <path d="M88 142 Q102 132 116 142 M144 142 Q158 132 172 142" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <ellipse cx="124" cy="174" rx="8" ry="7" fill="#9E2A2B" stroke="${stroke}" stroke-width="3.5"/>
+          <path d="M134 170 Q140 166 146 170" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M162 176 L162 156 L176 152 L176 170" fill="none" stroke="${stroke}" stroke-width="3" stroke-linejoin="round"/>
+          <ellipse cx="158" cy="177" rx="5" ry="4" fill="${stroke}"/><ellipse cx="172" cy="171" rx="5" ry="4" fill="${stroke}"/>
+        </g>`;
+    case 'black_eye':
+      return `
+        <g>
+          <path d="M88 126 Q102 118 116 126 M144 124 Q158 116 172 126" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="102" cy="142" r="7.5" fill="${stroke}"/><circle cx="99" cy="139" r="2.5" fill="#FFF"/>
+          <ellipse cx="158" cy="144" rx="17" ry="14" fill="#6C4E9B" opacity=".65"/>
+          <path d="M148 144 Q158 138 168 144" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <rect x="114" y="150" width="32" height="12" rx="4" transform="rotate(-12 130 156)" fill="#F4C095" stroke="${stroke}" stroke-width="2.5"/>
+          <path d="M124 152 l0 8 M136 150 l0 8" stroke="#C48F5A" stroke-width="2" transform="rotate(-12 130 156)"/>
+          <path d="M104 172 Q130 190 158 172 Z" fill="#FFF" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M112 176 L150 176" stroke="${stroke}" stroke-width="2"/>
+        </g>`;
+    case 'ninja_headband':
+      return `
+        <g>
+          <path d="M70 114 Q130 106 190 114 L190 128 Q130 120 70 128 Z" fill="#2B2D42" stroke="${stroke}" stroke-width="3"/>
+          <path d="M188 118 L204 110 L200 126 Z M188 124 L206 128 L196 136 Z" fill="#2B2D42" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M88 136 L116 142 M172 136 L144 142" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <circle cx="102" cy="150" r="6.5" fill="${stroke}"/><circle cx="158" cy="150" r="6.5" fill="${stroke}"/>
+          <ellipse cx="158" cy="152" rx="15" ry="12" fill="#6C4E9B" opacity=".45"/>
+          <path d="M104 172 Q130 188 158 172 Z" fill="#FFF" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+          <rect x="120" y="158" width="20" height="8" rx="3" fill="#F4C095" stroke="${stroke}" stroke-width="2.2"/>
+        </g>`;
+    case 'surprised_o':
+      return `
+        <g>
+          <path d="M86 122 Q100 112 116 122 M144 122 Q160 112 174 122" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="102" cy="144" r="13" fill="#FFF" stroke="${stroke}" stroke-width="4"/>
+          <circle cx="158" cy="144" r="13" fill="#FFF" stroke="${stroke}" stroke-width="4"/>
+          <circle cx="102" cy="144" r="6" fill="${stroke}"/><circle cx="158" cy="144" r="6" fill="${stroke}"/>
+          <ellipse cx="130" cy="178" rx="7" ry="9" fill="#E07A7A" stroke="${stroke}" stroke-width="3.5"/>
+        </g>`;
+    case 'meh_yawn':
+      return `
+        <g>
+          <path d="M86 130 Q102 124 116 132 M144 132 Q158 124 174 130" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="102" cy="146" r="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <circle cx="158" cy="146" r="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <path d="M91 145 Q102 136 113 145 Z M147 145 Q158 136 169 145 Z" fill="#E6C9A8" stroke="${stroke}" stroke-width="3"/>
+          <circle cx="102" cy="150" r="4" fill="${stroke}"/><circle cx="158" cy="150" r="4" fill="${stroke}"/>
+          <path d="M114 192 Q112 168 130 168 Q148 168 146 192 Z" fill="#9E2A2B" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M120 192 Q130 184 140 192" fill="#FF8FA3"/>
+        </g>`;
+    case 'pipe_relaxed':
+      return `
+        <g>
+          <path d="M86 130 Q102 124 116 132 M144 132 Q158 124 174 130" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <ellipse cx="102" cy="146" rx="12" ry="9" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <ellipse cx="158" cy="146" rx="12" ry="9" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <path d="M90 145 Q102 136 114 145 Z M146 145 Q158 136 170 145 Z" fill="#E6C9A8" stroke="${stroke}" stroke-width="3"/>
+          <circle cx="102" cy="149" r="3.5" fill="${stroke}"/><circle cx="158" cy="149" r="3.5" fill="${stroke}"/>
+          <path d="M108 174 Q124 180 138 172" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+          <path d="M134 174 Q150 182 164 178" fill="none" stroke="#6F4E37" stroke-width="5" stroke-linecap="round"/>
+          <path d="M160 170 L178 170 L176 188 Q170 194 164 188 Z" fill="#8C5A2B" stroke="${stroke}" stroke-width="3" stroke-linejoin="round"/>
+        </g>`;
+    case 'unimpressed':
+      return `
+        <g>
+          <path d="M86 132 L116 130 M144 128 Q160 120 174 128" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <ellipse cx="102" cy="146" rx="12" ry="8" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <ellipse cx="158" cy="146" rx="12" ry="8" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
+          <path d="M90 145 L114 145 L114 141 Q102 137 90 141 Z M146 145 L170 145 L170 141 Q158 137 146 141 Z" fill="#E6C9A8" stroke="${stroke}" stroke-width="2.5"/>
+          <circle cx="108" cy="149" r="3.5" fill="${stroke}"/><circle cx="164" cy="149" r="3.5" fill="${stroke}"/>
+          <path d="M112 178 Q130 172 148 178" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+        </g>`;
+    case 'musketeer':
+      return `
+        <g>
+          <path d="M86 124 Q100 116 116 124 M144 124 Q160 116 174 124" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+          <circle cx="102" cy="142" r="7.5" fill="${stroke}"/><circle cx="158" cy="142" r="7.5" fill="${stroke}"/>
+          <circle cx="99" cy="139" r="2.5" fill="#FFF"/><circle cx="155" cy="139" r="2.5" fill="#FFF"/>
+          <path d="M130 162 C116 154 100 166 92 158 C88 154 92 148 96 152 M130 162 C144 154 160 166 168 158 C172 154 168 148 164 152" fill="none" stroke="#3B2314" stroke-width="6" stroke-linecap="round"/>
+          <path d="M116 174 Q130 180 144 174" fill="none" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/>
+          <path d="M122 182 L138 182 L130 200 Z" fill="#3B2314" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>
         </g>`;
     case 'king_beard':
     default:

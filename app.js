@@ -62,10 +62,11 @@ const GAMES = {
   sahlab: { name: 'سحلب', img: '/assets/ui/sahlab.jpg', tag: 'سلم التلميحات', desc: 'صورة مموهة و5 تلميحات بتسهل واحدة ورا التانية. خمّن بدري تاخد نقط أكتر، وكل غلطة بتجمد فريقك.' },
   tamr: { name: 'لبن تمر هندي', img: '/assets/ui/tamr.jpg', tag: 'ساعة الشطرنج', desc: 'كل فريق عنده شخصية سرية لازم يخمنها بأسئلة أه/لأ، وساعة شطرنج بتعد على الفريق اللي عليه الدور.' }
 };
+const NEW_CATS = [['anime', 'أنمي'], ['islamic_history', 'تاريخ إسلامي'], ['islamic', 'أسئلة دينية'], ['quran', 'القرآن الكريم'], ['hadith', 'الأحاديث النبوية']];
 const CATS = {
-  karak: [['history', 'تاريخ'], ['geography', 'جغرافيا'], ['science', 'علوم'], ['sports', 'رياضة'], ['cinema', 'أفلام ومسلسلات'], ['food', 'أكل ومشروبات'], ['egypt', 'مصر'], ['animals', 'حيوانات'], ['weird', 'غرائب الشعوب'], ['language', 'لغة وكلمات']],
-  sahlab: [['places', 'أماكن'], ['people', 'مشاهير'], ['food', 'أكل'], ['movies', 'أفلام'], ['things', 'أشياء']],
-  tamr: []
+  karak: [['history', 'تاريخ'], ['geography', 'جغرافيا'], ['science', 'علوم'], ['sports', 'رياضة'], ['cinema', 'أفلام ومسلسلات'], ['food', 'أكل ومشروبات'], ['egypt', 'مصر'], ['animals', 'حيوانات'], ['weird', 'غرائب الشعوب'], ['language', 'لغة وكلمات'], ...NEW_CATS],
+  sahlab: [['places', 'أماكن'], ['people', 'مشاهير'], ['food', 'أكل'], ['movies', 'أفلام'], ['things', 'أشياء'], ...NEW_CATS],
+  tamr: [['celebs', 'مشاهير ونجوم'], ...NEW_CATS]
 };
 
 // ------------------------------------------------------------------
@@ -491,8 +492,13 @@ function viewSetup() {
             <b>${customOk}</b> سؤال جاهز
             <button class="btn olive sm" onclick="openCustom()">${ic('pencil')} ${customOk ? 'عدّل أسئلتك' : 'اكتب أسئلتك'}</button>
           </div>` : `
-          ${cats.length ? `<div class="field"><span>الفئات <small>(لو ماختارتش حاجة هيبقى كوكتيل)</small></span>
-            <div class="chips">${cats.map(([id, l]) => `<button class="chip ${s.categories.includes(id) ? 'on' : ''}" onclick="toggleCat('${id}')">${l}</button>`).join('')}</div></div>` : g === 'tamr' ? '<p class="note">شخصيات مشهورة متنوعة (ممثلين، لاعيبة، مطربين، تاريخ).</p>' : '<p class="note">اختار اللعبة الأول.</p>'}
+          ${cats.length ? `<div class="field"><span>الكتالوج <small>(لو ماختارتش حاجة هيبقى كوكتيل)</small></span>
+            <div class="chips">${cats.map(([id, l]) => `<button class="chip ${s.categories.includes(id) ? 'on' : ''}" onclick="toggleCat('${id}')">${l}</button>`).join('')}</div></div>` : '<p class="note">اختار اللعبة الأول.</p>'}
+          ${g ? `<button class="ai-toggle ${s.ai !== false ? 'on' : ''}" onclick="S.setup.ai=${s.ai === false};render()" aria-pressed="${s.ai !== false}">
+            <span class="ai-orb" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="ai-txt"><b>مساعد الأسئلة الذكي (AI)</b><small>${s.ai !== false ? 'شغال — هيجمع أسئلة وصور جديدة من الكتالوج اللي اخترته ويخلطها مع البنك. (القرآن والأحاديث والأسئلة الدينية من البنك الموثّق بس)' : 'مقفول — الأسئلة من البنك بس'}</small></span>
+            <span class="switch" aria-hidden="true"><span></span></span>
+          </button>` : ''}
           <label class="field"><span>عدد ${g === 'tamr' ? 'الجولات' : 'الأسئلة'}: <b id="countLbl">${s.count}</b></span>
             <input type="range" class="range" min="3" max="20" value="${s.count}" oninput="S.setup.count=+this.value;document.getElementById('countLbl').textContent=this.value"/>
           </label>
@@ -616,6 +622,8 @@ function viewLobbyAdmin() {
           <div><span>الأسئلة</span><b>${esc(catNames)}</b></div>
           <div><span>العدد</span><b>${s.useCustom ? v.customCount : s.count}</b></div>
           <div><span>الوقت</span><b>${timers}</b></div>
+          <div><span>اللاعبين</span><b>${v.players.length} / ${(v.caps || {}).room || 40}</b></div>
+          ${v.ai && v.ai.on ? `<div><span>الـ AI</span><b class="ai-state ${v.ai.status}">${v.ai.status === 'loading' ? '<i class="ai-dot"></i> بيجمع أسئلة جديدة...' : v.ai.status === 'ready' ? `جهّز ${v.ai.ready} سؤال جديد` : v.ai.status === 'verified' ? 'البنك الموثّق' : 'هيكمل من البنك'}</b></div>` : ''}
         </div>
         <p class="note warn">${ic('lock')} الإعدادات هتتقفل أول ما تدوس ابدأ.</p>
       </aside>
@@ -631,7 +639,7 @@ function viewLobbyAdmin() {
             <div class="card team-col team-${t.id}">
               <div class="team-head">
                 <input id="rn${t.id}" class="input team-title" maxlength="24" value="${esc(S.draft['rn' + t.id] ?? t.name)}" oninput="S.draft['rn${t.id}']=this.value" onchange="api('rename_team',{team:'${t.id}',name:this.value});delete S.draft['rn${t.id}']" aria-label="اسم الفريق"/>
-                <span class="count">${playersOf(t.id).length} ${ic('users')}</span>
+                <span class="count">${playersOf(t.id).length}/${(v.caps || {}).team || 20} ${ic('users')}</span>
               </div>
               <ul class="members">${playersOf(t.id).map((p) => memberRow(p, true)).join('') || `<li class="empty">${sticker(t.id === 'A' ? 'latte' : 'pink', 46)}<span>مستني لاعبين...</span></li>`}</ul>
             </div>`).join('')}
@@ -675,8 +683,8 @@ function viewTeamPick() {
         <button class="card team-pick-card team-${t.id}" onclick="api('pick_team',{team:'${t.id}'})">
           <b class="tp-name">${esc(t.name)}</b>
           <div class="tp-avatars">${playersOf(t.id).slice(0, 6).map((p) => avatar(p, 'sm')).join('') || '<span class="sub">لسه فاضي — كن أول واحد</span>'}</div>
-          <span class="tp-count">${playersOf(t.id).length} لاعب</span>
-          <span class="btn primary sm">انضم ${ic('next')}</span>
+          <span class="tp-count">${playersOf(t.id).length} / ${(v.caps || {}).team || 20} لاعب</span>
+          <span class="btn primary sm">${playersOf(t.id).length >= ((v.caps || {}).team || 20) ? 'الفريق كامل' : `انضم ${ic('next')}`}</span>
         </button>`).join('')}
     </div>
   </section>`;
