@@ -39,7 +39,9 @@ const IC = {
   chevR: '<path d="M9 18l6-6-6-6"/>',
   home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>',
-  bolt: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'
+  bolt: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>'
 };
 const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n] || ''}</svg>`;
 
@@ -87,6 +89,13 @@ const ident = LS.get('ident', null) || { pid: 'p_' + randId(6), secret: randId(1
 LS.set('ident', ident);
 
 const savedSetup = LS.get('setup', null) || {};
+const legacyCustom = LS.get('custom', []);
+const savedCustomByGame = LS.get('customByGame', null) || {
+  karak: Array.isArray(legacyCustom) ? legacyCustom : [],
+  sahlab: [],
+  tamr: [],
+  annab: []
+};
 const S = {
   screen: 'home',
   mode: null, // create | join
@@ -107,7 +116,8 @@ const S = {
     hideSecret: false,
     ...savedSetup
   },
-  custom: LS.get('custom', []),
+  customByGame: savedCustomByGame,
+  custom: [],
   customInRoom: false,
   view: null,
   offset: 0,
@@ -126,6 +136,60 @@ const S = {
 };
 if (!S.setup.buzzSec) S.setup.buzzSec = 20;
 S.setup.hideSecret = Boolean(S.setup.hideSecret);
+
+function defaultCustomItem(game) {
+  if (game === 'sahlab') return { truth: '', hints: ['', '', '', '', ''], photo: '' };
+  if (game === 'tamr') return { truth: '', photo: '' };
+  if (game === 'annab') return { q: '', truth: '', bluffs: ['', '', ''] };
+  return { q: '', truth: '' };
+}
+function normalizeCustomItem(it, game) {
+  const x = it && typeof it === 'object' ? it : {};
+  if (game === 'sahlab') {
+    const rawH = Array.isArray(x.hints) ? x.hints : (x.q ? [x.q] : []);
+    return {
+      truth: String(x.truth || x.answer || ''),
+      hints: [0, 1, 2, 3, 4].map((i) => String(rawH[i] ?? '')),
+      photo: String(x.photo || '')
+    };
+  }
+  if (game === 'tamr') {
+    return {
+      truth: String(x.truth || x.name || ''),
+      photo: String(x.photo || '')
+    };
+  }
+  if (game === 'annab') {
+    const rawB = Array.isArray(x.bluffs) ? x.bluffs : [];
+    return {
+      q: String(x.q || ''),
+      truth: String(x.truth || ''),
+      bluffs: [0, 1, 2].map((i) => String(rawB[i] ?? ''))
+    };
+  }
+  return { q: String(x.q || ''), truth: String(x.truth || '') };
+}
+function isCustomValid(it, game) {
+  if (!it || !String(it.truth || '').trim()) return false;
+  if (game === 'tamr') return true;
+  if (game === 'sahlab') return Array.isArray(it.hints) && it.hints.some((h) => String(h || '').trim());
+  return Boolean(String(it.q || '').trim());
+}
+function curCustomGame() {
+  const inRoom = Boolean(S.customInRoom && S.view);
+  return (inRoom ? S.view.game : S.setup.game) || 'karak';
+}
+function customList(game = curCustomGame()) {
+  const g = ['karak', 'sahlab', 'tamr', 'annab'].includes(game) ? game : 'karak';
+  if (!Array.isArray(S.customByGame[g])) S.customByGame[g] = [];
+  S.customByGame[g] = S.customByGame[g].map((it) => normalizeCustomItem(it, g));
+  S.custom = S.customByGame[g];
+  return S.customByGame[g];
+}
+function validCustomList(game = curCustomGame()) {
+  const g = ['karak', 'sahlab', 'tamr', 'annab'].includes(game) ? game : 'karak';
+  return customList(g).filter((it) => isCustomValid(it, g));
+}
 
 const NON_BLOCKING_ACTIONS = new Set([
   'adjust_score', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
@@ -552,7 +616,8 @@ function viewSetup() {
   const s = S.setup;
   const g = s.game;
   const cats = g ? CATS[g] : [];
-  const customOk = S.custom.filter((c) => c.q && c.truth).length;
+  const customOk = g ? validCustomList(g).length : 0;
+  const unitLbl = g === 'tamr' ? 'شخصية جاهزة' : 'سؤال جاهز';
   return `${topbar(stepper(['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'], 1))}
   <section class="wrap setup">
     <div class="setup-head">
@@ -590,11 +655,11 @@ function viewSetup() {
           <button class="${!s.useCustom ? 'on' : ''}" onclick="S.setup.useCustom=false;render()">بنك الأسئلة</button>
           <button class="${s.useCustom ? 'on' : ''}" onclick="S.setup.useCustom=true;render()">أسئلتك الخاصة (كاستم)</button>
         </div>
-        ${s.useCustom ? `
+        ${s.useCustom ? (g ? `
           <div class="custom-sum">
-            <b>${customOk}</b> سؤال جاهز
+            <div><b>${customOk}</b> ${unitLbl} <small>(${GAMES[g].name})</small></div>
             <button class="btn olive sm" onclick="openCustom()">${ic('pencil')} ${customOk ? 'عدّل أسئلتك' : 'اكتب أسئلتك'}</button>
-          </div>` : `
+          </div>` : '<p class="note">اختار اللعبة الأول عشان تفتح صفحة أسئلتها الخاصة.</p>') : `
           ${cats.length ? `<div class="field"><span>الكتالوج <small>(لو ماختارتش حاجة هيبقى كوكتيل)</small></span>
             <div class="chips">${cats.map(([id, l]) => `<button class="chip ${s.categories.includes(id) ? 'on' : ''}" onclick="toggleCat('${id}')">${l}</button>`).join('')}</div></div>` : '<p class="note">اختار اللعبة الأول.</p>'}
           ${g ? `<button class="ai-toggle ${s.ai !== false ? 'on' : ''}" onclick="S.setup.ai=${s.ai === false};render()" aria-pressed="${s.ai !== false}">
@@ -633,13 +698,14 @@ function pickGame(k) {
   S.setup.game = k;
   S.setup.categories = [];
   if (k === 'annab') S.setup.count = 20;
+  customList(k);
   render();
 }
 function toggleCat(id) { const c = S.setup.categories; const i = c.indexOf(id); i >= 0 ? c.splice(i, 1) : c.push(id); render(); }
 async function createRoom() {
   const s = S.setup;
   if (!s.game) return toast('اختار اللعبة الأول', 'err');
-  const custom = S.custom.filter((c) => c.q.trim() && c.truth.trim());
+  const custom = validCustomList(s.game);
   if (s.useCustom && !custom.length) return toast('اكتب أسئلة الكاستم الأول', 'err');
   if (s.useCustom && s.game === 'tamr' && custom.length < 2) return toast('تمر هندي محتاج شخصيتين على الأقل', 'err');
   LS.set('setup', s);
@@ -652,52 +718,304 @@ async function createRoom() {
 }
 
 // ==================================================================
-// 4) صفحة الأسئلة المخصصة (كاستم)
+// 4) صفحة الأسئلة المخصصة (كاستم — مخصصة لكل لعبة)
 // ==================================================================
+function annabBluffStatusText(c) {
+  const filled = Array.isArray(c.bluffs) ? c.bluffs.filter((b) => String(b || '').trim()).length : 0;
+  if (filled === 0) return 'الـ AI هيكمّل الـ 3 اختيارات تلقائياً';
+  if (filled === 1) return 'كتبت اختيار · الـ AI هيكمّل 2';
+  if (filled === 2) return 'كتبت اختيارين · الـ AI هيكمّل 1';
+  return 'كتبت الـ 3 اختيارات بإيدك';
+}
+
+function updateCustomMeta(idx) {
+  saveCustom();
+  const g = curCustomGame();
+  const list = customList(g);
+  const ok = validCustomList(g).length;
+  const pill = document.getElementById('customReadyPill');
+  if (pill) pill.textContent = `${ok} / ${list.length} ${g === 'tamr' ? 'شخصية جاهزة' : 'سؤال جاهز'}`;
+  if (g === 'annab' && idx !== undefined && list[idx]) {
+    const bEl = document.getElementById('annabBluffBadge_' + idx);
+    if (bEl) bEl.textContent = annabBluffStatusText(list[idx]);
+  }
+}
+
+function switchCustomGame(k) {
+  const inRoom = Boolean(S.customInRoom && S.view);
+  if (inRoom) {
+    lobbyPickGame(k);
+  } else {
+    S.setup.game = k;
+    LS.set('setup', S.setup);
+  }
+  const list = customList(k);
+  if (!list.length) presetCustom(k === 'tamr' ? 6 : 5, true, k);
+  render();
+}
+
+function uploadCustomPhoto(idx, inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if (!file) return;
+  const g = curCustomGame();
+  const list = customList(g);
+  if (!list[idx]) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 440;
+      let w = img.width || 300;
+      let h = img.height || 300;
+      if (w > maxDim || h > maxDim) {
+        if (w >= h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+        else { w = Math.round((w * maxDim) / h); h = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFBF2';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      list[idx].photo = dataUrl;
+      saveCustom();
+      toast('اترفعت الصورة بنجاح');
+      render();
+    };
+    img.onerror = () => toast('ملف الصورة مش مدعوم — جرب صورة تانية', 'err');
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearCustomPhoto(idx) {
+  const g = curCustomGame();
+  const list = customList(g);
+  if (!list[idx]) return;
+  list[idx].photo = '';
+  saveCustom();
+  render();
+}
+
+function addCustomItem() {
+  const g = curCustomGame();
+  const list = customList(g);
+  list.push(defaultCustomItem(g));
+  saveCustom();
+  render();
+}
+
+function removeCustomItem(idx) {
+  const g = curCustomGame();
+  const list = customList(g);
+  list.splice(idx, 1);
+  saveCustom();
+  render();
+}
+
+function renderCustomPhotoBox(c, i, isTamr) {
+  const label = isTamr ? '٢) صورة الشخصية (اختياري)' : 'صورة السؤال (اختياري)';
+  const emptyNote = isTamr
+    ? 'بدون صورة: هيتكتب اسم الشخصية بس في نص الكارت (مش هنجيب صورة من النت)'
+    : 'بدون صورة: هيتكتب الاسم (الإجابة) بس في نص الشاشة من غير أي صورة من النت';
+  return `<div class="custom-photo-box ${c.photo ? 'has-photo' : ''}">
+    <input type="file" id="cfile_${i}" accept="image/*" style="display:none" onchange="uploadCustomPhoto(${i}, this)"/>
+    <div class="custom-photo-head">
+      <span class="field-lbl">${ic('image')} ${label}</span>
+      <div class="row wrap-row">
+        <button type="button" class="btn olive sm" onclick="document.getElementById('cfile_${i}').click()">
+          ${ic('upload')} ${c.photo ? 'تغيير الصورة' : (isTamr ? 'ارفع صورة الشخصية (اختياري)' : 'ارفع صورة (اختياري)')}
+        </button>
+        ${c.photo ? `<button type="button" class="btn danger sm" onclick="clearCustomPhoto(${i})">${ic('trash')} حذف الصورة (${isTamr ? 'الاسم بس' : 'الاسم بس'})</button>` : ''}
+      </div>
+    </div>
+    ${c.photo
+      ? `<div class="custom-photo-preview"><img src="${esc(c.photo)}" alt="معاينة الصورة"/><span>${isTamr ? 'صورة الشخصية جاهزة وهتظهر في الكارت' : 'الصورة جاهزة وهتظهر مموهة وتوضح مع التلميحات'}</span></div>`
+      : `<div class="custom-no-photo-badge">${ic('check')} <span>${emptyNote}</span></div>`}
+  </div>`;
+}
+
 function viewCustom() {
   const inRoom = Boolean(S.customInRoom && S.view);
-  const g = inRoom ? S.view.game : S.setup.game;
-  const qLabel = g === 'sahlab' ? 'التلميح' : g === 'tamr' ? 'وصف الشخصية' : 'السؤال';
-  const aLabel = g === 'tamr' ? 'اسم الشخصية' : 'الإجابة الصح';
+  const g = curCustomGame();
+  const list = customList(g);
+  const readyCount = validCustomList(g).length;
+  const isTamr = g === 'tamr';
+
+  const gameMeta = {
+    karak: {
+      title: 'أسئلتك الخاصة — لعبة كرك',
+      desc: 'اكتب <b>السؤال</b> و<b>الإجابة الصح</b> لكل سؤال، وزوّد أو قلّل عدد الأسئلة براحتك. (لو حطيت <b>____</b> في السؤال هيبان مكانها علامة الفراغ، والـ AI هيكمّل إجابتين مزيفين مع إجابات الفريقين).',
+      addLbl: 'أضف سؤال جديد'
+    },
+    sahlab: {
+      title: 'أسئلتك الخاصة — لعبة سحلب',
+      desc: 'كل سؤال ليه <b>الإجابة الصح</b> و<b>5 تلميحات تدريجية</b> (التلميح الأول لحد التلميح الخامس) + <b>ميزة رفع صورة (اختياري)</b>. لو مارفعتش صورة، هيبقى مكتوب الإجابة بس في نص الشاشة من غير أي صورة من النت.',
+      addLbl: 'أضف سؤال جديد (بـ 5 تلميحات)'
+    },
+    tamr: {
+      title: 'أسئلتك الخاصة — لعبة لبن تمر هندي',
+      desc: 'حاجتين بس لكل شخصية: <b>١) اسم الشخصية</b> و<b>٢) صورة الشخصية (اختياري)</b>. لو مفيش صورة، هيتحط اسم الشخصية بس في نص الكارت ومش هنجيب صورة من النت.',
+      addLbl: 'أضف شخصية جديدة'
+    },
+    annab: {
+      title: 'أسئلتك الخاصة — لعبة عنّاب',
+      desc: 'شبه كرك: اكتب <b>السؤال</b>، وبعدين <b>الإجابة الصح</b>، وبعدين <b>الاختيارات التانية الغلط</b> لو عايز تكتبها بإيدك — أو سيبها فاضية والـ <b>AI</b> هيكتب الاختيارات الباقية تلقائياً.',
+      addLbl: 'أضف سؤال جديد'
+    }
+  }[g];
+
+  const hintMeta = [
+    ['التلميح الأول', '100 نقطة — الأصعب'],
+    ['التلميح الثاني', '80 نقطة'],
+    ['التلميح الثالث', '60 نقطة'],
+    ['التلميح الرابع', '40 نقطة'],
+    ['التلميح الخامس', '20 نقطة — الأسهل']
+  ];
+
+  const cardsHtml = list.map((c, i) => {
+    if (g === 'karak') {
+      return `<div class="card q-row custom-card custom-karak" data-custom-card="${i}">
+        <div class="q-card-head">
+          <span class="q-badge">السؤال ${i + 1}</span>
+          <button type="button" class="icon-btn danger" aria-label="حذف السؤال" title="حذف السؤال" onclick="removeCustomItem(${i})">${ic('trash')}</button>
+        </div>
+        <div class="q-fields">
+          <label class="field"><span>السؤال</span>
+            <textarea id="cq${i}" class="input" rows="2" maxlength="220" oninput="customList('karak')[${i}].q=this.value;updateCustomMeta(${i})" placeholder="مثال: أطول حرب في التاريخ استمرت ____">${esc(c.q)}</textarea>
+          </label>
+          <label class="field"><span>الإجابة الصح</span>
+            <input id="ca${i}" class="input" maxlength="80" value="${esc(c.truth)}" oninput="customList('karak')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="مثال: 335 سنة"/>
+          </label>
+        </div>
+      </div>`;
+    }
+
+    if (g === 'sahlab') {
+      return `<div class="card q-row custom-card custom-sahlab" data-custom-card="${i}">
+        <div class="q-card-head">
+          <span class="q-badge">السؤال ${i + 1} <small>(سؤال واحد و5 تلميحات)</small></span>
+          <button type="button" class="icon-btn danger" aria-label="حذف السؤال" title="حذف السؤال" onclick="removeCustomItem(${i})">${ic('trash')}</button>
+        </div>
+        <div class="q-fields">
+          <label class="field"><span>الإجابة الصح <small>(الاسم اللي هيظهر في نص الشاشة)</small></span>
+            <input id="ca${i}" class="input big" maxlength="80" value="${esc(c.truth)}" oninput="customList('sahlab')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="اكتب الإجابة هنا (مثال: برج إيفل، الكشري، محمد صلاح...)"/>
+          </label>
+          <div class="sahlab-hints-box">
+            <span class="field-lbl">${ic('bulb')} التلميحات الخمسة للسؤال رقم ${i + 1}</span>
+            <div class="sahlab-hints-grid">
+              ${hintMeta.map(([hName, hPts], hIdx) => `
+                <label class="field hint-field">
+                  <span><b>${hIdx + 1}. ${hName}</b> <small>(${hPts})</small></span>
+                  <input id="ch_${i}_${hIdx}" class="input" maxlength="220" value="${esc((c.hints && c.hints[hIdx]) || '')}" oninput="customList('sahlab')[${i}].hints[${hIdx}]=this.value;updateCustomMeta(${i})" placeholder="اكتب ${hName}..."/>
+                </label>`).join('')}
+            </div>
+          </div>
+          ${renderCustomPhotoBox(c, i, false)}
+        </div>
+      </div>`;
+    }
+
+    if (g === 'tamr') {
+      return `<div class="card q-row custom-card custom-tamr" data-custom-card="${i}">
+        <div class="q-card-head">
+          <span class="q-badge">الشخصية ${i + 1}</span>
+          <button type="button" class="icon-btn danger" aria-label="حذف الشخصية" title="حذف الشخصية" onclick="removeCustomItem(${i})">${ic('trash')}</button>
+        </div>
+        <div class="q-fields">
+          <label class="field"><span>١) اسم الشخصية</span>
+            <input id="ca${i}" class="input big" maxlength="80" value="${esc(c.truth)}" oninput="customList('tamr')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="اكتب اسم الشخصية بس (مثال: عادل إمام، باتمان، أحمد زويل...)"/>
+          </label>
+          ${renderCustomPhotoBox(c, i, true)}
+        </div>
+      </div>`;
+    }
+
+    // عنّاب (annab)
+    return `<div class="card q-row custom-card custom-annab" data-custom-card="${i}">
+      <div class="q-card-head">
+        <span class="q-badge">السؤال ${i + 1}</span>
+        <span class="pill ai-bluff-pill" id="annabBluffBadge_${i}">${annabBluffStatusText(c)}</span>
+        <button type="button" class="icon-btn danger" aria-label="حذف السؤال" title="حذف السؤال" onclick="removeCustomItem(${i})">${ic('trash')}</button>
+      </div>
+      <div class="q-fields">
+        <label class="field"><span>السؤال</span>
+          <textarea id="cq${i}" class="input" rows="2" maxlength="220" oninput="customList('annab')[${i}].q=this.value;updateCustomMeta(${i})" placeholder="اكتب السؤال هنا...">${esc(c.q)}</textarea>
+        </label>
+        <label class="field"><span>الإجابة الصح</span>
+          <input id="ca${i}" class="input" maxlength="60" value="${esc(c.truth)}" oninput="customList('annab')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="اكتب الإجابة الصح..."/>
+        </label>
+        <div class="annab-bluffs-box">
+          <div class="annab-bluffs-head">
+            <span class="field-lbl">الاختيارات التانية الغلط (اختياري — لو سبت أي خانة فاضية الـ AI هيكتبها تلقائياً)</span>
+          </div>
+          <div class="annab-bluffs-grid">
+            ${[0, 1, 2].map((bIdx) => `
+              <label class="field bluff-field">
+                <span>الاختيار الغلط ${bIdx + 1} <small>(اختياري)</small></span>
+                <input id="cb_${i}_${bIdx}" class="input" maxlength="60" value="${esc((c.bluffs && c.bluffs[bIdx]) || '')}" oninput="customList('annab')[${i}].bluffs[${bIdx}]=this.value;updateCustomMeta(${i})" placeholder="سيبه فاضي لو عايز الـ AI يكتبه"/>
+              </label>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
   return `${topbar(stepper(['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'], inRoom ? 2 : 1))}
-  <section class="wrap narrow custom">
-    <div class="card tape">
-      <h1 class="h1">${ic('pencil')} أسئلتك الخاصة (${GAMES[g] ? GAMES[g].name : ''})</h1>
-      <p class="sub">اكتب ${qLabel} و${aLabel}. ${g === 'karak' ? 'في كرك حط <b>____</b> مكان الإجابة في السؤال، والـ AI هيجيب إجابتين مزيفين لكل سؤال.' : g === 'annab' ? 'في عنّاب اكتب السؤال والإجابة الصح، والسيرفر هيكمّل الـ 3 اختيارات التانيين تلقائياً.' : ''}</p>
+  <section class="wrap custom">
+    <div class="card tape custom-head-card">
+      <div class="custom-game-tabs" role="tablist" aria-label="اختيار اللعبة لتعديل أسئلتها الخاصة">
+        ${Object.entries(GAMES).map(([k, G]) => `
+          <button type="button" role="tab" class="custom-game-tab ${g === k ? 'on' : ''}" onclick="switchCustomGame('${k}')" aria-selected="${g === k}">
+            <img src="${G.img}" alt="" class="blend"/>
+            <span>${G.name}</span>
+          </button>`).join('')}
+      </div>
+      <h1 class="h1">${ic('pencil')} ${gameMeta.title}</h1>
+      <p class="sub">${gameMeta.desc}</p>
       <div class="row wrap-row">
-        <button class="btn ghost sm" onclick="presetCustom(10)">10 أسئلة</button>
-        <button class="btn ghost sm" onclick="presetCustom(20)">20 سؤال</button>
+        <button type="button" class="btn ghost sm" onclick="presetCustom(5)">${isTamr ? '5 شخصيات' : '5 أسئلة'}</button>
+        <button type="button" class="btn ghost sm" onclick="presetCustom(10)">${isTamr ? '10 شخصيات' : '10 أسئلة'}</button>
+        <button type="button" class="btn ghost sm" onclick="presetCustom(20)">${isTamr ? '20 شخصية' : '20 سؤال'}</button>
+        <button type="button" class="btn olive sm" onclick="addCustomItem()">${ic('plus')} ${gameMeta.addLbl}</button>
         <span class="spacer"></span>
-        <span class="pill">${S.custom.filter((c) => c.q && c.truth).length} / ${S.custom.length} جاهز</span>
+        <span class="pill" id="customReadyPill">${readyCount} / ${list.length} ${isTamr ? 'شخصية جاهزة' : 'سؤال جاهز'}</span>
       </div>
     </div>
     <div class="custom-list">
-      ${S.custom.map((c, i) => `
-        <div class="card q-row">
-          <div class="q-num">${i + 1}</div>
-          <div class="q-fields">
-            <label class="field"><span>${qLabel}</span><textarea id="cq${i}" class="input" rows="2" maxlength="220" oninput="S.custom[${i}].q=this.value;saveCustom()" placeholder="${g === 'karak' ? 'مثال: أطول حرب في التاريخ استمرت ____' : ''}">${esc(c.q)}</textarea></label>
-            <label class="field"><span>${aLabel}</span><input id="ca${i}" class="input" maxlength="60" value="${esc(c.truth)}" oninput="S.custom[${i}].truth=this.value;saveCustom()"/></label>
-          </div>
-          <button class="icon-btn danger" aria-label="حذف" onclick="S.custom.splice(${i},1);saveCustom();render()">${ic('trash')}</button>
-        </div>`).join('')}
-      <button class="btn ghost block" onclick="S.custom.push({q:'',truth:''});saveCustom();render()">${ic('plus')} أضف سؤال</button>
+      ${cardsHtml}
+      <button type="button" class="btn olive block lg" onclick="addCustomItem()">${ic('plus')} ${gameMeta.addLbl}</button>
     </div>
     <div class="next-bar">
-      ${inRoom ? `<button class="btn ghost lg" onclick="S.customInRoom=false;render()">رجوع لغرفة الانتظار</button>` : ''}
-      <button class="btn primary lg" onclick="finishCustom()">${ic('check')} ${inRoom ? 'احفظ في الغرفة وارجع للانتظار' : 'احفظ وكمّل الإعداد'}</button>
+      ${inRoom ? `<button type="button" class="btn ghost lg" onclick="S.customInRoom=false;render()">رجوع لغرفة الانتظار</button>` : `<button type="button" class="btn ghost lg" onclick="S.screen='setup';render()">رجوع للإعداد</button>`}
+      <button type="button" class="btn primary lg" onclick="finishCustom()">${ic('check')} ${inRoom ? 'احفظ في الغرفة وارجع للانتظار' : 'احفظ وكمّل الإعداد'}</button>
     </div>
   </section>`;
 }
-function openCustom() { if (!S.custom.length) presetCustom(10, true); S.customInRoom = false; S.screen = 'custom'; render(); }
-function openCustomInLobby() { if (!S.custom.length) presetCustom(10, true); S.customInRoom = true; render(); }
+function openCustom() {
+  const g = S.setup.game || 'karak';
+  if (!S.setup.game) S.setup.game = g;
+  if (!customList(g).length) presetCustom(g === 'tamr' ? 6 : 5, true, g);
+  S.customInRoom = false;
+  S.screen = 'custom';
+  render();
+}
+function openCustomInLobby() {
+  const g = (S.view && S.view.game) || S.setup.game || 'karak';
+  if (!customList(g).length) presetCustom(g === 'tamr' ? 6 : 5, true, g);
+  S.customInRoom = true;
+  render();
+}
 async function finishCustom() {
   saveCustom();
+  const g = curCustomGame();
+  const custom = validCustomList(g);
   if (S.customInRoom && S.view) {
-    const custom = S.custom.filter((c) => c.q.trim() && c.truth.trim());
-    if (!custom.length) return toast('اكتب سؤال واحد على الأقل الأول', 'err');
-    if (S.view.game === 'tamr' && custom.length < 2) return toast('تمر هندي محتاج شخصيتين على الأقل', 'err');
-    await api('update_lobby', { settings: { useCustom: true }, customPack: custom });
+    if (!custom.length) return toast(g === 'tamr' ? 'اكتب اسم شخصيتين على الأقل الأول' : 'اكتب سؤال واحد كامل على الأقل الأول', 'err');
+    if (g === 'tamr' && custom.length < 2) return toast('تمر هندي محتاج شخصيتين على الأقل', 'err');
+    await api('update_lobby', { game: g, settings: { useCustom: true }, customPack: custom });
     S.customInRoom = false;
     toast('اتحفظت الأسئلة الخاصة في الغرفة');
     render();
@@ -707,13 +1025,21 @@ async function finishCustom() {
   S.screen = 'setup';
   render();
 }
-function presetCustom(n, silent) {
-  while (S.custom.length < n) S.custom.push({ q: '', truth: '' });
-  if (S.custom.length > n) S.custom = S.custom.slice(0, n).concat(S.custom.slice(n).filter((c) => c.q || c.truth));
+function presetCustom(n, silent, gameArg) {
+  const g = gameArg || curCustomGame();
+  const list = customList(g);
+  while (list.length < n) list.push(defaultCustomItem(g));
+  if (list.length > n) {
+    S.customByGame[g] = list.slice(0, n).concat(list.slice(n).filter((c) => isCustomValid(c, g)));
+    S.custom = S.customByGame[g];
+  }
   saveCustom();
   if (!silent) render();
 }
-function saveCustom() { LS.set('custom', S.custom); }
+function saveCustom() {
+  LS.set('customByGame', S.customByGame);
+  LS.set('custom', S.customByGame.karak || []);
+}
 
 // ==================================================================
 // 5) غرفة الانتظار
@@ -751,7 +1077,8 @@ function lobbyPickGame(k) {
     nextSettings.count = 20;
   }
   LS.set('setup', S.setup);
-  api('update_lobby', { game: k, settings: nextSettings });
+  const custom = validCustomList(k);
+  api('update_lobby', { game: k, settings: nextSettings, customPack: custom });
 }
 function lobbyToggleCat(id) {
   const v = S.view;
@@ -769,7 +1096,8 @@ function lobbySetSetting(key, val) {
   api('update_lobby', { settings: { [key]: val } });
 }
 function lobbySetCustom(useCustom) {
-  const custom = S.custom.filter((c) => c.q.trim() && c.truth.trim());
+  const g = (S.view && S.view.game) || S.setup.game || 'karak';
+  const custom = validCustomList(g);
   S.setup.useCustom = useCustom;
   LS.set('setup', S.setup);
   api('update_lobby', { settings: { useCustom }, customPack: custom });
@@ -780,11 +1108,12 @@ function viewLobbyAdmin() {
   const s = v.settings;
   const g = v.game;
   const cats = CATS[g] || [];
-  const customReady = v.customCount || S.custom.filter((c) => c.q && c.truth).length;
+  const customReady = v.customCount || validCustomList(g).length;
+  const unitLbl = g === 'tamr' ? 'شخصية جاهزة' : 'سؤال جاهز';
   const unassigned = v.players.filter((p) => !p.team);
   const empty = v.teams.filter((t) => !playersOf(t.id).length);
   const timers = v.game === 'karak' ? `كتابة ${s.writeSec}ث · اختيار ${s.voteSec}ث` : v.game === 'sahlab' ? `كل تلميح ${s.hintSec}ث` : v.game === 'annab' ? `الباز والإجابة ${s.buzzSec || 20}ث` : `ساعة ${mmss(s.chessSec)} لكل فريق`;
-  const catNames = s.useCustom ? `كاستم (${customReady} سؤال)` : s.categories.length ? s.categories.map((c) => (cats.find((x) => x[0] === c) || [c, c])[1]).join('، ') : 'كوكتيل';
+  const catNames = s.useCustom ? `كاستم (${customReady} ${g === 'tamr' ? 'شخصية' : 'سؤال'})` : s.categories.length ? s.categories.map((c) => (cats.find((x) => x[0] === c) || [c, c])[1]).join('، ') : 'كوكتيل';
   return `${topbar(stepper(['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'], 2))}
   <section class="wrap wide lobby">
     <div class="lobby-grid">
@@ -848,7 +1177,7 @@ function viewLobbyAdmin() {
               </div>
               ${s.useCustom ? `
                 <div class="custom-sum">
-                  <div><b>${customReady}</b> سؤال جاهز</div>
+                  <div><b>${customReady}</b> ${unitLbl} <small>(${GAMES[g].name})</small></div>
                   <button class="btn olive sm" onclick="openCustomInLobby()">${ic('pencil')} ${customReady ? 'عدّل أسئلتك' : 'اكتب أسئلتك'}</button>
                 </div>` : `
                 <div class="field">
@@ -1145,6 +1474,12 @@ function viewSahlab() {
   const photo = hasPhoto
     ? `<div class="photo-frame"><div class="photo" style="filter:blur(${blur}px)"><img src="${esc(sh.photo)}" alt="" onerror="const f=this.closest('.photo-frame');if(f)f.remove();const g=document.querySelector('.sahlab-grid');if(g)g.classList.add('no-photo');"/></div><span class="photo-tag">${solved ? 'اتكشفت الصورة' : `وضوح الصورة ${sh.hintIdx + 1}/5`}</span></div>`
     : '';
+  const noPhotoCenterBox = !hasPhoto && admin && !solved
+    ? `<div class="card sahlab-name-center ${hideSecret ? 'is-hidden' : ''}">
+        <span class="sub">الإجابة المطلوبة (سؤال بدون صورة)</span>
+        <b class="sahlab-center-ans">${hideSecret ? '••• مخفية (وضع التلفزيون) •••' : esc(sh.answer)}</b>
+      </div>`
+    : '';
   const frozenPills = `<div class="pills">${v.teams.map((x) => {
     const isFrz = Boolean(sh.frozen[x.id]);
     const isPend = Boolean(sh.pending[x.id]);
@@ -1201,7 +1536,7 @@ function viewSahlab() {
     <div class="sahlab-grid ${hasPhoto ? '' : 'no-photo'}">
       ${hasPhoto ? `<div>${photo}<div class="value-badge">قيمة التلميح الحالي: <b>${sh.value}</b> نقطة</div>${frozenPills}</div>` : ''}
       <div>
-        ${!hasPhoto ? `<div class="value-badge">قيمة التلميح الحالي: <b>${sh.value}</b> نقطة</div>${frozenPills}` : ''}
+        ${!hasPhoto ? `${noPhotoCenterBox}<div class="value-badge">قيمة التلميح الحالي: <b>${sh.value}</b> نقطة</div>${frozenPills}` : ''}
         ${ladder}${actions}
       </div>
     </div>
@@ -1240,9 +1575,12 @@ function viewTamr() {
     }
     if (!c) return `<div class="char-card hidden-char">${ic('eyeOff')}<b>شخصيتكم سر!</b><span>اسألوا الفريق التاني أسئلة إجابتها أه أو لأ</span></div>`;
     const photoHtml = c.photo ? `<div class="char-photo"><img src="${esc(c.photo)}" alt="" onerror="this.parentElement.remove()"/></div>` : '';
-    return `<div class="char-card team-${id}">
+    const briefHtml = c.brief ? `<span class="char-brief">${esc(c.brief)}</span>` : '';
+    return `<div class="char-card team-${id} ${c.photo ? '' : 'name-only'}">
       ${photoHtml}
-      <span class="sub">${label}</span><b class="char-name">${esc(c.name)}</b><span class="char-brief">${esc(c.brief)}</span>
+      ${label ? `<span class="sub">${label}</span>` : ''}
+      <b class="char-name">${esc(c.name)}</b>
+      ${briefHtml}
     </div>`;
   };
   let center = '';

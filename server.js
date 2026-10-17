@@ -335,16 +335,36 @@ function sanitizeSettings(game, s = {}) {
   return out;
 }
 
-function sanitizeCustom(list) {
+function cleanPhoto(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s || s.length > 350000) return '';
+  if (/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(s)) {
+    return s.replace(/\s+/g, '');
+  }
+  return '';
+}
+
+function sanitizeCustom(list, game = 'karak') {
   if (!Array.isArray(list)) return [];
   return list
-    .map((x) => ({
-      q: clean(x.q, 220),
-      truth: clean(x.truth, 60),
-      bluffs: Array.isArray(x.bluffs) ? x.bluffs.map((b) => clean(b, 60)).filter(Boolean).slice(0, 3) : []
-    }))
-    .filter((x) => x.q && x.truth)
-    .slice(0, 30);
+    .map((x) => {
+      if (!x || typeof x !== 'object') return null;
+      const q = clean(x.q, 220);
+      const truth = clean(x.truth || x.answer || x.name, 80);
+      const rawHints = Array.isArray(x.hints) ? x.hints.slice(0, 5).map((h) => clean(h, 220)) : [];
+      const nonEmptyHints = rawHints.filter(Boolean);
+      const hints = nonEmptyHints.length ? nonEmptyHints : (q ? [q] : []);
+      const bluffs = Array.isArray(x.bluffs) ? x.bluffs.map((b) => clean(b, 60)).filter(Boolean).slice(0, 3) : [];
+      const photo = cleanPhoto(x.photo);
+      return { q, truth, hints, bluffs, photo };
+    })
+    .filter((x) => {
+      if (!x || !x.truth) return false;
+      if (game === 'tamr') return true;
+      if (game === 'sahlab') return x.hints.length > 0;
+      return Boolean(x.q && x.truth);
+    })
+    .slice(0, 40);
 }
 
 function teamMembers(room, teamId) {
@@ -417,22 +437,35 @@ async function startGame(room) {
   if (s.useCustom && room.customPack.length) {
     items = room.customPack.map((c, i) => {
       if (room.game === 'karak' || room.game === 'annab') {
-        return { id: 'custom_' + i, custom: true, q: c.q, truth: c.truth, bluffs: Array.isArray(c.bluffs) ? [...c.bluffs] : [] };
+        return { id: 'custom_' + i, custom: true, q: c.q, truth: c.truth, bluffs: Array.isArray(c.bluffs) ? c.bluffs.filter(Boolean) : [] };
       }
-      if (room.game === 'sahlab') return { id: 'custom_' + i, custom: true, answer: c.truth, aliases: [], imageQuery: c.truth, hints: [c.q] };
-      return { id: 'custom_' + i, custom: true, name: c.truth, brief: c.q, imageQuery: c.truth };
+      if (room.game === 'sahlab') {
+        const hints = Array.isArray(c.hints) && c.hints.filter(Boolean).length ? c.hints.filter(Boolean).slice(0, 5) : [c.q || 'خمّن الإجابة'];
+        return { id: 'custom_' + i, custom: true, answer: c.truth, aliases: [], imageQuery: '', customPhoto: c.photo || null, hints };
+      }
+      return { id: 'custom_' + i, custom: true, name: c.truth, brief: '', imageQuery: '', customPhoto: c.photo || null };
     });
     if (room.game === 'karak' || room.game === 'annab') {
+      const targetLen = room.game === 'annab' ? 3 : 4;
       const needAi = items.filter((it) => (it.bluffs || []).length < 3);
       if (needAi.length) {
         const ai = await Q.aiBluffsFor(needAi);
         needAi.forEach((it, idx) => {
-          const got = [...(it.bluffs || []), ...(ai[idx] || [])].slice(0, 4);
-          it.bluffs = got.length >= 3 ? got : [...got, ...Q.fallbackBluffs(it.truth, 4)].slice(0, 4);
+          const userBluffs = (it.bluffs || []).filter(Boolean);
+          const seen = new Set([Q.normalizeAr(it.truth), ...userBluffs.map(Q.normalizeAr)]);
+          const extra = [...(ai[idx] || []), ...Q.fallbackBluffs(it.truth, 10)].filter((b) => {
+            const k = Q.normalizeAr(b);
+            if (!k || seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+          it.bluffs = [...userBluffs, ...extra].slice(0, targetLen);
         });
       }
     }
-    if (room.game === 'tamr' && items.length % 2) items.push(...(await Q.pickQuestions('tamr', [], 1)));
+    if (room.game === 'tamr' && items.length % 2 === 1) {
+      items.push({ ...items[0], id: 'custom_pair_' + items.length });
+    }
   } else {
     const need = room.game === 'tamr' ? s.count * 2 : s.count;
     let aiFresh = [];
@@ -583,8 +616,8 @@ function karakReveal(room) {
 async function startSahlabRound(room) {
   const item = room.queue[room.round];
   Q.markUsed('sahlab', item);
-  let initialPhoto = null;
-  if (item.imageQuery) {
+  let initialPhoto = item.customPhoto || null;
+  if (!item.custom && item.imageQuery) {
     initialPhoto = await Promise.race([
       wikiImage(item.imageQuery, item.answer),
       new Promise((r) => setTimeout(() => r(null), 2600))
@@ -606,7 +639,7 @@ async function startSahlabRound(room) {
   room.phase = 'play';
   setDeadline(room, room.settings.hintSec);
   event(room, 'round', { round: room.round });
-  if (item.imageQuery && !initialPhoto) {
+  if (!item.custom && item.imageQuery && !initialPhoto) {
     wikiImage(item.imageQuery, item.answer).then((img) => {
       if (img && room.sh && room.sh.answer === item.answer && !room.sh.photo) {
         room.sh.photo = img;
@@ -689,13 +722,13 @@ async function startTamrRound(room) {
   Q.markUsed('tamr', b);
   const [photoA, photoB] = await Promise.race([
     Promise.all([
-      a.imageQuery ? wikiImage(a.imageQuery, a.name) : Promise.resolve(null),
-      b.imageQuery ? wikiImage(b.imageQuery, b.name) : Promise.resolve(null)
+      a.custom ? Promise.resolve(a.customPhoto || null) : (a.imageQuery ? wikiImage(a.imageQuery, a.name) : Promise.resolve(null)),
+      b.custom ? Promise.resolve(b.customPhoto || null) : (b.imageQuery ? wikiImage(b.imageQuery, b.name) : Promise.resolve(null))
     ]),
-    new Promise((r) => setTimeout(() => r([null, null]), 2600))
+    new Promise((r) => setTimeout(() => r([a.custom ? (a.customPhoto || null) : null, b.custom ? (b.customPhoto || null) : null]), 2600))
   ]);
   room.tm = {
-    chars: { A: { name: a.name, brief: a.brief, photo: photoA }, B: { name: b.name, brief: b.brief, photo: photoB } },
+    chars: { A: { name: a.name, brief: a.brief || '', photo: photoA }, B: { name: b.name, brief: b.brief || '', photo: photoB } },
     turn: room.round % 2 ? 'B' : 'A',
     clocks: { A: room.settings.chessSec, B: room.settings.chessSec },
     lastTick: Date.now(),
@@ -712,10 +745,10 @@ async function startTamrRound(room) {
   setDeadline(room, 0);
   event(room, 'round', { round: room.round });
   const tm = room.tm;
-  if (a.imageQuery && !photoA) {
+  if (!a.custom && a.imageQuery && !photoA) {
     wikiImage(a.imageQuery, a.name).then((img) => { if (img && room.tm === tm && !tm.chars.A.photo) { tm.chars.A.photo = img; broadcast(room); } });
   }
-  if (b.imageQuery && !photoB) {
+  if (!b.custom && b.imageQuery && !photoB) {
     wikiImage(b.imageQuery, b.name).then((img) => { if (img && room.tm === tm && !tm.chars.B.photo) { tm.chars.B.photo = img; broadcast(room); } });
   }
 }
@@ -764,7 +797,8 @@ function startAnnabRound(room) {
   const item = room.queue[room.round];
   Q.markUsed('annab', item);
   const seen = new Set([Q.normalizeAr(item.truth)]);
-  const wrongPool = [...Q.shuffle(item.bluffs || []), ...Q.fallbackBluffs(item.truth, 10)];
+  const baseBluffs = item.custom ? (item.bluffs || []) : Q.shuffle(item.bluffs || []);
+  const wrongPool = [...baseBluffs, ...Q.fallbackBluffs(item.truth, 10)];
   const wrongs = [];
   for (const w of wrongPool) {
     const t = clean(w, 60);
@@ -1038,10 +1072,11 @@ async function handleAction(b) {
   if (action === 'create_room') {
     const game = ['karak', 'sahlab', 'tamr', 'annab'].includes(b.game) ? b.game : ERR('اختار اللعبة الأول');
     const profile = { name: clean(b.profile && b.profile.name, 20) || 'الحكم', outfit: clean(b.profile && b.profile.outfit, 30), face: clean(b.profile && b.profile.face, 30), hat: clean(b.profile && b.profile.hat, 30) };
-    const custom = sanitizeCustom(b.customPack);
+    const custom = sanitizeCustom(b.customPack, game);
     const settings = sanitizeSettings(game, b.settings);
     if (settings.useCustom && !custom.length) ERR('اكتب أسئلة الكاستم الأول');
-    if ((game === 'karak' || game === 'annab') && settings.useCustom && custom.length < 1) ERR('محتاج سؤال واحد على الأقل');
+    if (game === 'tamr' && settings.useCustom && custom.length < 2) ERR('تمر هندي محتاج شخصيتين على الأقل في الكاستم');
+    if ((game === 'karak' || game === 'annab' || game === 'sahlab') && settings.useCustom && custom.length < 1) ERR('محتاج سؤال واحد على الأقل');
     const room = createRoom({ pid: clean(b.pid, 40), secret: clean(b.secret, 40), profile }, game, settings, custom);
     startAiPrefetch(room);
     return { room };
@@ -1218,7 +1253,7 @@ async function handleAction(b) {
 
       const oldGame = room.game;
       if (['karak', 'sahlab', 'tamr', 'annab'].includes(b.game)) room.game = b.game;
-      if (b.customPack !== undefined) room.customPack = sanitizeCustom(b.customPack);
+      if (b.customPack !== undefined) room.customPack = sanitizeCustom(b.customPack, room.game);
 
       const merged = { ...room.settings, ...(b.settings || {}) };
       if (room.game !== oldGame && (!b.settings || b.settings.categories === undefined)) {
@@ -1475,7 +1510,7 @@ async function handleAction(b) {
 function readBody(req) {
   return new Promise((resolve) => {
     let body = '';
-    req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
+    req.on('data', (c) => { body += c; if (body.length > 5e6) req.destroy(); });
     req.on('end', () => { try { resolve(JSON.parse(body || '{}')); } catch (e) { resolve({}); } });
     req.on('error', () => resolve({}));
   });

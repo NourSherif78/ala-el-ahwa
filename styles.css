@@ -795,3 +795,121 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
 .js-btns { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .js-btns .btn { direction: ltr; unicode-bidi: isolate; padding: 6px 4px; min-height: 36px; font-size: .88rem; }
 
+/* ===== صفحة الأسئلة الخاصة المخصصة لكل لعبة ===== */
+.wrap.custom { max-width: 780px; }
+.custom-game-tabs {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  margin-bottom: 14px; padding: 6px; border-radius: 16px;
+  background: var(--card-2); border: 1.5px solid var(--line);
+}
+@media (max-width: 600px) { .custom-game-tabs { grid-template-columns: repeat(2, 1fr); } }
+.custom-game-tab {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 8px 10px; border-radius: 12px; border: 1.5px solid transparent;
+  background: transparent; font-weight: 700; font-size: .92rem; color: var(--ink-2);
+  transition: all .15s;
+}
+.custom-game-tab img { width: 32px; height: 32px; object-fit: cover; flex: none; }
+.custom-game-tab:hover { background: rgba(255, 251, 242, .65); color: var(--ink); }
+.custom-game-tab.on {
+  background: #FFFBF2; color: var(--ink); border-color: var(--brown);
+  box-shadow: 0 2px 0 rgba(94, 62, 38, .12);
+}
+.q-row.custom-card {
+  display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 16px;
+  border-top: 5px solid var(--brown);
+}
+.q-row.custom-card .q-fields { width: 100%; }
+.q-row.custom-sahlab { border-top-color: var(--olive); }
+.q-row.custom-tamr { border-top-color: var(--gold); }
+.q-row.custom-annab { border-top-color: #9E2338; }
+.q-card-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 8px; border-bottom: 1.5px dashed var(--line);
+}
+.q-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--f-display); font-size: 1.25rem; color: var(--brown-d);
+  background: var(--card-2); padding: 3px 14px; border-radius: 999px; border: 1.5px solid var(--line-2);
+}
+.q-badge small { font-family: var(--f-body); font-size: .78rem; color: var(--ink-2); font-weight: 600; }
+.field-lbl {
+  display: flex; align-items: center; gap: 6px;
+  font-weight: 700; font-size: .92rem; color: var(--ink); margin-bottom: 8px;
+}
+.sahlab-hints-box, .annab-bluffs-box {
+  background: var(--card-2); border: 1.5px solid var(--line); border-radius: 14px;
+  padding: 12px 14px; margin: 4px 0 8px;
+}
+.sahlab-hints-grid {
+  display: grid; grid-template-columns: 1fr; gap: 8px;
+}
+.sahlab-hints-grid .hint-field { margin-bottom: 0; }
+.sahlab-hints-grid .hint-field > span { font-size: .86rem; margin-bottom: 4px; }
+.annab-bluffs-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+}
+@media (max-width: 680px) { .annab-bluffs-grid { grid-template-columns: 1fr; } }
+.annab-bluffs-grid .bluff-field { margin-bottom: 0; }
+.ai-bluff-pill { background: #F4F1E2; border-color: var(--olive); color: var(--olive-d); font-size: .8rem; }
+
+/* صندوق رفع الصورة الاختياري في سحلب وتمر هندي */
+.custom-photo-box {
+  background: #FFFBF2; border: 1.5px dashed var(--line-2); border-radius: 14px;
+  padding: 12px 14px; margin-top: 4px;
+}
+.custom-photo-box.has-photo { border-style: solid; border-color: var(--olive); background: #F5F9F1; }
+.custom-photo-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
+.custom-photo-head .field-lbl { margin-bottom: 0; }
+.custom-photo-preview {
+  display: flex; align-items: center; gap: 12px; margin-top: 10px;
+  padding-top: 10px; border-top: 1px dashed var(--line);
+}
+.custom-photo-preview img {
+  width: 78px; height: 78px; object-fit: cover; border-radius: 12px;
+  border: 2px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,.15); flex: none;
+}
+.custom-photo-preview span { font-size: .88rem; font-weight: 700; color: var(--olive-d); }
+.custom-no-photo-badge {
+  display: flex; align-items: center; gap: 6px; margin-top: 8px;
+  font-size: .84rem; font-weight: 600; color: var(--ink-2);
+}
+.custom-no-photo-badge > .ic { color: var(--olive); }
+
+/* عرض الإجابة أو اسم الشخصية في نص الكارت لما مفيش صورة */
+.char-card.name-only {
+  justify-content: center;
+  min-height: 200px;
+  padding: 26px 18px;
+  background: radial-gradient(circle at 50% 50%, #FFFDF8 0%, #FBF3E2 100%);
+}
+.char-card.name-only .char-name {
+  font-size: clamp(1.9rem, 4.5vw, 2.5rem);
+  margin: 8px 0;
+  color: var(--brown-d);
+}
+.sahlab-name-center {
+  text-align: center;
+  padding: 18px 16px;
+  border-top: 5px solid var(--olive);
+  background: radial-gradient(circle at 50% 50%, #FFFDF8 0%, #F5EFE0 100%);
+}
+.sahlab-name-center .sub { margin-bottom: 4px; display: block; }
+.sahlab-center-ans {
+  display: block;
+  font-family: var(--f-display);
+  font-size: clamp(1.9rem, 4.5vw, 2.5rem);
+  line-height: 1.2;
+  color: var(--brown-d);
+}
+.sahlab-name-center.is-hidden {
+  border-top-color: var(--gold);
+  background: repeating-linear-gradient(-45deg, #2D3D38 0 10px, #354742 10px 20px);
+  color: #FBEBC4;
+}
+.sahlab-name-center.is-hidden .sub { color: #CFE3DC; }
+.sahlab-name-center.is-hidden .sahlab-center-ans { color: #FFF7E8; font-size: 1.35rem; }
+
+
