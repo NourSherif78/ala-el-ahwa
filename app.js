@@ -181,6 +181,7 @@ const S = {
   savedPacks: LS.get('savedPacks', []),
   custom: [],
   customInRoom: false,
+  editingAvatar: false,
   view: null,
   offset: 0,
   es: null,
@@ -264,7 +265,8 @@ const NON_BLOCKING_ACTIONS = new Set([
   'adjust_score', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
   'update_lobby', 'rename_team', 'kr_suggest', 'kr_vote_suggest', 'sh_suggest', 'tm_suggest',
   'toggle_secret', 'an_buzz', 'an_pick', 'an_suggest', 'an_reset_buzz', 'an_pass_turn', 'an_reveal',
-  'set_team_count', 'set_play_mode', 'add_test_player', 'admin_join_team', 'admin_become_judge'
+  'set_team_count', 'set_play_mode', 'add_test_player', 'admin_join_team', 'admin_become_judge',
+  'update_profile', 'unpick_team', 'leave_room'
 ]);
 
 // ------------------------------------------------------------------
@@ -440,18 +442,170 @@ function logo(size = 'lg') {
   </div>`;
 }
 
+function inActiveGame() {
+  return Boolean(S.view && S.view.status === 'playing');
+}
+function canEditAvatar() {
+  return !inActiveGame();
+}
+function openAvatarEditor() {
+  if (!canEditAvatar()) return toast('ماينفعش تغير شكل شخصيتك وإنت جوه الجيم', 'err');
+  if (S.view) {
+    const curMe = isAdmin() ? S.view.admin : S.view.players.find((p) => p.id === me().id);
+    if (curMe) {
+      S.profile = {
+        name: curMe.name || S.profile.name || '',
+        outfit: curMe.outfit || S.profile.outfit || 'karak_cup',
+        face: curMe.face || S.profile.face || 'laugh_joy',
+        hat: curMe.hat || S.profile.hat || 'fez_tarboush'
+      };
+    }
+  }
+  S.editingAvatar = true;
+  render();
+}
+async function closeAvatarEditor(save = true) {
+  if (save) {
+    if (!S.profile.name.trim()) {
+      if (S.view || S.mode) {
+        toast('اكتب اسمك الأول', 'err');
+        $('#pname') && $('#pname').focus();
+        return;
+      }
+    }
+    LS.set('profile', S.profile);
+    if (S.view && S.view.status !== 'playing') {
+      const r = await api('update_profile', { profile: S.profile });
+      if (r && r.ok) toast('اتحدث شكل شخصيتك واسمك!');
+    } else {
+      toast('اتحفظ شكل شخصيتك!');
+    }
+  }
+  S.editingAvatar = false;
+  render();
+}
+
+function canGoBack() {
+  if (S.editingAvatar || S.customInRoom || S.drawer) return true;
+  if (S.view) return S.view.status !== 'playing';
+  return S.screen !== 'home' && S.screen !== 'loading';
+}
+
+function disconnectRoom() {
+  if (S.es) S.es.close();
+  if (S.pollTimer) clearInterval(S.pollTimer);
+  S.es = null;
+  S.pollTimer = null;
+  S.view = null;
+  S.drawer = false;
+  S.customInRoom = false;
+  S.editingAvatar = false;
+}
+
+let _handlingPopState = false;
+async function goBack() {
+  if (S.drawer) { S.drawer = false; render(); return; }
+  if (S.editingAvatar) { S.editingAvatar = false; render(); return; }
+  if (S.customInRoom) { S.customInRoom = false; render(); return; }
+  if (S.view) {
+    const v = S.view;
+    if (v.status === 'playing') return;
+    if (v.status === 'finished') {
+      if (isHost()) { await returnToLobby(); return; }
+      await api('leave_room');
+      disconnectRoom();
+      LS.set('session', null);
+      S.screen = 'home';
+      if (location.pathname !== '/') history.replaceState({ ahwaKey: 'home' }, '', '/');
+      render();
+      return;
+    }
+    if (v.status === 'lobby') {
+      const isSolo = v.playMode === 'solo' || (v.settings && v.settings.playMode === 'solo');
+      if (!isAdmin() && myTeam() && !isSolo) {
+        await api('unpick_team');
+        return;
+      }
+      if (!isAdmin()) {
+        await api('leave_room');
+        disconnectRoom();
+        S.mode = 'join';
+        S.screen = 'avatar';
+        render();
+        return;
+      }
+      // الحكم في اللوبي: يرجع لصفحة إعداد اللعبة
+      const realPlayers = (v.players || []).filter((p) => !p.isTest && !p.isAdminPlayer);
+      if (realPlayers.length > 0 && !confirm('ترجع لصفحة إعداد اللعبة؟')) return;
+      await api('close_room');
+      disconnectRoom();
+      LS.set('session', null);
+      S.mode = 'create';
+      S.screen = 'setup';
+      render();
+      return;
+    }
+  }
+  if (S.screen === 'custom') { S.screen = 'setup'; render(); return; }
+  if (S.screen === 'setup') { S.screen = 'avatar'; render(); return; }
+  if (S.screen === 'avatar') {
+    S.screen = 'home';
+    if (location.pathname !== '/') history.replaceState({ ahwaKey: 'home' }, '', '/');
+    render();
+    return;
+  }
+  S.screen = 'home';
+  if (location.pathname !== '/') history.replaceState({ ahwaKey: 'home' }, '', '/');
+  render();
+}
+
+function stepClick(idx) {
+  if (inActiveGame()) return;
+  if (idx === 0) { openAvatarEditor(); return; }
+  if (idx === 1 && S.customInRoom) { S.customInRoom = false; render(); return; }
+  if (idx === 1 && !S.view && S.screen === 'custom') { S.screen = 'setup'; render(); return; }
+  if (idx === 1 && S.view && S.view.status === 'lobby') { goBack(); }
+}
+
+window.addEventListener('popstate', () => {
+  if (!canGoBack()) return;
+  _handlingPopState = true;
+  Promise.resolve(goBack()).finally(() => {
+    _handlingPopState = false;
+    if (canGoBack()) {
+      try { history.pushState({ ahwaKey: screenKey() }, '', location.pathname + location.search); } catch (e) {}
+    }
+  });
+});
+
 function stepper(steps, active) {
   return `<ol class="stepper" aria-label="مراحل">${steps
-    .map((s, i) => `<li class="${i < active ? 'done' : i === active ? 'on' : ''}"><span class="step-n">${i < active ? ic('check') : i + 1}</span><span class="step-t">${s}</span></li>`)
+    .map((s, i) => {
+      const clickable = i < active && !inActiveGame();
+      return `<li class="${i < active ? 'done' : i === active ? 'on' : ''} ${clickable ? 'clickable' : ''}" ${clickable ? `onclick="stepClick(${i})" title="اضغط للرجوع لـ ${esc(s)}"` : ''}><span class="step-n">${i < active ? ic('check') : i + 1}</span><span class="step-t">${s}</span></li>`;
+    })
     .join('<li class="step-line" aria-hidden="true"></li>')}</ol>`;
 }
 
 function topbar(extra = '') {
   const v = S.view;
+  const key = screenKey();
+  const showBack = canGoBack();
+  const showMyAv = canEditAvatar() && key !== 'avatar' && key !== 'editAvatar';
+  const myAvProf = (v && (isAdmin() ? v.admin : v.players.find((p) => p.id === me().id))) || S.profile;
   return `<header class="topbar">
-    ${logo('sm')}
+    <div class="topbar-start">
+      ${showBack ? `<button type="button" class="btn ghost sm back-btn" onclick="goBack()" title="رجوع للصفحة السابقة">${ic('chevR')} <span>رجوع</span></button>` : ''}
+      ${logo('sm')}
+    </div>
     <div class="topbar-mid">${extra}</div>
-    ${v ? `<div class="room-chip" title="كود الغرفة">${ic('lock')}<b>${esc(v.code)}</b></div>` : ''}
+    <div class="topbar-end">
+      ${showMyAv ? `<button type="button" class="my-avatar-btn" onclick="openAvatarEditor()" title="اضغط لتغيير شكل شخصيتك أو اسمك">
+        ${avatar(myAvProf, 'xs')}
+        <span class="my-avatar-txt"><b>${esc(myAvProf.name || 'شخصيتي')}</b><small>${ic('pencil')} غيّر شكلك</small></span>
+      </button>` : ''}
+      ${v ? `<div class="room-chip" title="كود الغرفة">${ic('lock')}<b>${esc(v.code)}</b></div>` : ''}
+    </div>
   </header>`;
 }
 
@@ -516,6 +670,7 @@ function scorebar() {
 // ------------------------------------------------------------------
 function screenKey() {
   const v = S.view;
+  if (S.editingAvatar) return 'editAvatar';
   if (S.customInRoom) return 'customInRoom';
   if (!v) return S.screen;
   if (v.me.role === 'kicked') return 'kicked';
@@ -537,7 +692,9 @@ function render() {
 
   let html = '';
   const v = S.view;
-  if (S.customInRoom) {
+  if (S.editingAvatar) {
+    html = viewAvatar();
+  } else if (S.customInRoom) {
     html = viewCustom();
   } else if (!v) {
     html = ({ home: viewHome, avatar: viewAvatar, setup: viewSetup, custom: viewCustom, closed: viewClosed, loading: viewLoading })[S.screen]();
@@ -550,6 +707,16 @@ function render() {
   } else if (v.status === 'finished') html = viewFinal() + (isHost() ? adminDrawer() : '');
 
   const changed = key !== S.lastKey;
+  if (changed && !_handlingPopState) {
+    try {
+      if (S.lastKey === null) {
+        history.replaceState({ ahwaKey: key }, '', location.pathname + location.search);
+        if (canGoBack()) history.pushState({ ahwaKey: key }, '', location.pathname + location.search);
+      } else if (canGoBack()) {
+        history.pushState({ ahwaKey: key }, '', location.pathname + location.search);
+      }
+    } catch (e) {}
+  }
   app.className = changed ? 'enter' : '';
   app.innerHTML = html;
   S.lastKey = key;
@@ -611,6 +778,13 @@ function viewHome() {
       <img src="/assets/ui/karak.png" alt=""/><img src="/assets/ui/sahlab.png" alt=""/><img src="/assets/ui/tamr.png" alt=""/><img src="/assets/ui/annab.png" alt=""/>
     </div>
     <div class="card tape home-card">
+      <button type="button" class="home-my-avatar" onclick="openAvatarEditor()" title="اضغط على شخصيتك لتغيير شكلها أو اسمك">
+        ${avatar(S.profile, 'md')}
+        <div class="home-my-avatar-info">
+          <b>${esc(S.profile.name || 'شخصيتك على القهوة')}</b>
+          <span>${ic('pencil')} اضغط على شخصيتك لتغيير الشكل أو الوش أو الطاقية</span>
+        </div>
+      </button>
       <button class="btn primary block lg" onclick="goCreate()">${ic('whistle')} اعمل غرفة (أنا الحكم أو العب معاهم)</button>
       <div class="or"><span>أو</span></div>
       <label class="field"><span>عندك كود غرفة؟</span>
@@ -649,10 +823,11 @@ function viewAvatar() {
   const cur = parts[curIdx] || parts[0];
   const steps = S.mode === 'create' ? ['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'] : ['الشخصية', 'الفريق', 'اللعب'];
   const tabs = [['outfit', 'الشكل'], ['face', 'الوش'], ['hat', 'الطاقية']];
-  return `${topbar(stepper(steps, 0))}
+  const isEditing = Boolean(S.editingAvatar);
+  return `${topbar(isEditing ? '' : stepper(steps, 0))}
   <section class="wrap avatar-page">
     <div class="card tape av-stage-card">
-      <h1 class="h1">اعمل شخصيتك</h1>
+      <h1 class="h1">${isEditing ? 'غيّر شكل شخصيتك' : 'اعمل شخصيتك'}</h1>
       <div class="av-stage">
         <button class="arrow" aria-label="السابق" onclick="cyclePart(-1)">${ic('chevR')}</button>
         <div class="av-pedestal" id="avPreview">${avatar(p, 'xl', 'bob')}</div>
@@ -670,7 +845,10 @@ function viewAvatar() {
         ${parts.map((it) => `<button class="part ${p[S.avTab] === it.id ? 'on' : ''}" title="${esc(it.name)}" onclick="setPart('${S.avTab}','${it.id}')">${avatar({ ...p, [S.avTab]: it.id }, 'sm')}</button>`).join('')}
       </div>
     </div>
-    <div class="next-bar"><button class="btn primary lg" onclick="avatarNext()">التالي ${ic('next')}</button></div>
+    <div class="next-bar">
+      <button type="button" class="btn ghost lg" onclick="goBack()">${ic('chevR')} رجوع</button>
+      <button type="button" class="btn primary lg" onclick="avatarNext()">${isEditing ? `${ic('check')} حفظ الشكل والرجوع` : `التالي ${ic('next')}`}</button>
+    </div>
   </section>`;
 }
 function setPart(cat, id) { S.profile[cat] = id; LS.set('profile', S.profile); render(); }
@@ -687,11 +865,17 @@ function randomAvatar() {
   render();
 }
 async function avatarNext() {
+  if (S.editingAvatar) { await closeAvatarEditor(true); return; }
   if (!S.profile.name.trim()) { toast('اكتب اسمك الأول', 'err'); $('#pname') && $('#pname').focus(); return; }
   LS.set('profile', S.profile);
   if (S.mode === 'create') { S.screen = 'setup'; render(); return; }
-  const r = await api('join', { profile: S.profile });
-  if (r.ok) { LS.set('session', { code: S.code, role: 'player' }); connect(S.code); }
+  if (S.mode === 'join' && S.code) {
+    const r = await api('join', { profile: S.profile });
+    if (r.ok) { LS.set('session', { code: S.code, role: 'player' }); connect(S.code); }
+    return;
+  }
+  S.screen = 'home';
+  render();
 }
 
 // ==================================================================
@@ -838,7 +1022,10 @@ function viewSetup() {
       </div>
     </div>
 
-    <div class="next-bar"><button class="btn primary lg" onclick="createRoom()">${ic('next')} اعمل الغرفة وابعت الدعوة</button></div>
+    <div class="next-bar">
+      <button type="button" class="btn ghost lg" onclick="goBack()">${ic('prev')} رجوع</button>
+      <button type="button" class="btn primary lg" onclick="createRoom()">${ic('next')} اعمل الغرفة وابعت الدعوة</button>
+    </div>
   </section>`;
 }
 function setSetupDifficulty(diff) {
@@ -1398,9 +1585,10 @@ function memberRow(p, adminCtl) {
   const t = v.teams.find((x) => x.id === p.team);
   const cap = t && t.captainId === p.id;
   const isAdmPlayer = Boolean(p.isAdminPlayer);
-  return `<li class="member ${p.online ? '' : 'offline'} ${p.id === me().id ? 'me' : ''}">
-    ${avatar(p, 'sm')}
-    <span class="m-name">${esc(p.name)}${isAdmPlayer ? ' <small>(الأدمن · لاعب)</small>' : ''}${p.isTest ? ' <small>(تجريبي)</small>' : ''}${p.id === me().id ? ' <small>(إنت)</small>' : ''}</span>
+  const isMe = p.id === me().id;
+  return `<li class="member ${p.online ? '' : 'offline'} ${isMe ? 'me' : ''}">
+    ${isMe ? `<button type="button" class="av-click-wrap" onclick="openAvatarEditor()" title="دوس لتغيير شكلك">${avatar(p, 'sm')}<span class="av-edit-dot">${ic('pencil')}</span></button>` : avatar(p, 'sm')}
+    <span class="m-name" ${isMe ? 'onclick="openAvatarEditor()" style="cursor:pointer" title="دوس لتغيير شكلك"' : ''}>${esc(p.name)}${isAdmPlayer ? ' <small>(الأدمن · لاعب)</small>' : ''}${p.isTest ? ' <small>(تجريبي)</small>' : ''}${isMe ? ' <small class="edit-me-tag">(إنت · غيّر شكلك)</small>' : ''}</span>
     ${cap ? `<span class="crown" title="القائد">${ic('crown')} القائد</span>` : ''}
     ${adminCtl ? `<span class="m-ctl">
       ${p.team && !cap ? `<button class="icon-btn" title="اعمله قائد" aria-label="اعمله قائد" onclick="api('set_captain',{target:'${p.id}'})">${ic('crown')}</button>` : ''}
@@ -1508,9 +1696,12 @@ function viewLobbyAdmin() {
       <div class="lobby-main">
         <div class="judge-card card ${v.adminPlays ? 'admin-playing-mode' : ''}">
           <div class="judge-card-top">
-            ${avatar(v.admin, 'md')}
-            <div class="judge-card-info">
-              <b>${esc(v.admin.name)}</b>
+            <button type="button" class="av-click-wrap" onclick="openAvatarEditor()" title="دوس لتغيير شكلك">
+              ${avatar(v.admin, 'md')}
+              <span class="av-edit-dot">${ic('pencil')}</span>
+            </button>
+            <div class="judge-card-info" onclick="openAvatarEditor()" style="cursor:pointer" title="دوس لتغيير شكلك">
+              <b>${esc(v.admin.name)} <small class="edit-me-tag">(دوس لتغيير شكلك)</small></b>
               <span class="sub">${v.adminPlays ? (isSolo ? 'منضم كلاعب فردي — الـ AI هيمسك التحكيم بالكامل وقت اللعب!' : `منضم كلاعب في «${esc(teamOf(v.adminTeam).name)}» — الـ AI هيمسك التحكيم بالكامل وقت اللعب!`) : 'إنت الحكم — أو تقدر تلعب معاهم والـ AI يحكم كل حاجة تلقائياً!'}</span>
             </div>
             <span class="badge">${v.adminPlays ? ic('users') + ' لاعب + حكم AI' : ic('whistle') + ' الحكم'}</span>
@@ -1565,14 +1756,17 @@ function viewLobbyAdmin() {
             </div>
             ${v.players.length ? `
               <ul class="members solo-members-grid">
-                ${v.players.map((p, idx) => `
-                  <li class="member solo-member team-${p.team || ('S' + (idx + 1))} ${p.online ? '' : 'offline'} ${p.id === me().id ? 'me' : ''}">
+                ${v.players.map((p, idx) => {
+                  const isMe = p.id === me().id;
+                  return `
+                  <li class="member solo-member team-${p.team || ('S' + (idx + 1))} ${p.online ? '' : 'offline'} ${isMe ? 'me' : ''}">
                     <span class="solo-rank">#${idx + 1}</span>
-                    ${avatar(p, 'sm')}
-                    <span class="m-name">${esc(p.name)}${p.isAdminPlayer ? ' <small>(الأدمن · لاعب)</small>' : ''}${p.isTest ? ' <small>(تجريبي)</small>' : ''}${p.id === me().id ? ' <small>(إنت)</small>' : ''}</span>
+                    ${isMe ? `<button type="button" class="av-click-wrap" onclick="openAvatarEditor()" title="دوس لتغيير شكلك">${avatar(p, 'sm')}<span class="av-edit-dot">${ic('pencil')}</span></button>` : avatar(p, 'sm')}
+                    <span class="m-name" ${isMe ? 'onclick="openAvatarEditor()" style="cursor:pointer"' : ''}>${esc(p.name)}${p.isAdminPlayer ? ' <small>(الأدمن · لاعب)</small>' : ''}${p.isTest ? ' <small>(تجريبي)</small>' : ''}${isMe ? ' <small class="edit-me-tag">(إنت · غيّر شكلك)</small>' : ''}</span>
                     <span class="crown">${ic('crown')} فردي</span>
                     ${!p.isAdminPlayer ? `<span class="m-ctl"><button class="icon-btn danger" title="اطرده" aria-label="طرد" onclick="kick('${p.id}','${esc(String(p.name).replace(/['"\\]/g, ''))}')">${ic('kick')}</button></span>` : ''}
-                  </li>`).join('')}
+                  </li>`;
+                }).join('')}
               </ul>
             ` : `<div class="empty">${sticker('latte', 52)}<span>مستني اللاعبين يدخلوا الغرفة (من 2 لحد 10 لاعبين)...</span></div>`}
           </div>
@@ -1670,6 +1864,7 @@ function viewLobbyAdmin() {
       </div>
     </div>
     <div class="next-bar">
+      <button type="button" class="btn ghost lg" onclick="goBack()">${ic('prev')} رجوع للإعداد</button>
       ${isSolo && soloNeedMore ? `<span class="why">${ic('users')} الوضع الفردي محتاج لاعبين اتنين على الأقل (حالياً ${v.teams.length})</span>` : ''}
       ${!isSolo && empty.length ? `<span class="why">${ic('users')} ${esc(empty.map((t) => t.name).join(' و '))} محتاج لاعب على الأقل</span>` : ''}
       <button class="btn primary lg" ${cannotStart ? 'disabled' : ''} onclick="startGame()">${ic('play')} ابدأ ${GAMES[v.game].name}${v.adminPlays ? ' (الـ AI هيحكم)' : ''}</button>
@@ -1707,6 +1902,10 @@ function viewTeamPick() {
           <span class="btn primary sm">${playersOf(t.id).length >= ((v.caps || {}).team || 20) ? 'الفريق كامل' : `انضم ${ic('next')}`}</span>
         </button>`).join('')}
     </div>
+    <div class="next-bar">
+      <button type="button" class="btn ghost lg" onclick="goBack()">${ic('prev')} رجوع</button>
+      <button type="button" class="btn ghost lg" onclick="openAvatarEditor()">${ic('pencil')} غيّر شكل شخصيتي</button>
+    </div>
   </section>`;
 }
 
@@ -1730,6 +1929,10 @@ function viewLobbyPlayer() {
     ${!isSolo ? `<div class="row wrap-row">
       ${others.map((other) => `<button class="btn ghost block" onclick="api('pick_team',{team:'${other.id}'})">${ic('swap')} غيّر لفريق ${esc(other.name)}</button>`).join('')}
     </div>` : ''}
+    <div class="next-bar">
+      <button type="button" class="btn ghost lg" onclick="goBack()">${ic('prev')} رجوع</button>
+      <button type="button" class="btn ghost lg" onclick="openAvatarEditor()">${ic('pencil')} غيّر شكل شخصيتي</button>
+    </div>
   </section>`;
 }
 

@@ -1467,6 +1467,56 @@ async function handleAction(b) {
     return { room };
   }
 
+  if (action === 'unpick_team') {
+    const p = authPlayer(room, b) || ERR('ادخل الغرفة الأول');
+    if (room.status === 'playing') ERR('ماينفعش تسيب الفريق أثناء اللعب');
+    if (!isSoloMode(room) && p.team) {
+      const old = p.team;
+      p.team = null;
+      ensureCaptain(room, old);
+    }
+    return { room };
+  }
+
+  if (action === 'leave_room') {
+    const p = authPlayer(room, b);
+    if (p && !p.isHostPlayer) {
+      const old = p.team;
+      delete room.players[p.id];
+      if (isSoloMode(room)) syncSoloTeams(room);
+      else if (old) ensureCaptain(room, old);
+    }
+    return { room };
+  }
+
+  if (action === 'update_profile') {
+    if (room.status === 'playing') ERR('ماينفعش تغير شكل شخصيتك وإنت جوه الجيم');
+    const prof = b.profile || {};
+    const p = authPlayer(room, b);
+    if (!admin && !p) ERR('ادخل الغرفة الأول');
+    if (admin) {
+      room.admin.profile.name = clean(prof.name, 20) || room.admin.profile.name || 'الحكم';
+      room.admin.profile.outfit = clean(prof.outfit, 30) || room.admin.profile.outfit;
+      room.admin.profile.face = clean(prof.face, 30) || room.admin.profile.face;
+      room.admin.profile.hat = clean(prof.hat, 30) || room.admin.profile.hat;
+      const admPl = room.players[room.admin.pid];
+      if (admPl) {
+        admPl.name = room.admin.profile.name;
+        admPl.outfit = room.admin.profile.outfit;
+        admPl.face = room.admin.profile.face;
+        admPl.hat = room.admin.profile.hat;
+      }
+    }
+    if (p) {
+      p.name = clean(prof.name, 20) || p.name || 'لاعب';
+      p.outfit = clean(prof.outfit, 30) || p.outfit;
+      p.face = clean(prof.face, 30) || p.face;
+      p.hat = clean(prof.hat, 30) || p.hat;
+    }
+    if (isSoloMode(room)) syncSoloTeams(room);
+    return { room };
+  }
+
   // ---------- أكشنز اللاعبين أثناء اللعب ----------
   const p = authPlayer(room, b);
   if (p && action.startsWith('kr_') && room.game === 'karak' && room.kr) {
