@@ -1,49 +1,53 @@
-/* نظام الشخصيات الكرتونية (أجسام + وشوش + طواقي) - منقول من v13 */
+/* نظام الشخصيات الكرتونية المطور (أجسام منحنية + وشوش كرتونية حقيقية + طواقي مرسومة) */
 const CHARACTER_PARTS = {
   outfit: [
     {
       id: 'karak_cup',
       name: 'كوب الكرك الذهبي',
-      bodyTop: '#E6B98A',
-      bodyBot: '#C48F5A',
+      shape: 'mug',
+      bodyTop: '#F3C68F',
+      bodyBot: '#B87B43',
       rimColor: '#FFFDF7',
-      liquidColor: '#B5743A',
+      liquidColor: '#9C5A25',
       bandColor: '#7F4F24',
-      shoeColor: '#FFFDF7',
+      shoeColor: '#8C4A27',
       handleSide: 'right',
       hasSleeve: false
     },
     {
       id: 'sahlab_mug',
       name: 'مج السحلب الكريمي',
-      bodyTop: '#FFFDF7',
-      bodyBot: '#E8D8C0',
+      shape: 'chubby',
+      bodyTop: '#FFFDF9',
+      bodyBot: '#E6D3B8',
       rimColor: '#FFFFFF',
       liquidColor: '#F3E5AB',
-      bandColor: '#D4A373',
-      shoeColor: '#A67C52',
+      bandColor: '#C6925B',
+      shoeColor: '#8D5B4C',
       handleSide: 'right',
       hasSleeve: false
     },
     {
       id: 'tamar_glass',
-      name: 'كاس التمر هندي',
-      bodyTop: '#9E2A2B',
+      name: 'كاس العناب المثلج',
+      shape: 'goblet',
+      bodyTop: '#B52B38',
       bodyBot: '#540B0E',
-      rimColor: '#F8EDEB',
+      rimColor: '#FCEEEF',
       liquidColor: '#780000',
       bandColor: '#E09F3E',
-      shoeColor: '#9E2A2B',
+      shoeColor: '#7A1C24',
       handleSide: 'none',
       hasSleeve: false
     },
     {
       id: 'mint_tea',
-      name: 'كباية الشاي بالنعناع',
-      bodyTop: '#E76F51',
-      bodyBot: '#9C2C13',
-      rimColor: '#FAE1DD',
-      liquidColor: '#B5381A',
+      name: 'شاي كشري بالنعناع',
+      shape: 'waisted',
+      bodyTop: '#E75A3C',
+      bodyBot: '#8F210E',
+      rimColor: '#FFF5F2',
+      liquidColor: '#A82910',
       bandColor: '#2A9D8F',
       shoeColor: '#2A9D8F',
       handleSide: 'right',
@@ -51,77 +55,82 @@ const CHARACTER_PARTS = {
     },
     {
       id: 'gold_kanaka',
-      name: 'فنجان القهوة التركي',
-      bodyTop: '#DDA15E',
-      bodyBot: '#8C5A2B',
-      rimColor: '#FEFAE0',
+      name: 'كنكة القهوة النحاس',
+      shape: 'kanaka',
+      bodyTop: '#E5A95C',
+      bodyBot: '#8C531E',
+      rimColor: '#FFF8E7',
       liquidColor: '#4A2C11',
-      bandColor: '#603808',
-      shoeColor: '#603808',
+      bandColor: '#5C3409',
+      shoeColor: '#5C3409',
       handleSide: 'left',
       hasSleeve: true
     },
     {
       id: 'espresso_suit',
-      name: 'كوب الإسبريسو الدارك',
-      bodyTop: '#5C4438',
-      bodyBot: '#36261E',
-      rimColor: '#E6CCB2',
-      liquidColor: '#3B2314',
+      name: 'فنجان إسبريسو دارك',
+      shape: 'tapered',
+      bodyTop: '#6A4E42',
+      bodyBot: '#302019',
+      rimColor: '#EDE0D4',
+      liquidColor: '#29170E',
       bandColor: '#DDA843',
-      shoeColor: '#3B2A20',
+      shoeColor: '#DDA843',
       handleSide: 'right',
       hasSleeve: true
     },
     {
       id: 'arabic_dallah',
-      name: 'شخصية الدلة الذهبية',
-      bodyTop: '#F2C94C',
-      bodyBot: '#B8860B',
-      rimColor: '#FFF9DB',
-      liquidColor: '#8D6E63',
+      name: 'الدلة العربية الذهبية',
+      shape: 'dallah',
+      bodyTop: '#F7D154',
+      bodyBot: '#A87905',
+      rimColor: '#FFFBEB',
+      liquidColor: '#7D5A4F',
       bandColor: '#9E2A2B',
-      shoeColor: '#B8860B',
+      shoeColor: '#9E2A2B',
       handleSide: 'both',
       hasSleeve: true
     },
     {
       id: 'moroccan_teapot',
-      name: 'كاس الليمون بالنعناع',
+      name: 'ليمون بالنعناع المنعش',
+      shape: 'curved',
       bodyTop: '#52B788',
       bodyBot: '#1B4332',
-      rimColor: '#D8F3DC',
-      liquidColor: '#40916C',
+      rimColor: '#E9FCEF',
+      liquidColor: '#2D6A4F',
       bandColor: '#F4D35E',
-      shoeColor: '#2D6A4F',
-      handleSide: 'none',
+      shoeColor: '#D97724',
+      handleSide: 'right',
       hasSleeve: false
     }
   ],
 
-  // 66 وش كرتوني معبر (تظهر بوضوح في الشبكة وتركب فوراً على الشخصية)
   face: [
-    { id: 'mustache_boss', name: 'شنب العمدة' },
-    { id: 'nerd_glasses', name: 'نظارة العبقري' },
-    { id: 'cool_shades', name: 'نظارة شمس رايقة' },
-    { id: 'wink_mustache', name: 'غمزة بشنب' },
-    { id: 'wink_smart', name: 'غمزة ذكية' },
     { id: 'laugh_joy', name: 'ضحكة القهوة' },
-    { id: 'monocle_judge', name: 'عدسة المحقق' },
-    { id: 'pirate_patch', name: 'ربطة القرصان' },
-    { id: 'shocked_eyes', name: 'مصدوم من الهينت' },
-    { id: 'happy_smile', name: 'ابتسامة الخدود' },
-    { id: 'angry_fierce', name: 'نظرة التحدي' },
-    { id: 'starry_eyes', name: 'عيون النجوم' },
-    { id: 'sleepy_yawn', name: 'نعسان قبل القهوة' },
-    { id: 'sly_smirk', name: 'ابتسامة الخداع' },
+    { id: 'mustache_boss', name: 'شنب العمدة' },
+    { id: 'cool_shades', name: 'نظارة شمس رايقة' },
     { id: 'cry_laugh', name: 'دموع الضحك' },
+    { id: 'wink_smart', name: 'غمزة ذكية' },
+    { id: 'sly_smirk', name: 'ابتسامة الخداع' },
     { id: 'heart_eyes', name: 'عيون القلوب' },
+    { id: 'monocle_judge', name: 'عدسة المحقق' },
+    { id: 'shocked_eyes', name: 'مصدوم من الهينت' },
+    { id: 'angry_fierce', name: 'نظرة التحدي' },
+    { id: 'crying_river', name: 'شلال دموع' },
+    { id: 'sleepy_yawn', name: 'نعسان قبل القهوة' },
+    { id: 'cigar_boss', name: 'سيجار المعلم' },
+    { id: 'side_eye', name: 'نظرة الشك' },
+    { id: 'nerd_glasses', name: 'نظارة العبقري' },
+    { id: 'wink_mustache', name: 'غمزة بشنب' },
+    { id: 'pirate_patch', name: 'ربطة القرصان' },
+    { id: 'happy_smile', name: 'ابتسامة الخدود' },
+    { id: 'starry_eyes', name: 'عيون النجوم' },
     { id: 'detective_pipe', name: 'غليون المحقق' },
     { id: 'pixel_shades', name: 'نظارة البكسل' },
     { id: 'royal_goatee', name: 'سكسوكة الباشا' },
     { id: 'whistle_cute', name: 'صفارة البراءة' },
-    { id: 'side_eye', name: 'نظرة الشك' },
     { id: 'handlebar_twirl', name: 'شنب مبروم' },
     { id: 'aviator_gold', name: 'نظارة طيار' },
     { id: 'cat_whiskers', name: 'شوارب القطة' },
@@ -129,11 +138,9 @@ const CHARACTER_PARTS = {
     { id: 'dizzy_spiral', name: 'دايخ من الأسئلة' },
     { id: 'money_eyes', name: 'عيون الجائزة' },
     { id: 'bandit_mask', name: 'قناع اللص' },
-    { id: 'cigar_boss', name: 'سيجار المعلم' },
     { id: 'blush_shy', name: 'خجول ومكسوف' },
     { id: 'vampire_fangs', name: 'أنياب الكونت' },
     { id: 'robot_visor', name: 'شاشة الروبوت' },
-    { id: 'crying_river', name: 'شلال دموع' },
     { id: 'kiss_face', name: 'قبلة النصر' },
     { id: 'zen_calm', name: 'هدوء الفيلسوف' },
     { id: 'clown_nose', name: 'أنف المهرج' },
@@ -171,20 +178,20 @@ const CHARACTER_PARTS = {
 
   hat: [
     { id: 'fez_tarboush', name: 'طربوش الباشا' },
+    { id: 'straw_hat', name: 'قبعة قش صيفية' },
+    { id: 'chef_toque', name: 'طقية الشيف' },
+    { id: 'sultan_crown', name: 'تاج السلطان' },
+    { id: 'royal_turban', name: 'عمامة شهريار' },
+    { id: 'pirate_hat', name: 'قبعة القبطان' },
+    { id: 'detective_hat', name: 'قبعة شارلوك' },
+    { id: 'viking_helmet', name: 'خوذة الفايكنج' },
+    { id: 'ghutra_agal', name: 'غترة وعقال' },
     { id: 'winter_beanie', name: 'آيس كاب شتوي' },
     { id: 'cowboy_hat', name: 'كاب كاجوال' },
-    { id: 'sultan_crown', name: 'تاج السلطان' },
-    { id: 'chef_toque', name: 'طقية الشيف' },
-    { id: 'ghutra_agal', name: 'غترة وعقال' },
-    { id: 'detective_hat', name: 'قبعة شارلوك' },
-    { id: 'straw_hat', name: 'قبعة قش صيفية' },
-    { id: 'pirate_hat', name: 'قبعة القبطان' },
     { id: 'Graduation_cap', name: 'قبعة الفيلسوف' },
-    { id: 'royal_turban', name: 'عمامة شهريار' },
     { id: 'pharaoh_nemes', name: 'التاج الفرعوني' },
     { id: 'french_beret', name: 'بيريه الفنان' },
     { id: 'top_hat', name: 'قبعة الساحر' },
-    { id: 'viking_helmet', name: 'خوذة الفايكنج' },
     { id: 'dj_headphones', name: 'سماعات الدي جي' },
     { id: 'propeller_cap', name: 'طقية المروحة' },
     { id: 'knight_helmet', name: 'خوذة الفارس' },
@@ -194,878 +201,1018 @@ const CHARACTER_PARTS = {
 };
 
 /**
- * رسم الـ 40 وش كرتوني داخل إحداثيات موحدة (X: 74..186, Y: 116..196)
+ * مساعد رسم العيون الكرتونية الحقيقية (بياض العين + القزحية الملونة + البؤبؤ + لمعتين نور + الجفون)
  */
-function renderFaceVector(faceId) {
+function cEye(cx, cy, opts = {}) {
+  const rx = opts.rx || 13.5;
+  const ry = opts.ry || 15.5;
+  const px = opts.px || 0;
+  const py = opts.py || 0;
+  const iris = opts.iris || '#5C3A21';
   const stroke = '#231710';
-  switch (faceId) {
-    case 'mustache_boss':
-      return `
-        <g>
-          <path d="M90 136 Q102 124 114 136" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M146 136 Q158 124 170 136" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M130 158 C112 148, 86 158, 80 170 C96 175, 118 170, 130 164 C142 170, 164 175, 180 170 C174 158, 148 148, 130 158 Z" fill="#4A2C18" stroke="${stroke}" stroke-width="3.5" stroke-linejoin="round"/>
-          <path d="M120 170 Q130 180 140 170" fill="#C84B31" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
-    case 'nerd_glasses':
-      return `
-        <g>
-          <path d="M76 136 L184 136" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <rect x="82" y="130" width="40" height="26" rx="8" fill="#D8E2DC" stroke="${stroke}" stroke-width="4"/>
-          <rect x="138" y="130" width="40" height="26" rx="8" fill="#D8E2DC" stroke="${stroke}" stroke-width="4"/>
-          <circle cx="102" cy="143" r="5" fill="${stroke}"/>
-          <circle cx="158" cy="143" r="5" fill="${stroke}"/>
-          <line x1="90" y1="135" x2="98" y2="148" stroke="#FFF" stroke-width="2.5" stroke-linecap="round"/>
-          <line x1="146" y1="135" x2="154" y2="148" stroke="#FFF" stroke-width="2.5" stroke-linecap="round"/>
-          <path d="M114 170 Q130 182 146 170" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-        </g>`;
-    case 'cool_shades':
-      return `
-        <g>
-          <path d="M76 136 L184 136" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <rect x="82" y="131" width="42" height="25" rx="7" fill="#1E1612" stroke="${stroke}" stroke-width="3.8"/>
-          <rect x="136" y="131" width="42" height="25" rx="7" fill="#1E1612" stroke="${stroke}" stroke-width="3.8"/>
-          <line x1="90" y1="137" x2="102" y2="149" stroke="#FFF" stroke-width="3" stroke-linecap="round"/>
-          <line x1="144" y1="137" x2="156" y2="149" stroke="#FFF" stroke-width="3" stroke-linecap="round"/>
-          <path d="M112 172 Q130 184 148 172" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'wink_mustache':
-      return `
-        <g>
-          <circle cx="102" cy="140" r="8" fill="${stroke}"/>
-          <circle cx="99" cy="137" r="2.8" fill="#FFF"/>
-          <path d="M146 140 Q158 128 170 140" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M130 162 C110 152, 84 162, 78 174 C96 178, 118 173, 130 167 C142 173, 164 178, 182 174 C176 162, 150 152, 130 162 Z" fill="#4A2C18" stroke="${stroke}" stroke-width="3.5" stroke-linejoin="round"/>
-        </g>`;
-    case 'wink_smart':
-      return `
-        <g>
-          <path d="M88 142 Q102 130 116 142" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <circle cx="158" cy="142" r="8" fill="${stroke}"/>
-          <circle cx="155" cy="139" r="3" fill="#FFF"/>
-          <circle cx="88" cy="158" r="8" fill="#FF8FA3" opacity="0.55"/>
-          <circle cx="172" cy="158" r="8" fill="#FF8FA3" opacity="0.55"/>
-          <path d="M108 168 Q130 186 154 168" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M134 176 Q142 190 150 174" fill="#FF6B8B" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
-    case 'laugh_joy':
-      return `
-        <g>
-          <path d="M88 142 Q102 128 116 142" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M144 142 Q158 128 172 142" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M102 162 L158 162 Q158 192 130 192 Q102 192 102 162 Z" fill="#9E2A2B" stroke="${stroke}" stroke-width="4"/>
-          <path d="M116 182 Q130 172 144 182" fill="#FF8FA3"/>
-        </g>`;
-    case 'monocle_judge':
-      return `
-        <g>
-          <circle cx="102" cy="144" r="7" fill="${stroke}"/>
-          <circle cx="156" cy="144" r="16" fill="rgba(255,255,255,0.45)" stroke="#DDA843" stroke-width="4"/>
-          <circle cx="156" cy="144" r="6.5" fill="${stroke}"/>
-          <path d="M172 148 Q180 172 174 190" fill="none" stroke="#DDA843" stroke-width="3" stroke-dasharray="3,3"/>
-          <path d="M140 124 Q156 116 172 124" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M114 174 Q130 168 148 174" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-        </g>`;
-    case 'pirate_patch':
-      return `
-        <g>
-          <line x1="76" y1="126" x2="184" y2="152" stroke="${stroke}" stroke-width="4"/>
-          <circle cx="104" cy="142" r="14" fill="#1F1916" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="158" cy="144" r="7.5" fill="${stroke}"/>
-          <circle cx="155" cy="141" r="2.5" fill="#FFF"/>
-          <path d="M108 174 Q132 184 152 168" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'shocked_eyes':
-      return `
-        <g>
-          <circle cx="102" cy="142" r="13" fill="#FFF" stroke="${stroke}" stroke-width="4"/>
-          <circle cx="158" cy="142" r="13" fill="#FFF" stroke="${stroke}" stroke-width="4"/>
-          <circle cx="102" cy="142" r="5" fill="${stroke}"/>
-          <circle cx="158" cy="142" r="5" fill="${stroke}"/>
-          <ellipse cx="130" cy="176" rx="12" ry="15" fill="#9E2A2B" stroke="${stroke}" stroke-width="4"/>
-        </g>`;
-    case 'happy_smile':
-      return `
-        <g>
-          <circle cx="102" cy="142" r="8" fill="${stroke}"/>
-          <circle cx="158" cy="142" r="8" fill="${stroke}"/>
-          <circle cx="99" cy="139" r="3" fill="#FFF"/>
-          <circle cx="155" cy="139" r="3" fill="#FFF"/>
-          <ellipse cx="86" cy="156" rx="10" ry="6" fill="#FF758F" opacity="0.65"/>
-          <ellipse cx="174" cy="156" rx="10" ry="6" fill="#FF758F" opacity="0.65"/>
-          <path d="M106 166 Q130 188 154 166" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'angry_fierce':
-      return `
-        <g>
-          <path d="M84 126 L118 138 M176 126 L142 138" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
-          <circle cx="104" cy="145" r="7.5" fill="${stroke}"/>
-          <circle cx="156" cy="145" r="7.5" fill="${stroke}"/>
-          <rect x="104" y="168" width="52" height="16" rx="6" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <line x1="120" y1="168" x2="120" y2="184" stroke="${stroke}" stroke-width="3"/>
-          <line x1="140" y1="168" x2="140" y2="184" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
-    case 'starry_eyes':
-      return `
-        <g>
-          <polygon points="102,126 106,136 117,136 108,143 112,154 102,147 92,154 96,143 87,136 98,136" fill="#FFD166" stroke="${stroke}" stroke-width="3"/>
-          <polygon points="158,126 162,136 173,136 164,143 168,154 158,147 148,154 152,143 143,136 154,136" fill="#FFD166" stroke="${stroke}" stroke-width="3"/>
-          <path d="M108 168 Q130 186 152 168" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'sleepy_yawn':
-      return `
-        <g>
-          <path d="M88 144 Q102 154 116 144" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M144 144 Q158 154 172 144" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <circle cx="130" cy="174" r="10" fill="#9E2A2B" stroke="${stroke}" stroke-width="3.5"/>
-          <text x="164" y="130" font-size="15" font-weight="900" fill="${stroke}">Zzz</text>
-        </g>`;
-    case 'sly_smirk':
-      return `
-        <g>
-          <path d="M88 134 L116 130 M144 126 Q158 118 172 128" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <ellipse cx="104" cy="144" rx="8" ry="6" fill="${stroke}"/>
-          <ellipse cx="158" cy="144" rx="8" ry="6" fill="${stroke}"/>
-          <path d="M106 174 Q136 178 158 162" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'cry_laugh':
-      return `
-        <g>
-          <path d="M88 140 Q102 128 116 140" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M144 140 Q158 128 172 140" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M84 146 Q76 160 84 166 Q92 160 84 146 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.5"/>
-          <path d="M176 146 Q168 160 176 166 Q184 160 176 146 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.5"/>
-          <path d="M104 164 L156 164 Q156 190 130 190 Q104 190 104 164 Z" fill="#9E2A2B" stroke="${stroke}" stroke-width="4"/>
-        </g>`;
-    case 'heart_eyes':
-      return `
-        <g>
-          <path d="M102 154 C102 154 84 142 84 132 C84 125 94 122 102 130 C110 122 120 125 120 132 C120 142 102 154 102 154 Z" fill="#E63946" stroke="${stroke}" stroke-width="3"/>
-          <path d="M158 154 C158 154 140 142 140 132 C140 125 150 122 158 130 C166 122 176 125 176 132 C176 142 158 154 158 154 Z" fill="#E63946" stroke="${stroke}" stroke-width="3"/>
-          <path d="M108 168 Q130 186 152 168" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'detective_pipe':
-      return `
-        <g>
-          <circle cx="102" cy="142" r="7.5" fill="${stroke}"/>
-          <circle cx="158" cy="142" r="7.5" fill="${stroke}"/>
-          <path d="M112 172 Q130 178 148 172" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M138 173 L176 184 L182 170 L168 168 L166 176 Z" fill="#6F4E37" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="182" cy="156" r="5" fill="#FFF" opacity="0.7"/>
-        </g>`;
-    case 'pixel_shades':
-      return `
-        <g>
-          <rect x="78" y="132" width="104" height="8" fill="#111"/>
-          <rect x="84" y="140" width="38" height="18" fill="#111"/>
-          <rect x="138" y="140" width="38" height="18" fill="#111"/>
-          <rect x="90" y="142" width="8" height="6" fill="#FFF"/>
-          <rect x="144" y="142" width="8" height="6" fill="#FFF"/>
-          <path d="M112 174 Q130 184 150 172" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'royal_goatee':
-      return `
-        <g>
-          <circle cx="102" cy="140" r="7.5" fill="${stroke}"/>
-          <circle cx="158" cy="140" r="7.5" fill="${stroke}"/>
-          <path d="M104 166 Q130 158 156 166" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <polygon points="120,176 140,176 130,196" fill="${stroke}"/>
-        </g>`;
-    case 'whistle_cute':
-      return `
-        <g>
-          <circle cx="100" cy="138" r="7.5" fill="${stroke}"/>
-          <circle cx="156" cy="138" r="7.5" fill="${stroke}"/>
-          <circle cx="97" cy="135" r="2.5" fill="#FFF"/>
-          <circle cx="153" cy="135" r="2.5" fill="#FFF"/>
-          <circle cx="134" cy="172" r="6.5" fill="${stroke}"/>
-          <path d="M152 164 Q162 158 168 164" fill="none" stroke="${stroke}" stroke-width="3" stroke-linecap="round"/>
-        </g>`;
-    case 'side_eye':
-      return `
-        <g>
-          <ellipse cx="102" cy="142" rx="12" ry="9" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <ellipse cx="158" cy="142" rx="12" ry="9" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="108" cy="142" r="5.5" fill="${stroke}"/>
-          <circle cx="164" cy="142" r="5.5" fill="${stroke}"/>
-          <line x1="112" y1="172" x2="148" y2="170" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'handlebar_twirl':
-      return `
-        <g>
-          <circle cx="102" cy="138" r="7.5" fill="${stroke}"/>
-          <circle cx="158" cy="138" r="7.5" fill="${stroke}"/>
-          <path d="M130 162 C110 152, 82 168, 76 156 C72 148, 84 144, 86 152 M130 162 C150 152, 178 168, 184 156 C188 148, 176 144, 174 152" fill="none" stroke="${stroke}" stroke-width="6" stroke-linecap="round"/>
-        </g>`;
-    case 'aviator_gold':
-      return `
-        <g>
-          <line x1="76" y1="132" x2="184" y2="132" stroke="#DDA843" stroke-width="4"/>
-          <path d="M82 132 H122 C122 156 108 160 98 158 C84 156 82 144 82 132 Z" fill="#2B2D42" stroke="#DDA843" stroke-width="3.5"/>
-          <path d="M138 132 H178 C178 156 164 160 154 158 C140 156 138 144 138 132 Z" fill="#2B2D42" stroke="#DDA843" stroke-width="3.5"/>
-          <path d="M112 174 Q130 184 148 174" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-        </g>`;
-    case 'cat_whiskers':
-      return `
-        <g>
-          <circle cx="102" cy="140" r="8" fill="${stroke}"/>
-          <circle cx="158" cy="140" r="8" fill="${stroke}"/>
-          <polygon points="124,154 136,154 130,162" fill="#FF758F" stroke="${stroke}" stroke-width="2.5"/>
-          <path d="M114 168 Q122 176 130 164 Q138 176 146 168" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M76 154 L94 158 M76 164 L94 164 M184 154 L166 158 M184 164 L166 164" stroke="${stroke}" stroke-width="3" stroke-linecap="round"/>
-        </g>`;
-    case 'laser_eyes':
-      return `
-        <g>
-          <ellipse cx="102" cy="142" rx="13" ry="8" fill="#EF233C" stroke="#FFD166" stroke-width="3"/>
-          <ellipse cx="158" cy="142" rx="13" ry="8" fill="#EF233C" stroke="#FFD166" stroke-width="3"/>
-          <circle cx="102" cy="142" r="4" fill="#FFF"/>
-          <circle cx="158" cy="142" r="4" fill="#FFF"/>
-          <path d="M108 172 L152 172" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'dizzy_spiral':
-      return `
-        <g>
-          <circle cx="102" cy="142" r="12" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <path d="M102 142 m-6 0 a6 6 0 1 0 12 0 a4 4 0 1 0 -8 0" fill="none" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="158" cy="142" r="12" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <path d="M158 142 m-6 0 a6 6 0 1 0 12 0 a4 4 0 1 0 -8 0" fill="none" stroke="${stroke}" stroke-width="3"/>
-          <path d="M104 174 Q116 164 130 174 Q144 184 156 174" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-        </g>`;
-    case 'money_eyes':
-      return `
-        <g>
-          <circle cx="102" cy="142" r="13" fill="#FFD166" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="158" cy="142" r="13" fill="#FFD166" stroke="${stroke}" stroke-width="3.5"/>
-          <rect x="98" y="135" width="8" height="14" rx="2" fill="#2E7D32"/>
-          <rect x="154" y="135" width="8" height="14" rx="2" fill="#2E7D32"/>
-          <path d="M106 168 Q130 188 154 168" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'bandit_mask':
-      return `
-        <g>
-          <path d="M74 128 Q130 120 186 128 L182 156 Q155 162 130 148 Q105 162 78 156 Z" fill="#222" stroke="${stroke}" stroke-width="3.5"/>
-          <ellipse cx="102" cy="142" rx="9" ry="6" fill="#FFF"/>
-          <ellipse cx="158" cy="142" rx="9" ry="6" fill="#FFF"/>
-          <path d="M112 172 Q134 182 152 168" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-        </g>`;
-    case 'cigar_boss':
-      return `
-        <g>
-          <path d="M86 128 L116 134 M174 128 L144 134" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <circle cx="102" cy="142" r="7.5" fill="${stroke}"/>
-          <circle cx="158" cy="142" r="7.5" fill="${stroke}"/>
-          <path d="M108 172 H148" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <rect x="138" y="168" width="36" height="10" rx="4" transform="rotate(12 138 168)" fill="#8C5A2B" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="174" cy="176" r="4" fill="#E63946"/>
-        </g>`;
-    case 'blush_shy':
-      return `
-        <g>
-          <circle cx="102" cy="142" r="9" fill="${stroke}"/>
-          <circle cx="158" cy="142" r="9" fill="${stroke}"/>
-          <circle cx="99" cy="138" r="3.5" fill="#FFF"/>
-          <circle cx="155" cy="138" r="3.5" fill="#FFF"/>
-          <ellipse cx="84" cy="158" rx="13" ry="8" fill="#FF4D6D" opacity="0.65"/>
-          <ellipse cx="176" cy="158" rx="13" ry="8" fill="#FF4D6D" opacity="0.65"/>
-          <path d="M118 170 Q124 176 130 170 Q136 176 142 170" fill="none" stroke="${stroke}" stroke-width="3.8" stroke-linecap="round"/>
-        </g>`;
-    case 'vampire_fangs':
-      return `
-        <g>
-          <path d="M86 130 L114 138 M174 130 L146 138" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="102" cy="144" r="7.5" fill="#E63946" stroke="${stroke}" stroke-width="2.5"/>
-          <circle cx="158" cy="144" r="7.5" fill="#E63946" stroke="${stroke}" stroke-width="2.5"/>
-          <path d="M104 166 Q130 176 156 166" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <polygon points="112,168 120,169 116,182" fill="#FFF" stroke="${stroke}" stroke-width="2.5"/>
-          <polygon points="140,169 148,168 144,182" fill="#FFF" stroke="${stroke}" stroke-width="2.5"/>
-        </g>`;
-    case 'robot_visor':
-      return `
-        <g>
-          <rect x="78" y="128" width="104" height="26" rx="8" fill="#1D3557" stroke="${stroke}" stroke-width="4"/>
-          <rect x="90" y="135" width="24" height="12" rx="3" fill="#00F5D4"/>
-          <rect x="146" y="135" width="24" height="12" rx="3" fill="#00F5D4"/>
-          <rect x="106" y="168" width="48" height="12" rx="4" fill="#E0E1DD" stroke="${stroke}" stroke-width="3"/>
-          <line x1="122" y1="168" x2="122" y2="180" stroke="${stroke}" stroke-width="2.5"/>
-          <line x1="138" y1="168" x2="138" y2="180" stroke="${stroke}" stroke-width="2.5"/>
-        </g>`;
-    case 'crying_river':
-      return `
-        <g>
-          <circle cx="102" cy="140" r="8" fill="${stroke}"/>
-          <circle cx="158" cy="140" r="8" fill="${stroke}"/>
-          <rect x="94" y="148" width="14" height="38" rx="6" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.5"/>
-          <rect x="152" y="148" width="14" height="38" rx="6" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.5"/>
-          <path d="M114 178 Q130 164 146 178" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-        </g>`;
-    case 'kiss_face':
-      return `
-        <g>
-          <path d="M88 142 Q102 130 116 142" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <circle cx="158" cy="142" r="8" fill="${stroke}"/>
-          <path d="M124 164 C118 160, 118 170, 128 172 C118 174, 118 184, 124 180" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M156 168 C156 168 146 160 146 154 C146 150 152 148 156 153 C160 148 166 150 166 154 C166 160 156 168 156 168 Z" fill="#E63946" stroke="${stroke}" stroke-width="2"/>
-        </g>`;
-    case 'zen_calm':
-      return `
-        <g>
-          <path d="M88 142 Q102 152 116 142" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M144 142 Q158 152 172 142" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="130" cy="126" r="4" fill="#E63946"/>
-          <path d="M110 170 Q130 182 150 170" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-        </g>`;
-    case 'clown_nose':
-      return `
-        <g>
-          <path d="M88 136 Q102 124 116 136" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M144 136 Q158 124 172 136" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="130" cy="154" r="13" fill="#E63946" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="125" cy="149" r="3.5" fill="#FFF"/>
-          <path d="M104 172 Q130 190 156 172" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'scar_warrior':
-      return `
-        <g>
-          <line x1="96" y1="122" x2="108" y2="162" stroke="#9E2A2B" stroke-width="3.5" stroke-linecap="round"/>
-          <line x1="94" y1="130" x2="106" y2="128" stroke="#9E2A2B" stroke-width="2.5"/>
-          <circle cx="102" cy="142" r="7.5" fill="${stroke}"/>
-          <circle cx="158" cy="142" r="7.5" fill="${stroke}"/>
-          <path d="M110 172 L150 168" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'bubblegum_pop':
-      return `
-        <g>
-          <circle cx="102" cy="140" r="7.5" fill="${stroke}"/>
-          <circle cx="158" cy="140" r="7.5" fill="${stroke}"/>
-          <circle cx="144" cy="172" r="18" fill="#FF8FA3" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="138" cy="165" r="4" fill="#FFF" opacity="0.8"/>
-        </g>`;
-    case 'unibrow_funny':
-      return `
-        <g>
-          <path d="M80 128 Q105 118 130 130 Q155 118 180 128" fill="none" stroke="${stroke}" stroke-width="6" stroke-linecap="round"/>
-          <circle cx="102" cy="144" r="8" fill="${stroke}"/>
-          <circle cx="158" cy="144" r="8" fill="${stroke}"/>
-          <path d="M108 170 Q130 184 152 170" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'scared_tears':
-      return `
-        <g>
-          <path d="M86 124 Q100 116 114 124 M146 124 Q160 116 174 124" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="102" cy="142" r="14" fill="#FFF" stroke="${stroke}" stroke-width="4"/>
-          <circle cx="158" cy="142" r="14" fill="#FFF" stroke="${stroke}" stroke-width="4"/>
-          <circle cx="102" cy="144" r="4.5" fill="${stroke}"/>
-          <circle cx="158" cy="144" r="4.5" fill="${stroke}"/>
-          <path d="M84 152 Q78 164 84 170 Q90 164 84 152 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.2"/>
-          <path d="M176 152 Q170 164 176 170 Q182 164 176 152 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.2"/>
-          <path d="M110 186 Q110 166 130 166 Q150 166 150 186 Z" fill="#9E2A2B" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="M118 186 Q130 178 142 186" fill="#FF8FA3"/>
-        </g>`;
-    case 'nerd_teeth':
-      return `
-        <g>
-          <path d="M86 120 Q100 112 114 120 M146 120 Q160 112 174 120" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="102" cy="142" r="16" fill="#E8F4F8" stroke="${stroke}" stroke-width="4.5"/>
-          <circle cx="158" cy="142" r="16" fill="#E8F4F8" stroke="${stroke}" stroke-width="4.5"/>
-          <path d="M118 140 Q130 134 142 140" fill="none" stroke="${stroke}" stroke-width="4"/>
-          <circle cx="102" cy="143" r="6" fill="${stroke}"/>
-          <circle cx="158" cy="143" r="6" fill="${stroke}"/>
-          <path d="M106 168 Q130 186 154 168" fill="#9E2A2B" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <rect x="120" y="169" width="9" height="11" rx="2" fill="#FFF" stroke="${stroke}" stroke-width="2.2"/>
-          <rect x="131" y="169" width="9" height="11" rx="2" fill="#FFF" stroke="${stroke}" stroke-width="2.2"/>
-        </g>`;
-    case 'nervous_sweat':
-      return `
-        <g>
-          <path d="M88 130 Q100 122 114 128 M146 128 Q160 122 172 130" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <ellipse cx="102" cy="144" rx="10" ry="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <ellipse cx="158" cy="144" rx="10" ry="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="104" cy="146" r="4.5" fill="${stroke}"/>
-          <circle cx="156" cy="146" r="4.5" fill="${stroke}"/>
-          <path d="M106 174 L114 168 L122 176 L130 168 L138 176 L146 168 L154 174 L146 182 L114 182 Z" fill="#FFF" stroke="${stroke}" stroke-width="3.2" stroke-linejoin="round"/>
-          <path d="M176 118 Q168 132 176 138 Q184 132 176 118 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.4"/>
-        </g>`;
-    case 'evil_goatee':
-      return `
-        <g>
-          <path d="M84 126 L116 138 M176 126 L144 138" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
-          <path d="M92 144 Q102 138 112 144" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M148 144 Q158 138 168 144" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="102" cy="146" r="4" fill="${stroke}"/>
-          <circle cx="158" cy="146" r="4" fill="${stroke}"/>
-          <path d="M104 166 Q130 184 158 162" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M118 182 Q130 188 142 182 L130 202 Z" fill="#3B2314" stroke="${stroke}" stroke-width="3" stroke-linejoin="round"/>
-        </g>`;
-    case 'ski_goggles':
-      return `
-        <g>
-          <rect x="72" y="136" width="116" height="8" rx="4" fill="#3B3B3B" stroke="${stroke}" stroke-width="2.5"/>
-          <path d="M82 128 Q130 120 178 128 Q184 140 178 154 Q154 160 130 150 Q106 160 82 154 Q76 140 82 128 Z" fill="#2B2D42" stroke="#9AA5B1" stroke-width="5"/>
-          <path d="M92 134 L104 148 M148 134 L160 148" stroke="#FFF" stroke-width="3" stroke-linecap="round" opacity=".8"/>
-          <ellipse cx="130" cy="176" rx="8" ry="10" fill="#9E2A2B" stroke="${stroke}" stroke-width="3.5"/>
-        </g>`;
-    case 'yummy_tongue':
-      return `
-        <g>
-          <path d="M88 144 Q102 132 116 144 M144 144 Q158 132 172 144" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M104 168 Q130 184 156 166" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M138 174 Q150 172 152 184 Q148 194 140 188 Q134 182 138 174 Z" fill="#FF6B8B" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="164" cy="186" r="2.5" fill="#B5743A"/><circle cx="170" cy="180" r="2" fill="#B5743A"/>
-        </g>`;
-    case 'puffy_cheeks':
-      return `
-        <g>
-          <path d="M90 140 Q102 132 114 140 M146 140 Q158 132 170 140" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M84 150 Q70 164 84 180 M176 150 Q190 164 176 180" fill="none" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/>
-          <ellipse cx="90" cy="166" rx="10" ry="7" fill="#FF8FA3" opacity=".5"/>
-          <ellipse cx="170" cy="166" rx="10" ry="7" fill="#FF8FA3" opacity=".5"/>
-          <path d="M120 172 Q130 166 140 172 Q130 180 120 172 Z" fill="#9E2A2B" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="112" cy="178" r="2" fill="${stroke}"/><circle cx="148" cy="178" r="2" fill="${stroke}"/>
-        </g>`;
-    case 'wailing_cry':
-      return `
-        <g>
-          <path d="M86 130 Q100 140 114 132 M146 132 Q160 140 174 130" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M90 146 Q102 140 114 146 M146 146 Q158 140 170 146" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M84 150 Q76 162 82 168 Q90 162 84 150 Z M92 156 Q86 166 90 172 Q96 166 92 156 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2"/>
-          <path d="M176 150 Q184 162 178 168 Q170 162 176 150 Z M168 156 Q174 166 170 172 Q164 166 168 156 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2"/>
-          <path d="M104 194 Q104 162 130 162 Q156 162 156 194 Z" fill="#7A1F20" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="M112 194 Q130 182 148 194" fill="#FF8FA3"/>
-          <rect x="116" y="164" width="28" height="6" rx="2" fill="#FFF"/>
-        </g>`;
-    case 'dizzy_tongue':
-      return `
-        <g>
-          <path d="M102 142 m-11 0 a11 11 0 1 0 22 0 a8 8 0 1 0 -16 0 a5 5 0 1 0 10 0 a2 2 0 1 0 -4 0" fill="none" stroke="${stroke}" stroke-width="3"/>
-          <path d="M158 142 m-11 0 a11 11 0 1 0 22 0 a8 8 0 1 0 -16 0 a5 5 0 1 0 10 0 a2 2 0 1 0 -4 0" fill="none" stroke="${stroke}" stroke-width="3"/>
-          <path d="M104 170 Q130 160 156 170" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M120 168 Q132 168 142 172 Q146 190 134 192 Q122 190 120 168 Z" fill="#FF6B8B" stroke="${stroke}" stroke-width="3"/>
-          <line x1="131" y1="172" x2="132" y2="184" stroke="${stroke}" stroke-width="2"/>
-        </g>`;
-    case 'sick_thermo':
-      return `
-        <g>
-          <ellipse cx="130" cy="160" rx="50" ry="34" fill="#FF8FA3" opacity=".35"/>
-          <path d="M88 136 Q102 130 116 136 M144 136 Q158 130 172 136" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M90 144 L114 144 Q110 152 102 152 Q94 152 90 144 Z" fill="${stroke}"/>
-          <path d="M146 144 L170 144 Q166 152 158 152 Q150 152 146 144 Z" fill="${stroke}"/>
-          <path d="M110 178 Q130 170 150 178" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <rect x="140" y="170" width="34" height="7" rx="3.5" transform="rotate(-18 140 170)" fill="#FFF" stroke="${stroke}" stroke-width="2.5"/>
-          <circle cx="173" cy="160" r="5" fill="#E63946" stroke="${stroke}" stroke-width="2"/>
-        </g>`;
-    case 'nauseous_green':
-      return `
-        <g>
-          <ellipse cx="130" cy="158" rx="52" ry="40" fill="#9FB8C8" opacity=".55"/>
-          <path d="M88 132 Q102 126 116 134 M144 134 Q158 126 172 132" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M90 146 Q102 140 114 146" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M146 146 Q158 140 170 146" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="102" cy="149" r="4" fill="${stroke}"/><circle cx="158" cy="149" r="4" fill="${stroke}"/>
-          <path d="M108 180 Q116 172 124 180 Q132 188 140 180 Q148 172 154 180" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-        </g>`;
-    case 'frozen_cold':
-      return `
-        <g>
-          <ellipse cx="130" cy="156" rx="52" ry="42" fill="#90CDF4" opacity=".55"/>
-          <path d="M88 128 Q100 120 114 130 M146 130 Q160 120 172 128" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="102" cy="144" r="10" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="158" cy="144" r="10" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="102" cy="145" r="4" fill="${stroke}"/><circle cx="158" cy="145" r="4" fill="${stroke}"/>
-          <rect x="106" y="168" width="48" height="16" rx="5" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <path d="M106 176 L154 176 M118 168 L118 184 M130 168 L130 184 M142 168 L142 184" stroke="${stroke}" stroke-width="2.2"/>
-          <path d="M80 164 l-6 4 l6 4 l-6 4 M180 164 l6 4 l-6 4 l6 4" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round"/>
-        </g>`;
-    case 'bearded_wink':
-      return `
-        <g>
-          <path d="M84 126 Q100 116 116 126 M144 126 Q160 116 176 126" fill="none" stroke="#3B2314" stroke-width="7" stroke-linecap="round"/>
-          <path d="M90 142 Q102 134 114 142" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <circle cx="158" cy="142" r="7.5" fill="${stroke}"/><circle cx="155" cy="139" r="2.5" fill="#FFF"/>
-          <path d="M80 150 Q84 196 130 200 Q176 196 180 150 Q170 166 154 162 Q130 176 106 162 Q90 166 80 150 Z" fill="#4A2C18" stroke="${stroke}" stroke-width="3.5" stroke-linejoin="round"/>
-          <path d="M104 162 Q118 152 130 160 Q142 152 156 162 Q144 168 130 164 Q116 168 104 162 Z" fill="#3B2314" stroke="${stroke}" stroke-width="3"/>
-          <path d="M116 174 Q130 184 144 174 Z" fill="#FFF" stroke="${stroke}" stroke-width="2.5"/>
-        </g>`;
-    case 'money_tongue':
-      return `
-        <g>
-          <path d="M88 124 Q102 116 116 124 M144 124 Q158 116 172 124" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <text x="102" y="154" text-anchor="middle" font-size="30" font-weight="900" fill="#2E7D32" stroke="${stroke}" stroke-width="1.5" font-family="Arial, sans-serif">$</text>
-          <text x="158" y="154" text-anchor="middle" font-size="30" font-weight="900" fill="#2E7D32" stroke="${stroke}" stroke-width="1.5" font-family="Arial, sans-serif">$</text>
-          <path d="M104 166 Q130 186 156 166 Z" fill="#9E2A2B" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="M120 174 Q132 172 142 176 Q144 194 132 194 Q120 192 120 174 Z" fill="#FF6B8B" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
-    case 'blushing_red':
-      return `
-        <g>
-          <ellipse cx="130" cy="158" rx="50" ry="36" fill="#FF6B6B" opacity=".35"/>
-          <path d="M88 144 Q102 132 116 144 M144 144 Q158 132 172 144" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <ellipse cx="88" cy="160" rx="12" ry="7" fill="#E63946" opacity=".55"/>
-          <ellipse cx="172" cy="160" rx="12" ry="7" fill="#E63946" opacity=".55"/>
-          <path d="M84 156 l6 -4 M90 160 l6 -4 M164 156 l6 -4 M170 160 l6 -4" stroke="#C1121F" stroke-width="2" stroke-linecap="round"/>
-          <path d="M110 170 Q130 186 150 170" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'smug_lids':
-      return `
-        <g>
-          <path d="M86 128 Q102 120 116 130 M144 126 Q160 116 174 124" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <ellipse cx="102" cy="146" rx="12" ry="8" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <ellipse cx="158" cy="146" rx="12" ry="8" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <path d="M90 143 L114 143 L114 140 Q102 136 90 140 Z M146 143 L170 143 L170 140 Q158 136 146 140 Z" fill="#E6C9A8" stroke="${stroke}" stroke-width="2.5"/>
-          <circle cx="106" cy="148" r="3.5" fill="${stroke}"/><circle cx="162" cy="148" r="3.5" fill="${stroke}"/>
-          <path d="M110 172 Q134 182 156 164" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'zipper_mouth':
-      return `
-        <g>
-          <path d="M88 126 Q102 118 116 126 M144 126 Q158 118 172 126" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="102" cy="144" r="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="158" cy="144" r="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="102" cy="145" r="5" fill="${stroke}"/><circle cx="158" cy="145" r="5" fill="${stroke}"/>
-          <rect x="100" y="170" width="60" height="10" rx="3" fill="#ADB5BD" stroke="${stroke}" stroke-width="3"/>
-          <path d="M106 170 v10 M112 170 v10 M118 170 v10 M124 170 v10 M130 170 v10 M136 170 v10 M142 170 v10 M148 170 v10 M154 170 v10" stroke="${stroke}" stroke-width="1.8"/>
-          <rect x="156" y="172" width="14" height="18" rx="3" transform="rotate(-20 156 172)" fill="#ADB5BD" stroke="${stroke}" stroke-width="2.8"/>
-        </g>`;
-    case 'fire_angry':
-      return `
-        <g>
-          <ellipse cx="130" cy="160" rx="52" ry="38" fill="#E63946" opacity=".35"/>
-          <path d="M84 132 Q88 112 96 122 Q100 106 108 120 Q114 110 118 136 Z" fill="#FB8500" stroke="#C1121F" stroke-width="2.5" stroke-linejoin="round"/>
-          <path d="M176 132 Q172 112 164 122 Q160 106 152 120 Q146 110 142 136 Z" fill="#FB8500" stroke="#C1121F" stroke-width="2.5" stroke-linejoin="round"/>
-          <path d="M86 136 L118 144 M174 136 L142 144" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
-          <ellipse cx="104" cy="152" rx="9" ry="7" fill="#FFD166" stroke="${stroke}" stroke-width="3"/>
-          <ellipse cx="156" cy="152" rx="9" ry="7" fill="#FFD166" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="105" cy="153" r="3.5" fill="${stroke}"/><circle cx="155" cy="153" r="3.5" fill="${stroke}"/>
-          <path d="M108 190 Q108 170 130 170 Q152 170 152 190 Z" fill="#7A1F20" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <rect x="114" y="172" width="32" height="6" rx="2" fill="#FFF"/>
-        </g>`;
-    case 'whistle_note':
-      return `
-        <g>
-          <path d="M88 142 Q102 132 116 142 M144 142 Q158 132 172 142" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <ellipse cx="124" cy="174" rx="8" ry="7" fill="#9E2A2B" stroke="${stroke}" stroke-width="3.5"/>
-          <path d="M134 170 Q140 166 146 170" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round"/>
-          <path d="M162 176 L162 156 L176 152 L176 170" fill="none" stroke="${stroke}" stroke-width="3" stroke-linejoin="round"/>
-          <ellipse cx="158" cy="177" rx="5" ry="4" fill="${stroke}"/><ellipse cx="172" cy="171" rx="5" ry="4" fill="${stroke}"/>
-        </g>`;
-    case 'black_eye':
-      return `
-        <g>
-          <path d="M88 126 Q102 118 116 126 M144 124 Q158 116 172 126" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="102" cy="142" r="7.5" fill="${stroke}"/><circle cx="99" cy="139" r="2.5" fill="#FFF"/>
-          <ellipse cx="158" cy="144" rx="17" ry="14" fill="#6C4E9B" opacity=".65"/>
-          <path d="M148 144 Q158 138 168 144" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <rect x="114" y="150" width="32" height="12" rx="4" transform="rotate(-12 130 156)" fill="#F4C095" stroke="${stroke}" stroke-width="2.5"/>
-          <path d="M124 152 l0 8 M136 150 l0 8" stroke="#C48F5A" stroke-width="2" transform="rotate(-12 130 156)"/>
-          <path d="M104 172 Q130 190 158 172 Z" fill="#FFF" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="M112 176 L150 176" stroke="${stroke}" stroke-width="2"/>
-        </g>`;
-    case 'ninja_headband':
-      return `
-        <g>
-          <path d="M70 114 Q130 106 190 114 L190 128 Q130 120 70 128 Z" fill="#2B2D42" stroke="${stroke}" stroke-width="3"/>
-          <path d="M188 118 L204 110 L200 126 Z M188 124 L206 128 L196 136 Z" fill="#2B2D42" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>
-          <path d="M88 136 L116 142 M172 136 L144 142" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <circle cx="102" cy="150" r="6.5" fill="${stroke}"/><circle cx="158" cy="150" r="6.5" fill="${stroke}"/>
-          <ellipse cx="158" cy="152" rx="15" ry="12" fill="#6C4E9B" opacity=".45"/>
-          <path d="M104 172 Q130 188 158 172 Z" fill="#FFF" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <rect x="120" y="158" width="20" height="8" rx="3" fill="#F4C095" stroke="${stroke}" stroke-width="2.2"/>
-        </g>`;
-    case 'surprised_o':
-      return `
-        <g>
-          <path d="M86 122 Q100 112 116 122 M144 122 Q160 112 174 122" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="102" cy="144" r="13" fill="#FFF" stroke="${stroke}" stroke-width="4"/>
-          <circle cx="158" cy="144" r="13" fill="#FFF" stroke="${stroke}" stroke-width="4"/>
-          <circle cx="102" cy="144" r="6" fill="${stroke}"/><circle cx="158" cy="144" r="6" fill="${stroke}"/>
-          <ellipse cx="130" cy="178" rx="7" ry="9" fill="#E07A7A" stroke="${stroke}" stroke-width="3.5"/>
-        </g>`;
-    case 'meh_yawn':
-      return `
-        <g>
-          <path d="M86 130 Q102 124 116 132 M144 132 Q158 124 174 130" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="102" cy="146" r="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="158" cy="146" r="11" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <path d="M91 145 Q102 136 113 145 Z M147 145 Q158 136 169 145 Z" fill="#E6C9A8" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="102" cy="150" r="4" fill="${stroke}"/><circle cx="158" cy="150" r="4" fill="${stroke}"/>
-          <path d="M114 192 Q112 168 130 168 Q148 168 146 192 Z" fill="#9E2A2B" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="M120 192 Q130 184 140 192" fill="#FF8FA3"/>
-        </g>`;
-    case 'pipe_relaxed':
-      return `
-        <g>
-          <path d="M86 130 Q102 124 116 132 M144 132 Q158 124 174 130" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <ellipse cx="102" cy="146" rx="12" ry="9" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <ellipse cx="158" cy="146" rx="12" ry="9" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <path d="M90 145 Q102 136 114 145 Z M146 145 Q158 136 170 145 Z" fill="#E6C9A8" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="102" cy="149" r="3.5" fill="${stroke}"/><circle cx="158" cy="149" r="3.5" fill="${stroke}"/>
-          <path d="M108 174 Q124 180 138 172" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
-          <path d="M134 174 Q150 182 164 178" fill="none" stroke="#6F4E37" stroke-width="5" stroke-linecap="round"/>
-          <path d="M160 170 L178 170 L176 188 Q170 194 164 188 Z" fill="#8C5A2B" stroke="${stroke}" stroke-width="3" stroke-linejoin="round"/>
-        </g>`;
-    case 'unimpressed':
-      return `
-        <g>
-          <path d="M86 132 L116 130 M144 128 Q160 120 174 128" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <ellipse cx="102" cy="146" rx="12" ry="8" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <ellipse cx="158" cy="146" rx="12" ry="8" fill="#FFF" stroke="${stroke}" stroke-width="3.5"/>
-          <path d="M90 145 L114 145 L114 141 Q102 137 90 141 Z M146 145 L170 145 L170 141 Q158 137 146 141 Z" fill="#E6C9A8" stroke="${stroke}" stroke-width="2.5"/>
-          <circle cx="108" cy="149" r="3.5" fill="${stroke}"/><circle cx="164" cy="149" r="3.5" fill="${stroke}"/>
-          <path d="M112 178 Q130 172 148 178" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'musketeer':
-      return `
-        <g>
-          <path d="M86 124 Q100 116 116 124 M144 124 Q160 116 174 124" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-          <circle cx="102" cy="142" r="7.5" fill="${stroke}"/><circle cx="158" cy="142" r="7.5" fill="${stroke}"/>
-          <circle cx="99" cy="139" r="2.5" fill="#FFF"/><circle cx="155" cy="139" r="2.5" fill="#FFF"/>
-          <path d="M130 162 C116 154 100 166 92 158 C88 154 92 148 96 152 M130 162 C144 154 160 166 168 158 C172 154 168 148 164 152" fill="none" stroke="#3B2314" stroke-width="6" stroke-linecap="round"/>
-          <path d="M116 174 Q130 180 144 174" fill="none" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/>
-          <path d="M122 182 L138 182 L130 200 Z" fill="#3B2314" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>
-        </g>`;
-    case 'king_beard':
+  let lid = '';
+  if (opts.lid === 'half') {
+    lid = `<path d="M${cx - rx - 1} ${cy - 1} Q${cx} ${cy - 4} ${cx + rx + 1} ${cy - 1} A${rx} ${ry} 0 0 0 ${cx - rx - 1} ${cy - 1} Z" fill="#D4A373" stroke="${stroke}" stroke-width="3.2"/>`;
+  } else if (opts.lid === 'angry_l') {
+    lid = `<path d="M${cx - rx - 2} ${cy - ry + 2} L${cx + rx + 2} ${cy - 2}" stroke="${stroke}" stroke-width="5.5" stroke-linecap="round"/>`;
+  } else if (opts.lid === 'angry_r') {
+    lid = `<path d="M${cx + rx + 2} ${cy - ry + 2} L${cx - rx - 2} ${cy - 2}" stroke="${stroke}" stroke-width="5.5" stroke-linecap="round"/>`;
+  } else if (opts.lid === 'sad_l') {
+    lid = `<path d="M${cx - rx - 2} ${cy - 2} L${cx + rx + 2} ${cy - ry + 2}" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>`;
+  } else if (opts.lid === 'sad_r') {
+    lid = `<path d="M${cx + rx + 2} ${cy - 2} L${cx - rx - 2} ${cy - ry + 2}" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>`;
+  }
+  return `
+    <g>
+      <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#FFFFFF" stroke="${stroke}" stroke-width="3.8"/>
+      <circle cx="${cx + px}" cy="${cy + py}" r="${Math.min(rx, ry) * 0.64}" fill="${iris}"/>
+      <circle cx="${cx + px}" cy="${cy + py}" r="${Math.min(rx, ry) * 0.38}" fill="#160E0A"/>
+      <circle cx="${cx + px - 3.2}" cy="${cy + py - 3.6}" r="3.2" fill="#FFFFFF"/>
+      <circle cx="${cx + px + 2.6}" cy="${cy + py + 2.6}" r="1.5" fill="#FFFFFF"/>
+      ${lid}
+    </g>
+  `;
+}
+
+/**
+ * مساعد رسم الفم الكرتوني متعدد الطبقات (حلق + أسنان + لسان)
+ */
+function cMouth(type) {
+  const stroke = '#231710';
+  switch (type) {
+    case 'big_laugh':
+      return `
+        <path d="M98 160 Q130 165 162 160 C162 192, 98 192, 98 160 Z" fill="#6B141A" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+        <path d="M103 161 Q130 165 157 161 L154 169 Q130 172 106 169 Z" fill="#FFFFFF"/>
+        <path d="M109 178 Q130 167 151 178 Q130 190 109 178 Z" fill="#FF758F"/>
+      `;
+    case 'evil_grin':
+      return `
+        <path d="M96 160 Q130 170 164 160 C160 190, 100 190, 96 160 Z" fill="#FFFFFF" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+        <path d="M112 163 L112 181 M130 165 L130 184 M148 163 L148 181" stroke="${stroke}" stroke-width="2.8"/>
+      `;
+    case 'tongue_out':
+      return `
+        <path d="M104 164 Q130 180 156 164" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        <path d="M121 170 Q130 169 139 170 C142 188, 118 188, 121 170 Z" fill="#FF6B8B" stroke="${stroke}" stroke-width="3.2"/>
+        <line x1="130" y1="171" x2="130" y2="181" stroke="#D6336C" stroke-width="2" stroke-linecap="round"/>
+      `;
+    case 'open_o':
+      return `
+        <ellipse cx="130" cy="175" rx="11" ry="13.5" fill="#6B141A" stroke="${stroke}" stroke-width="3.8"/>
+        <path d="M122 181 Q130 174 138 181 Q130 188 122 181 Z" fill="#FF758F"/>
+      `;
+    case 'smirk':
+      return `
+        <path d="M108 171 Q134 176 156 160" fill="none" stroke="${stroke}" stroke-width="4.4" stroke-linecap="round"/>
+        <path d="M152 156 Q160 158 158 166" fill="none" stroke="${stroke}" stroke-width="3.4" stroke-linecap="round"/>
+      `;
+    case 'sad':
+      return `
+        <path d="M108 179 Q130 163 152 179" fill="none" stroke="${stroke}" stroke-width="4.4" stroke-linecap="round"/>
+      `;
+    case 'clench':
+      return `
+        <rect x="102" y="165" width="56" height="17" rx="8" fill="#FFFFFF" stroke="${stroke}" stroke-width="3.8"/>
+        <line x1="104" y1="173.5" x2="156" y2="173.5" stroke="${stroke}" stroke-width="2.5"/>
+        <line x1="118" y1="165" x2="118" y2="182" stroke="${stroke}" stroke-width="2.5"/>
+        <line x1="130" y1="165" x2="130" y2="182" stroke="${stroke}" stroke-width="2.5"/>
+        <line x1="142" y1="165" x2="142" y2="182" stroke="${stroke}" stroke-width="2.5"/>
+      `;
+    case 'cute_smile':
     default:
       return `
-        <g>
-          <circle cx="102" cy="138" r="7.5" fill="${stroke}"/>
-          <circle cx="158" cy="138" r="7.5" fill="${stroke}"/>
-          <path d="M84 158 Q130 150 176 158 Q172 196 130 196 Q88 196 84 158 Z" fill="#4A2C18" stroke="${stroke}" stroke-width="3.5"/>
-          <path d="M114 168 Q130 178 146 168" fill="#FFF" stroke="${stroke}" stroke-width="2.5"/>
-        </g>`;
+        <path d="M108 166 Q130 184 152 166" fill="none" stroke="${stroke}" stroke-width="4.4" stroke-linecap="round"/>
+      `;
   }
 }
 
 /**
- * رسم الـ 20 طاقية وتاج بحيث تركب قاعدتها مباشرة على حافة الرأس الموحدة (X: 64..196, Y: 88)
+ * رسم الـ 66 وش كرتوني بعيون كرتونية حقيقية وتفاصيل مرسومة (X: 74..186, Y: 112..196)
+ */
+function renderFaceVector(faceId) {
+  const stroke = '#231710';
+  switch (faceId) {
+    case 'laugh_joy':
+      return `<g>
+        <path d="M84 121 Q100 111 116 121 M144 121 Q160 111 176 121" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 140)}
+        ${cEye(158, 140)}
+        <ellipse cx="82" cy="156" rx="9" ry="5.5" fill="#FF758F" opacity="0.55"/>
+        <ellipse cx="178" cy="156" rx="9" ry="5.5" fill="#FF758F" opacity="0.55"/>
+        ${cMouth('big_laugh')}
+      </g>`;
+
+    case 'mustache_boss':
+      return `<g>
+        <path d="M84 119 Q100 110 116 118 M144 118 Q160 110 176 119" fill="none" stroke="${stroke}" stroke-width="4.8" stroke-linecap="round"/>
+        ${cEye(102, 139)}
+        ${cEye(158, 139)}
+        ${cMouth('big_laugh')}
+        <path d="M130 158 C112 146, 80 154, 72 170 C90 179, 116 173, 130 165 C144 173, 170 179, 188 170 C180 154, 148 146, 130 158 Z" fill="#4A2C18" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+      </g>`;
+
+    case 'cool_shades':
+      return `<g>
+        <path d="M86 120 Q102 113 116 120 M144 118 Q160 109 176 118" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        <path d="M72 134 L188 134" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
+        <path d="M78 131 H124 L118 156 Q100 160 82 154 Z" fill="#181210" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+        <path d="M136 131 H182 L178 154 Q160 160 142 156 Z" fill="#181210" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+        <line x1="88" y1="136" x2="98" y2="151" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round"/>
+        <line x1="98" y1="136" x2="104" y2="145" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+        <line x1="146" y1="136" x2="156" y2="151" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round"/>
+        ${cMouth('smirk')}
+      </g>`;
+
+    case 'cry_laugh':
+      return `<g>
+        <path d="M84 122 Q102 112 116 122 M144 122 Q158 112 176 122" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+        <path d="M86 142 Q102 126 118 142" fill="none" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
+        <path d="M142 142 Q158 126 174 142" fill="none" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
+        ${cMouth('big_laugh')}
+        <path d="M82 144 C70 156, 74 172, 84 170 C92 168, 90 154, 82 144 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="3"/>
+        <path d="M178 144 C190 156, 186 172, 176 170 C168 168, 170 154, 178 144 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="3"/>
+      </g>`;
+
+    case 'wink_smart':
+      return `<g>
+        <path d="M84 120 Q100 111 116 120 M144 117 Q160 107 176 119" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 140, { px: 2 })}
+        <path d="M142 142 Q158 126 174 142" fill="none" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
+        <path d="M166 135 L176 129" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/>
+        <ellipse cx="82" cy="156" rx="9" ry="5.5" fill="#FF758F" opacity="0.55"/>
+        <ellipse cx="178" cy="156" rx="9" ry="5.5" fill="#FF758F" opacity="0.55"/>
+        ${cMouth('tongue_out')}
+      </g>`;
+
+    case 'sly_smirk':
+      return `<g>
+        ${cEye(102, 141, { px: 2, py: 2, lid: 'angry_l' })}
+        ${cEye(158, 141, { px: -2, py: 2, lid: 'angry_r' })}
+        ${cMouth('evil_grin')}
+      </g>`;
+
+    case 'heart_eyes':
+      return `<g>
+        <path d="M84 118 Q100 108 116 118 M144 118 Q160 108 176 118" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        <path d="M102 155 C102 155 80 140 80 128 C80 119 92 116 102 126 C112 116 124 119 124 128 C124 140 102 155 102 155 Z" fill="#FF3366" stroke="${stroke}" stroke-width="3.6" stroke-linejoin="round"/>
+        <circle cx="92" cy="126" r="3" fill="#FFFFFF"/>
+        <path d="M158 155 C158 155 136 140 136 128 C136 119 148 116 158 126 C168 116 180 119 180 128 C180 140 158 155 158 155 Z" fill="#FF3366" stroke="${stroke}" stroke-width="3.6" stroke-linejoin="round"/>
+        <circle cx="148" cy="126" r="3" fill="#FFFFFF"/>
+        ${cMouth('big_laugh')}
+      </g>`;
+
+    case 'monocle_judge':
+      return `<g>
+        <path d="M84 122 Q100 115 116 122 M142 114 Q158 104 176 114" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 140)}
+        ${cEye(158, 140, { rx: 15, ry: 17 })}
+        <circle cx="158" cy="140" r="19" fill="rgba(255,248,220,0.28)" stroke="#F4B942" stroke-width="4.5"/>
+        <path d="M177 145 Q185 168 178 190" fill="none" stroke="#F4B942" stroke-width="3.2" stroke-dasharray="4,3"/>
+        <path d="M130 161 C116 153, 94 159, 88 169 C102 173, 120 169, 130 165 C140 169, 158 173, 172 169 C166 159, 144 153, 130 161 Z" fill="#5C3A21" stroke="${stroke}" stroke-width="3.2"/>
+      </g>`;
+
+    case 'shocked_eyes':
+      return `<g>
+        <path d="M82 114 Q100 102 118 114 M142 114 Q160 102 178 114" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+        ${cEye(102, 140, { rx: 16, ry: 18 })}
+        ${cEye(158, 140, { rx: 16, ry: 18 })}
+        ${cMouth('open_o')}
+      </g>`;
+
+    case 'angry_fierce':
+      return `<g>
+        ${cEye(102, 141, { iris: '#C1121F', lid: 'angry_l' })}
+        ${cEye(158, 141, { iris: '#C1121F', lid: 'angry_r' })}
+        ${cMouth('clench')}
+      </g>`;
+
+    case 'crying_river':
+      return `<g>
+        ${cEye(102, 140, { lid: 'sad_l' })}
+        ${cEye(158, 140, { lid: 'sad_r' })}
+        <path d="M92 152 L90 192 L108 192 L106 152 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.8"/>
+        <path d="M154 152 L152 192 L170 192 L168 152 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.8"/>
+        ${cMouth('sad')}
+      </g>`;
+
+    case 'sleepy_yawn':
+      return `<g>
+        ${cEye(102, 141, { lid: 'half', py: 3 })}
+        ${cEye(158, 141, { lid: 'half', py: 3 })}
+        ${cMouth('open_o')}
+      </g>`;
+
+    case 'cigar_boss':
+      return `<g>
+        ${cEye(102, 140, { lid: 'half', px: 2 })}
+        ${cEye(158, 140, { lid: 'half', px: 2 })}
+        ${cMouth('smirk')}
+        <g transform="rotate(14 148 168)">
+          <rect x="138" y="164" width="38" height="10" rx="4" fill="#8C5A2B" stroke="${stroke}" stroke-width="3.2"/>
+          <rect x="148" y="164" width="6" height="10" fill="#F4B942"/>
+          <circle cx="176" cy="169" r="4.5" fill="#FF4D4D"/>
+        </g>
+      </g>`;
+
+    case 'side_eye':
+      return `<g>
+        <path d="M84 124 L118 124 M142 118 Q160 108 176 120" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+        ${cEye(102, 141, { px: 5, lid: 'half' })}
+        ${cEye(158, 141, { px: 5, lid: 'half' })}
+        <path d="M110 172 Q130 168 150 173" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+      </g>`;
+
+    case 'nerd_glasses':
+      return `<g>
+        ${cEye(102, 141, { rx: 14, ry: 15, iris: '#2A6F97' })}
+        ${cEye(158, 141, { rx: 14, ry: 15, iris: '#2A6F97' })}
+        <circle cx="102" cy="141" r="19" fill="rgba(255,255,255,0.2)" stroke="${stroke}" stroke-width="4.5"/>
+        <circle cx="158" cy="141" r="19" fill="rgba(255,255,255,0.2)" stroke="${stroke}" stroke-width="4.5"/>
+        <path d="M121 141 Q130 135 139 141" fill="none" stroke="${stroke}" stroke-width="4.5"/>
+        <path d="M106 167 Q130 182 154 167" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        <rect x="121" y="170" width="9" height="10" rx="2" fill="#FFFFFF" stroke="${stroke}" stroke-width="2.6"/>
+        <rect x="130" y="170" width="9" height="10" rx="2" fill="#FFFFFF" stroke="${stroke}" stroke-width="2.6"/>
+      </g>`;
+
+    case 'wink_mustache':
+      return `<g>
+        <path d="M84 119 Q100 110 116 119 M144 119 Q160 110 176 119" fill="none" stroke="${stroke}" stroke-width="4.4" stroke-linecap="round"/>
+        ${cEye(102, 139, { px: 2 })}
+        <path d="M144 140 Q158 126 172 140" fill="none" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
+        <path d="M130 160 C110 148, 82 158, 76 172 C94 178, 118 173, 130 166 C142 173, 166 178, 184 172 C178 158, 150 148, 130 160 Z" fill="#4A2C18" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+      </g>`;
+
+    case 'pirate_patch':
+      return `<g>
+        <line x1="74" y1="124" x2="186" y2="150" stroke="${stroke}" stroke-width="4.5"/>
+        <circle cx="102" cy="141" r="16" fill="#1F1916" stroke="${stroke}" stroke-width="4"/>
+        <path d="M94 135 Q102 130 110 135" fill="none" stroke="#555" stroke-width="2.5" stroke-linecap="round"/>
+        ${cEye(158, 141, { lid: 'angry_r' })}
+        ${cMouth('smirk')}
+      </g>`;
+
+    case 'happy_smile':
+      return `<g>
+        <path d="M84 120 Q100 110 116 120 M144 120 Q160 110 176 120" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 140, { iris: '#2E7D32' })}
+        ${cEye(158, 140, { iris: '#2E7D32' })}
+        <ellipse cx="82" cy="156" rx="11" ry="6.5" fill="#FF758F" opacity="0.65"/>
+        <ellipse cx="178" cy="156" rx="11" ry="6.5" fill="#FF758F" opacity="0.65"/>
+        ${cMouth('cute_smile')}
+      </g>`;
+
+    case 'starry_eyes':
+      return `<g>
+        <path d="M84 118 Q100 108 116 118 M144 118 Q160 108 176 118" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 140, { rx: 15, ry: 16, iris: '#1D3557' })}
+        ${cEye(158, 140, { rx: 15, ry: 16, iris: '#1D3557' })}
+        <polygon points="102,126 106,136 117,136 108,143 112,154 102,147 92,154 96,143 87,136 98,136" fill="#FFD166" stroke="${stroke}" stroke-width="2.5"/>
+        <polygon points="158,126 162,136 173,136 164,143 168,154 158,147 148,154 152,143 143,136 154,136" fill="#FFD166" stroke="${stroke}" stroke-width="2.5"/>
+        ${cMouth('big_laugh')}
+      </g>`;
+
+    case 'detective_pipe':
+      return `<g>
+        <path d="M84 122 L116 124 M144 118 Q160 108 176 120" fill="none" stroke="${stroke}" stroke-width="4.4" stroke-linecap="round"/>
+        ${cEye(102, 140, { lid: 'half', px: 3 })}
+        ${cEye(158, 140, { px: 3 })}
+        ${cMouth('smirk')}
+        <path d="M138 171 L174 182 L182 166 L168 164 L165 173 Z" fill="#6F4E37" stroke="${stroke}" stroke-width="3.2" stroke-linejoin="round"/>
+        <circle cx="180" cy="152" r="5.5" fill="#FFF" opacity="0.75"/>
+        <circle cx="188" cy="140" r="8" fill="#FFF" opacity="0.55"/>
+      </g>`;
+
+    case 'pixel_shades':
+      return `<g>
+        <path d="M84 120 Q100 112 116 120 M144 116 Q160 108 176 118" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        <rect x="76" y="130" width="108" height="8" fill="#111" stroke="${stroke}" stroke-width="2"/>
+        <rect x="82" y="138" width="40" height="19" fill="#111" stroke="${stroke}" stroke-width="2.5"/>
+        <rect x="138" y="138" width="40" height="19" fill="#111" stroke="${stroke}" stroke-width="2.5"/>
+        <rect x="88" y="141" width="8" height="6" fill="#FFF"/>
+        <rect x="96" y="147" width="8" height="6" fill="#FFF"/>
+        <rect x="144" y="141" width="8" height="6" fill="#FFF"/>
+        <rect x="152" y="147" width="8" height="6" fill="#FFF"/>
+        ${cMouth('smirk')}
+      </g>`;
+
+    case 'royal_goatee':
+      return `<g>
+        <path d="M84 120 Q100 110 116 120 M144 120 Q160 110 176 120" fill="none" stroke="${stroke}" stroke-width="4.4" stroke-linecap="round"/>
+        ${cEye(102, 139)}
+        ${cEye(158, 139)}
+        <path d="M102 162 Q130 153 158 162" fill="none" stroke="#3B2314" stroke-width="5.5" stroke-linecap="round"/>
+        ${cMouth('cute_smile')}
+        <path d="M118 178 Q130 182 142 178 L130 198 Z" fill="#3B2314" stroke="${stroke}" stroke-width="3" stroke-linejoin="round"/>
+      </g>`;
+
+    case 'whistle_cute':
+      return `<g>
+        <path d="M84 118 Q100 108 116 118 M144 118 Q160 108 176 118" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 139, { px: 4, py: -3 })}
+        ${cEye(158, 139, { px: 4, py: -3 })}
+        <circle cx="136" cy="172" r="7.5" fill="#6B141A" stroke="${stroke}" stroke-width="3.8"/>
+        <path d="M154 164 Q166 156 174 164" fill="none" stroke="${stroke}" stroke-width="3.2" stroke-linecap="round"/>
+      </g>`;
+
+    case 'handlebar_twirl':
+      return `<g>
+        <path d="M84 118 Q100 108 116 118 M144 118 Q160 108 176 118" fill="none" stroke="${stroke}" stroke-width="4.4" stroke-linecap="round"/>
+        ${cEye(102, 138)}
+        ${cEye(158, 138)}
+        ${cMouth('cute_smile')}
+        <path d="M130 162 C110 150, 82 168, 75 155 C71 146, 84 142, 86 151 M130 162 C150 150, 178 168, 185 155 C189 146, 176 142, 174 151" fill="none" stroke="#3B2314" stroke-width="6.5" stroke-linecap="round"/>
+      </g>`;
+
+    case 'aviator_gold':
+      return `<g>
+        <line x1="74" y1="130" x2="186" y2="130" stroke="#F4B942" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M80 130 H122 C122 156 108 160 96 158 C82 156 80 144 80 130 Z" fill="#1D3557" stroke="#F4B942" stroke-width="3.8"/>
+        <path d="M138 130 H180 C180 156 166 160 154 158 C140 156 138 144 138 130 Z" fill="#1D3557" stroke="#F4B942" stroke-width="3.8"/>
+        <line x1="90" y1="136" x2="100" y2="150" stroke="#FFF" stroke-width="3" stroke-linecap="round"/>
+        <line x1="148" y1="136" x2="158" y2="150" stroke="#FFF" stroke-width="3" stroke-linecap="round"/>
+        ${cMouth('smirk')}
+      </g>`;
+
+    case 'cat_whiskers':
+      return `<g>
+        ${cEye(102, 139, { iris: '#2A9D8F' })}
+        ${cEye(158, 139, { iris: '#2A9D8F' })}
+        <polygon points="123,153 137,153 130,162" fill="#FF758F" stroke="${stroke}" stroke-width="2.8" stroke-linejoin="round"/>
+        <path d="M112 168 Q121 177 130 163 Q139 177 148 168" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+        <path d="M74 153 L92 157 M74 163 L92 163 M186 153 L168 157 M186 163 L168 163" stroke="${stroke}" stroke-width="3.2" stroke-linecap="round"/>
+      </g>`;
+
+    case 'laser_eyes':
+      return `<g>
+        ${cEye(102, 141, { iris: '#EF233C', lid: 'angry_l' })}
+        ${cEye(158, 141, { iris: '#EF233C', lid: 'angry_r' })}
+        <ellipse cx="102" cy="141" rx="14" ry="8" fill="#EF233C" stroke="#FFD166" stroke-width="3"/>
+        <ellipse cx="158" cy="141" rx="14" ry="8" fill="#EF233C" stroke="#FFD166" stroke-width="3"/>
+        <circle cx="102" cy="141" r="4.5" fill="#FFF"/>
+        <circle cx="158" cy="141" r="4.5" fill="#FFF"/>
+        ${cMouth('clench')}
+      </g>`;
+
+    case 'dizzy_spiral':
+      return `<g>
+        <circle cx="102" cy="141" r="14" fill="#FFF" stroke="${stroke}" stroke-width="3.8"/>
+        <path d="M102 141 m-7 0 a7 7 0 1 0 14 0 a4.5 4.5 0 1 0 -9 0" fill="none" stroke="${stroke}" stroke-width="3.2" stroke-linecap="round"/>
+        <circle cx="158" cy="141" r="14" fill="#FFF" stroke="${stroke}" stroke-width="3.8"/>
+        <path d="M158 141 m-7 0 a7 7 0 1 0 14 0 a4.5 4.5 0 1 0 -9 0" fill="none" stroke="${stroke}" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M104 174 Q116 164 130 174 Q144 184 156 174" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+      </g>`;
+
+    case 'money_eyes':
+      return `<g>
+        <circle cx="102" cy="140" r="15" fill="#FFD166" stroke="${stroke}" stroke-width="3.8"/>
+        <circle cx="158" cy="140" r="15" fill="#FFD166" stroke="${stroke}" stroke-width="3.8"/>
+        <text x="102" y="148" text-anchor="middle" font-size="22" font-weight="900" fill="#1B4332">$</text>
+        <text x="158" y="148" text-anchor="middle" font-size="22" font-weight="900" fill="#1B4332">$</text>
+        ${cMouth('big_laugh')}
+      </g>`;
+
+    case 'bandit_mask':
+      return `<g>
+        <path d="M72 126 Q130 118 188 126 L184 157 Q155 164 130 149 Q105 164 76 157 Z" fill="#1F1916" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+        ${cEye(102, 141, { rx: 11, ry: 9, lid: 'angry_l' })}
+        ${cEye(158, 141, { rx: 11, ry: 9, lid: 'angry_r' })}
+        ${cMouth('smirk')}
+      </g>`;
+
+    case 'blush_shy':
+      return `<g>
+        <path d="M84 122 Q100 114 116 122 M144 122 Q160 114 176 122" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+        ${cEye(102, 140, { px: -2, py: -2 })}
+        ${cEye(158, 140, { px: -2, py: -2 })}
+        <ellipse cx="82" cy="158" rx="13" ry="8" fill="#FF4D6D" opacity="0.65"/>
+        <ellipse cx="178" cy="158" rx="13" ry="8" fill="#FF4D6D" opacity="0.65"/>
+        <path d="M116 170 Q123 177 130 170 Q137 177 144 170" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+      </g>`;
+
+    case 'vampire_fangs':
+      return `<g>
+        ${cEye(102, 140, { iris: '#E63946', lid: 'angry_l' })}
+        ${cEye(158, 140, { iris: '#E63946', lid: 'angry_r' })}
+        <path d="M102 165 Q130 176 158 165" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        <polygon points="110,167 120,169 115,184" fill="#FFF" stroke="${stroke}" stroke-width="2.8" stroke-linejoin="round"/>
+        <polygon points="140,169 150,167 145,184" fill="#FFF" stroke="${stroke}" stroke-width="2.8" stroke-linejoin="round"/>
+      </g>`;
+
+    case 'robot_visor':
+      return `<g>
+        <rect x="76" y="126" width="108" height="28" rx="9" fill="#1D3557" stroke="${stroke}" stroke-width="4"/>
+        <rect x="88" y="134" width="26" height="12" rx="4" fill="#00F5D4"/>
+        <rect x="146" y="134" width="26" height="12" rx="4" fill="#00F5D4"/>
+        ${cMouth('clench')}
+      </g>`;
+
+    case 'kiss_face':
+      return `<g>
+        <path d="M86 141 Q102 127 118 141" fill="none" stroke="${stroke}" stroke-width="4.8" stroke-linecap="round"/>
+        ${cEye(158, 140)}
+        <path d="M124 163 C116 159, 116 170, 128 172 C116 174, 116 185, 124 181" fill="none" stroke="${stroke}" stroke-width="4.4" stroke-linecap="round"/>
+        <path d="M158 172 C158 172 146 163 146 156 C146 151 153 149 158 155 C163 149 170 151 170 156 C170 163 158 172 158 172 Z" fill="#FF3366" stroke="${stroke}" stroke-width="2.5"/>
+      </g>`;
+
+    case 'zen_calm':
+      return `<g>
+        <path d="M86 142 Q102 154 118 142" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M142 142 Q158 154 174 142" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+        <circle cx="130" cy="125" r="4.5" fill="#E63946" stroke="${stroke}" stroke-width="2"/>
+        ${cMouth('cute_smile')}
+      </g>`;
+
+    case 'clown_nose':
+      return `<g>
+        <path d="M84 118 Q100 108 116 118 M144 118 Q160 108 176 118" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 137, { rx: 12, ry: 14 })}
+        ${cEye(158, 137, { rx: 12, ry: 14 })}
+        ${cMouth('big_laugh')}
+        <circle cx="130" cy="153" r="13" fill="#E63946" stroke="${stroke}" stroke-width="3.6"/>
+        <circle cx="125" cy="148" r="3.8" fill="#FFF"/>
+      </g>`;
+
+    case 'scar_warrior':
+      return `<g>
+        <line x1="96" y1="118" x2="108" y2="162" stroke="#9E2A2B" stroke-width="4" stroke-linecap="round"/>
+        <line x1="94" y1="126" x2="108" y2="124" stroke="#9E2A2B" stroke-width="2.8"/>
+        ${cEye(102, 141, { lid: 'angry_l' })}
+        ${cEye(158, 141, { lid: 'angry_r' })}
+        <path d="M108 172 L152 167" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+      </g>`;
+
+    case 'bubblegum_pop':
+      return `<g>
+        <path d="M84 120 Q100 110 116 120 M144 120 Q160 110 176 120" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 139, { px: 2, py: 3 })}
+        ${cEye(158, 139, { px: -2, py: 3 })}
+        <circle cx="142" cy="172" r="18" fill="#FF8FA3" stroke="${stroke}" stroke-width="3.8"/>
+        <circle cx="136" cy="165" r="4.5" fill="#FFF" opacity="0.85"/>
+      </g>`;
+
+    case 'unibrow_funny':
+      return `<g>
+        <path d="M78 125 Q105 114 130 127 Q155 114 182 125" fill="none" stroke="${stroke}" stroke-width="6.5" stroke-linecap="round"/>
+        ${cEye(102, 142)}
+        ${cEye(158, 142)}
+        ${cMouth('big_laugh')}
+      </g>`;
+
+    case 'scared_tears':
+      return `<g>
+        ${cEye(102, 141, { rx: 15, ry: 17, lid: 'sad_l' })}
+        ${cEye(158, 141, { rx: 15, ry: 17, lid: 'sad_r' })}
+        <path d="M82 152 Q76 164 82 170 Q88 164 82 152 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.5"/>
+        <path d="M178 152 Q172 164 178 170 Q184 164 178 152 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.5"/>
+        <path d="M108 184 Q108 164 130 164 Q152 164 152 184 Z" fill="#6B141A" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+        <path d="M116 184 Q130 175 144 184" fill="#FF758F"/>
+      </g>`;
+
+    case 'nerd_teeth':
+      return `<g>
+        <path d="M84 118 Q100 110 116 118 M144 118 Q160 110 176 118" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+        ${cEye(102, 141, { iris: '#2A6F97' })}
+        ${cEye(158, 141, { iris: '#2A6F97' })}
+        <circle cx="102" cy="141" r="18" fill="rgba(232,244,248,0.25)" stroke="${stroke}" stroke-width="4.5"/>
+        <circle cx="158" cy="141" r="18" fill="rgba(232,244,248,0.25)" stroke="${stroke}" stroke-width="4.5"/>
+        <path d="M120 140 Q130 134 140 140" fill="none" stroke="${stroke}" stroke-width="4.2"/>
+        ${cMouth('big_laugh')}
+        <rect x="120" y="162" width="9" height="12" rx="2" fill="#FFF" stroke="${stroke}" stroke-width="2.5"/>
+        <rect x="131" y="162" width="9" height="12" rx="2" fill="#FFF" stroke="${stroke}" stroke-width="2.5"/>
+      </g>`;
+
+    case 'nervous_sweat':
+      return `<g>
+        ${cEye(102, 142, { lid: 'sad_l' })}
+        ${cEye(158, 142, { lid: 'sad_r' })}
+        <path d="M104 174 L114 167 L122 176 L130 167 L138 176 L146 167 L156 174 L146 182 L114 182 Z" fill="#FFF" stroke="${stroke}" stroke-width="3.4" stroke-linejoin="round"/>
+        <path d="M178 116 Q170 132 178 138 Q186 132 178 116 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.6"/>
+      </g>`;
+
+    case 'evil_goatee':
+      return `<g>
+        ${cEye(102, 141, { iris: '#C1121F', lid: 'angry_l' })}
+        ${cEye(158, 141, { iris: '#C1121F', lid: 'angry_r' })}
+        ${cMouth('smirk')}
+        <path d="M118 180 Q130 186 142 180 L130 200 Z" fill="#3B2314" stroke="${stroke}" stroke-width="3.2" stroke-linejoin="round"/>
+      </g>`;
+
+    case 'ski_goggles':
+      return `<g>
+        <rect x="72" y="135" width="116" height="9" rx="4" fill="#3B3B3B" stroke="${stroke}" stroke-width="2.5"/>
+        <path d="M80 126 Q130 118 180 126 Q186 140 180 155 Q154 162 130 150 Q106 162 80 155 Q74 140 80 126 Z" fill="#1D3557" stroke="#E0E1DD" stroke-width="5"/>
+        <path d="M92 132 L104 148 M148 132 L160 148" stroke="#FFF" stroke-width="3.5" stroke-linecap="round" opacity=".85"/>
+        ${cMouth('big_laugh')}
+      </g>`;
+
+    case 'yummy_tongue':
+      return `<g>
+        <path d="M84 120 Q100 110 116 120 M144 120 Q160 110 176 120" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 140)}
+        ${cEye(158, 140)}
+        ${cMouth('tongue_out')}
+      </g>`;
+
+    case 'puffy_cheeks':
+      return `<g>
+        ${cEye(102, 139)}
+        ${cEye(158, 139)}
+        <ellipse cx="88" cy="166" rx="12" ry="8.5" fill="#FF8FA3" opacity=".6"/>
+        <ellipse cx="172" cy="166" rx="12" ry="8.5" fill="#FF8FA3" opacity=".6"/>
+        <path d="M82 152 Q68 166 82 180 M178 152 Q192 166 178 180" fill="none" stroke="${stroke}" stroke-width="3.8" stroke-linecap="round"/>
+        <path d="M118 170 Q130 164 142 170 Q130 178 118 170 Z" fill="#6B141A" stroke="${stroke}" stroke-width="3.2"/>
+      </g>`;
+
+    case 'wailing_cry':
+      return `<g>
+        <path d="M86 142 Q102 128 118 142 M142 142 Q158 128 174 142" fill="none" stroke="${stroke}" stroke-width="5" stroke-linecap="round"/>
+        <path d="M84 146 Q74 162 84 170 Q92 162 84 146 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.5"/>
+        <path d="M176 146 Q186 162 176 170 Q168 162 176 146 Z" fill="#4CC9F0" stroke="${stroke}" stroke-width="2.5"/>
+        <path d="M104 190 Q104 160 130 160 Q156 160 156 190 Z" fill="#6B141A" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+        <rect x="116" y="162" width="28" height="6" rx="2" fill="#FFF"/>
+        <path d="M112 190 Q130 178 148 190" fill="#FF758F"/>
+      </g>`;
+
+    case 'dizzy_tongue':
+      return `<g>
+        <circle cx="102" cy="141" r="14" fill="#FFF" stroke="${stroke}" stroke-width="3.8"/>
+        <circle cx="158" cy="141" r="14" fill="#FFF" stroke="${stroke}" stroke-width="3.8"/>
+        <path d="M102 141 m-7 0 a7 7 0 1 0 14 0 a4.5 4.5 0 1 0 -9 0" fill="none" stroke="${stroke}" stroke-width="3"/>
+        <path d="M158 141 m-7 0 a7 7 0 1 0 14 0 a4.5 4.5 0 1 0 -9 0" fill="none" stroke="${stroke}" stroke-width="3"/>
+        ${cMouth('tongue_out')}
+      </g>`;
+
+    case 'sick_thermo':
+      return `<g>
+        ${cEye(102, 141, { lid: 'half', iris: '#6C757D' })}
+        ${cEye(158, 141, { lid: 'half', iris: '#6C757D' })}
+        <ellipse cx="84" cy="158" rx="11" ry="6.5" fill="#FF4D6D" opacity=".6"/>
+        <ellipse cx="176" cy="158" rx="11" ry="6.5" fill="#FF4D6D" opacity=".6"/>
+        ${cMouth('sad')}
+        <g transform="rotate(-18 140 170)">
+          <rect x="138" y="167" width="34" height="8" rx="4" fill="#FFF" stroke="${stroke}" stroke-width="2.8"/>
+          <circle cx="172" cy="171" r="5.5" fill="#E63946" stroke="${stroke}" stroke-width="2.2"/>
+        </g>
+      </g>`;
+
+    case 'nauseous_green':
+      return `<g>
+        ${cEye(102, 141, { lid: 'sad_l', iris: '#2D6A4F' })}
+        ${cEye(158, 141, { lid: 'sad_r', iris: '#2D6A4F' })}
+        <ellipse cx="86" cy="158" rx="10" ry="6" fill="#74C69D" opacity=".6"/>
+        <ellipse cx="174" cy="158" rx="10" ry="6" fill="#74C69D" opacity=".6"/>
+        <path d="M106 176 Q116 168 124 176 Q132 184 140 176 Q148 168 156 176" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+      </g>`;
+
+    case 'frozen_cold':
+      return `<g>
+        ${cEye(102, 141, { iris: '#0077B6', lid: 'sad_l' })}
+        ${cEye(158, 141, { iris: '#0077B6', lid: 'sad_r' })}
+        ${cMouth('clench')}
+      </g>`;
+
+    case 'bearded_wink':
+      return `<g>
+        <path d="M84 118 Q100 108 116 118 M144 118 Q160 108 176 118" fill="none" stroke="#3B2314" stroke-width="6" stroke-linecap="round"/>
+        <path d="M86 140 Q102 126 118 140" fill="none" stroke="${stroke}" stroke-width="4.8" stroke-linecap="round"/>
+        ${cEye(158, 139)}
+        <path d="M80 152 Q84 196 130 200 Q176 196 180 152 Q170 166 154 162 Q130 176 106 162 Q90 166 80 152 Z" fill="#4A2C18" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+        <path d="M114 172 Q130 184 146 172 Z" fill="#FFF" stroke="${stroke}" stroke-width="2.8"/>
+      </g>`;
+
+    case 'money_tongue':
+      return `<g>
+        <circle cx="102" cy="140" r="15" fill="#FFD166" stroke="${stroke}" stroke-width="3.8"/>
+        <circle cx="158" cy="140" r="15" fill="#FFD166" stroke="${stroke}" stroke-width="3.8"/>
+        <text x="102" y="148" text-anchor="middle" font-size="22" font-weight="900" fill="#1B4332">$</text>
+        <text x="158" y="148" text-anchor="middle" font-size="22" font-weight="900" fill="#1B4332">$</text>
+        ${cMouth('tongue_out')}
+      </g>`;
+
+    case 'blushing_red':
+      return `<g>
+        <path d="M86 141 Q102 127 118 141 M142 141 Q158 127 174 141" fill="none" stroke="${stroke}" stroke-width="4.8" stroke-linecap="round"/>
+        <ellipse cx="86" cy="158" rx="13" ry="7.5" fill="#E63946" opacity=".6"/>
+        <ellipse cx="174" cy="158" rx="13" ry="7.5" fill="#E63946" opacity=".6"/>
+        ${cMouth('cute_smile')}
+      </g>`;
+
+    case 'smug_lids':
+      return `<g>
+        <path d="M84 122 Q100 114 116 124 M144 118 Q160 108 176 118" fill="none" stroke="${stroke}" stroke-width="4.4" stroke-linecap="round"/>
+        ${cEye(102, 141, { lid: 'half', px: 3 })}
+        ${cEye(158, 141, { lid: 'half', px: 3 })}
+        ${cMouth('smirk')}
+      </g>`;
+
+    case 'zipper_mouth':
+      return `<g>
+        <path d="M84 120 Q100 112 116 120 M144 120 Q160 112 176 120" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 141)}
+        ${cEye(158, 141)}
+        <rect x="100" y="168" width="60" height="11" rx="4" fill="#ADB5BD" stroke="${stroke}" stroke-width="3.2"/>
+        <path d="M108 168 v11 M118 168 v11 M128 168 v11 M138 168 v11 M148 168 v11" stroke="${stroke}" stroke-width="2.2"/>
+      </g>`;
+
+    case 'fire_angry':
+      return `<g>
+        <path d="M84 130 Q88 110 96 120 Q100 104 108 118 Q114 108 118 134 Z" fill="#FB8500" stroke="#C1121F" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M176 130 Q172 110 164 120 Q160 104 152 118 Q146 108 142 134 Z" fill="#FB8500" stroke="#C1121F" stroke-width="2.5" stroke-linejoin="round"/>
+        ${cEye(102, 142, { iris: '#E63946', lid: 'angry_l' })}
+        ${cEye(158, 142, { iris: '#E63946', lid: 'angry_r' })}
+        ${cMouth('clench')}
+      </g>`;
+
+    case 'whistle_note':
+      return `<g>
+        <path d="M86 141 Q102 128 118 141 M142 141 Q158 128 174 141" fill="none" stroke="${stroke}" stroke-width="4.6" stroke-linecap="round"/>
+        <ellipse cx="126" cy="172" rx="8.5" ry="7.5" fill="#6B141A" stroke="${stroke}" stroke-width="3.6"/>
+        <path d="M162 175 L162 155 L176 151 L176 169" fill="none" stroke="${stroke}" stroke-width="3.2" stroke-linejoin="round"/>
+        <ellipse cx="158" cy="176" rx="5" ry="4" fill="${stroke}"/>
+        <ellipse cx="172" cy="170" rx="5" ry="4" fill="${stroke}"/>
+      </g>`;
+
+    case 'black_eye':
+      return `<g>
+        ${cEye(102, 141)}
+        <ellipse cx="158" cy="142" rx="18" ry="15" fill="#6C4E9B" opacity=".55"/>
+        ${cEye(158, 141, { lid: 'half' })}
+        <rect x="114" y="150" width="32" height="11" rx="4" transform="rotate(-12 130 155)" fill="#F4C095" stroke="${stroke}" stroke-width="2.6"/>
+        ${cMouth('clench')}
+      </g>`;
+
+    case 'ninja_headband':
+      return `<g>
+        <path d="M70 112 Q130 104 190 112 L190 126 Q130 118 70 126 Z" fill="#1D3557" stroke="${stroke}" stroke-width="3.4"/>
+        <rect x="114" y="111" width="32" height="12" rx="3" fill="#ADB5BD" stroke="${stroke}" stroke-width="2.5"/>
+        ${cEye(102, 143, { lid: 'angry_l' })}
+        ${cEye(158, 143, { lid: 'angry_r' })}
+        ${cMouth('smirk')}
+      </g>`;
+
+    case 'surprised_o':
+      return `<g>
+        <path d="M84 116 Q100 106 116 116 M144 116 Q160 106 176 116" fill="none" stroke="${stroke}" stroke-width="4.2" stroke-linecap="round"/>
+        ${cEye(102, 141, { rx: 15, ry: 17 })}
+        ${cEye(158, 141, { rx: 15, ry: 17 })}
+        ${cMouth('open_o')}
+      </g>`;
+
+    case 'meh_yawn':
+      return `<g>
+        ${cEye(102, 141, { lid: 'half' })}
+        ${cEye(158, 141, { lid: 'half' })}
+        ${cMouth('open_o')}
+      </g>`;
+
+    case 'pipe_relaxed':
+      return `<g>
+        ${cEye(102, 141, { lid: 'half', px: 2 })}
+        ${cEye(158, 141, { lid: 'half', px: 2 })}
+        ${cMouth('cute_smile')}
+        <path d="M136 173 Q152 181 166 177" fill="none" stroke="#6F4E37" stroke-width="5" stroke-linecap="round"/>
+        <path d="M160 168 L178 168 L176 186 Q170 192 164 186 Z" fill="#8C5A2B" stroke="${stroke}" stroke-width="3.2" stroke-linejoin="round"/>
+      </g>`;
+
+    case 'unimpressed':
+      return `<g>
+        <path d="M84 125 L118 125 M142 120 Q160 112 176 120" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+        ${cEye(102, 142, { lid: 'half', px: 4 })}
+        ${cEye(158, 142, { lid: 'half', px: 4 })}
+        <path d="M110 174 L150 174" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+      </g>`;
+
+    case 'musketeer':
+      return `<g>
+        <path d="M84 118 Q100 108 116 118 M144 118 Q160 108 176 118" fill="none" stroke="${stroke}" stroke-width="4.4" stroke-linecap="round"/>
+        ${cEye(102, 139)}
+        ${cEye(158, 139)}
+        <path d="M130 162 C116 154 100 166 90 158 C86 154 90 148 95 152 M130 162 C144 154 160 166 170 158 C174 154 170 148 165 152" fill="none" stroke="#3B2314" stroke-width="6" stroke-linecap="round"/>
+        ${cMouth('cute_smile')}
+        <path d="M122 182 L138 182 L130 198 Z" fill="#3B2314" stroke="${stroke}" stroke-width="2.8" stroke-linejoin="round"/>
+      </g>`;
+
+    case 'king_beard':
+    default:
+      return `<g>
+        <path d="M84 118 Q100 108 116 118 M144 118 Q160 108 176 118" fill="none" stroke="#4A2C18" stroke-width="5.5" stroke-linecap="round"/>
+        ${cEye(102, 138)}
+        ${cEye(158, 138)}
+        <path d="M82 156 Q130 148 178 156 Q174 198 130 198 Q86 198 82 156 Z" fill="#4A2C18" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+        <path d="M112 166 Q130 180 148 166 Z" fill="#FFF" stroke="${stroke}" stroke-width="2.8"/>
+      </g>`;
+  }
+}
+
+/**
+ * رسم الـ 20 طاقية وتاج بستايل كرتوني منحني بظلال ولمعة يركب على حافة الكوباية (X: 66..194, Y: 86)
  */
 function renderHatVector(hatId) {
   const stroke = '#231710';
   switch (hatId) {
     case 'fez_tarboush':
-      return `
-        <g>
-          <polygon points="92,88 168,88 156,28 104,28" fill="#C1121F" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="M130 28 Q162 26 170 62" fill="none" stroke="#1D1A17" stroke-width="5" stroke-linecap="round"/>
-          <circle cx="170" cy="64" r="5" fill="#1D1A17"/>
-        </g>`;
-    case 'sultan_crown':
-      return `
-        <g>
-          <polygon points="78,88 182,88 190,38 158,60 130,26 102,60 70,38" fill="#FFD166" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <rect x="76" y="76" width="108" height="14" rx="5" fill="#F4A261" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="130" cy="56" r="6" fill="#E63946" stroke="${stroke}" stroke-width="2.5"/>
-          <circle cx="102" cy="66" r="4.5" fill="#2A9D8F" stroke="${stroke}" stroke-width="2"/>
-          <circle cx="158" cy="66" r="4.5" fill="#2A9D8F" stroke="${stroke}" stroke-width="2"/>
-        </g>`;
-    case 'chef_toque':
-      return `
-        <g>
-          <path d="M84 74 C64 62, 72 28, 102 34 C114 14, 146 14, 158 34 C188 28, 196 62, 176 74 Z" fill="#FFFFFF" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <rect x="82" y="70" width="96" height="20" rx="5" fill="#F8F9FA" stroke="${stroke}" stroke-width="4"/>
-        </g>`;
-    case 'ghutra_agal':
-      return `
-        <g>
-          <path d="M62 96 Q64 32 130 32 Q196 32 198 96 L184 96 Q178 62 130 62 Q82 62 76 96 Z" fill="#FFFFFF" stroke="${stroke}" stroke-width="4"/>
-          <rect x="74" y="48" width="112" height="11" rx="5.5" fill="#1D1A17" stroke="${stroke}" stroke-width="3"/>
-          <rect x="76" y="60" width="108" height="10" rx="5" fill="#1D1A17" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
-    case 'detective_hat':
-      return `
-        <g>
-          <ellipse cx="130" cy="86" rx="74" ry="12" fill="#8D6E63" stroke="${stroke}" stroke-width="4"/>
-          <path d="M82 84 Q88 32 130 32 Q172 32 178 84 Z" fill="#A1887F" stroke="${stroke}" stroke-width="4"/>
-          <rect x="83" y="70" width="94" height="12" fill="#4E342E" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
+      return `<g>
+        <path d="M90 86 C92 60, 98 32, 106 26 Q130 22 154 26 C162 32, 168 60, 170 86 Q130 92 90 86 Z" fill="#C1121F" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M102 78 C104 56, 108 36, 113 32" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M132 25 Q166 26 176 66" fill="none" stroke="#1D1A17" stroke-width="5.5" stroke-linecap="round"/>
+        <path d="M176 66 L171 80 M176 66 L181 79 M176 66 L176 81" stroke="#1D1A17" stroke-width="3.5" stroke-linecap="round"/>
+      </g>`;
+
     case 'straw_hat':
-      return `
-        <g>
-          <ellipse cx="130" cy="86" rx="80" ry="13" fill="#F4D35E" stroke="${stroke}" stroke-width="4"/>
-          <path d="M82 84 Q86 38 130 38 Q174 38 178 84 Z" fill="#F4D35E" stroke="${stroke}" stroke-width="4"/>
-          <rect x="82" y="70" width="96" height="12" fill="#E63946" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
-    case 'pirate_hat':
-      return `
-        <g>
-          <path d="M52 88 Q82 28 130 28 Q178 28 208 88 Z" fill="#222222" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <rect x="74" y="78" width="112" height="12" rx="5" fill="#E63946" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="130" cy="56" r="9" fill="#FFF"/>
-          <path d="M116 68 L144 46 M116 46 L144 68" stroke="#FFF" stroke-width="3.5" stroke-linecap="round"/>
-        </g>`;
-    case 'Graduation_cap':
-      return `
-        <g>
-          <rect x="86" y="64" width="88" height="24" rx="4" fill="#2B2D42" stroke="${stroke}" stroke-width="4"/>
-          <polygon points="130,30 204,54 130,76 56,54" fill="#2B2D42" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="M130 54 L182 68 L182 92" fill="none" stroke="#FFD166" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="182" cy="92" r="5" fill="#FFD166"/>
-        </g>`;
+      return `<g>
+        <ellipse cx="130" cy="84" rx="82" ry="14" fill="#F4D35E" stroke="${stroke}" stroke-width="4.2"/>
+        <path d="M80 82 C82 32, 178 32, 180 82 Z" fill="#F4D35E" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M96 52 Q115 38 140 42" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M81 68 Q130 76 179 68 L180 80 Q130 88 80 80 Z" fill="#D62828" stroke="${stroke}" stroke-width="3.6"/>
+        <path d="M156 73 L170 66 L168 82 Z" fill="#D62828" stroke="${stroke}" stroke-width="3"/>
+      </g>`;
+
+    case 'chef_toque':
+      return `<g>
+        <path d="M82 74 C56 62, 66 24, 98 32 C110 8, 150 8, 162 32 C194 24, 204 62, 178 74 Z" fill="#FFFFFF" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M104 42 Q108 58 106 70 M130 36 L130 70 M156 42 Q152 58 154 70" stroke="#D8E2DC" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M82 68 Q130 76 178 68 L176 87 Q130 94 84 87 Z" fill="#F8F9FA" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+      </g>`;
+
+    case 'sultan_crown':
+      return `<g>
+        <path d="M78 86 L68 38 L102 58 L130 22 L158 58 L192 38 L182 86 Z" fill="#FFD166" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <circle cx="68" cy="34" r="5" fill="#FFF" stroke="${stroke}" stroke-width="3"/>
+        <circle cx="130" cy="18" r="6" fill="#FFF" stroke="${stroke}" stroke-width="3"/>
+        <circle cx="192" cy="34" r="5" fill="#FFF" stroke="${stroke}" stroke-width="3"/>
+        <path d="M76 74 Q130 82 184 74 L182 88 Q130 95 78 88 Z" fill="#F4A261" stroke="${stroke}" stroke-width="3.8"/>
+        <circle cx="130" cy="56" r="7" fill="#E63946" stroke="${stroke}" stroke-width="3"/>
+        <circle cx="102" cy="65" r="5" fill="#2A9D8F" stroke="${stroke}" stroke-width="2.5"/>
+        <circle cx="158" cy="65" r="5" fill="#2A9D8F" stroke="${stroke}" stroke-width="2.5"/>
+      </g>`;
+
     case 'royal_turban':
-      return `
-        <g>
-          <ellipse cx="130" cy="60" rx="60" ry="34" fill="#F8F9FA" stroke="${stroke}" stroke-width="4"/>
-          <path d="M82 70 Q130 40 178 70 M86 48 Q130 78 174 48" fill="none" stroke="#DEE2E6" stroke-width="4"/>
-          <circle cx="130" cy="52" r="10" fill="#E63946" stroke="#FFD166" stroke-width="3.5"/>
-          <path d="M130 40 Q136 18 148 22" fill="none" stroke="#FFD166" stroke-width="4" stroke-linecap="round"/>
-        </g>`;
-    case 'pharaoh_nemes':
-      return `
-        <g>
-          <path d="M64 94 L78 30 L182 30 L196 94 Z" fill="#1D3557" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="M84 30 L76 90 M106 30 L102 90 M154 30 L158 90 M176 30 L184 90" stroke="#FFD166" stroke-width="5"/>
-          <rect x="74" y="74" width="112" height="14" rx="4" fill="#FFD166" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="130" cy="52" r="9" fill="#FFD166" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
-    case 'cowboy_hat':
-      return `
-        <g>
-          <path d="M80 86 Q82 36 134 36 Q182 36 184 86 Z" fill="#C48F5A" stroke="${stroke}" stroke-width="4"/>
-          <path d="M54 86 Q82 68 134 84 L80 86 Z" fill="#8C5A2B" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <circle cx="134" cy="34" r="5" fill="${stroke}"/>
-        </g>`;
-    case 'french_beret':
-      return `
-        <g>
-          <path d="M68 84 C62 46, 118 26, 186 48 C202 56, 192 84, 174 86 Z" fill="#D62828" stroke="${stroke}" stroke-width="4"/>
-          <rect x="78" y="78" width="104" height="10" rx="4" fill="#1D1A17" stroke="${stroke}" stroke-width="3"/>
-          <line x1="130" y1="38" x2="134" y2="24" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
-        </g>`;
-    case 'top_hat':
-      return `
-        <g>
-          <ellipse cx="130" cy="86" rx="70" ry="11" fill="#212529" stroke="${stroke}" stroke-width="4"/>
-          <rect x="90" y="20" width="80" height="66" rx="6" fill="#343A40" stroke="${stroke}" stroke-width="4"/>
-          <rect x="90" y="68" width="80" height="14" fill="#D62828" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
-    case 'winter_beanie':
-      return `
-        <g>
-          <path d="M76 86 Q76 32 130 32 Q184 32 184 86 Z" fill="#5B8EB2" stroke="${stroke}" stroke-width="4"/>
-          <rect x="72" y="72" width="116" height="18" rx="8" fill="#A8DADC" stroke="${stroke}" stroke-width="4"/>
-          <line x1="96" y1="72" x2="96" y2="90" stroke="${stroke}" stroke-width="3"/>
-          <line x1="130" y1="72" x2="130" y2="90" stroke="${stroke}" stroke-width="3"/>
-          <line x1="164" y1="72" x2="164" y2="90" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="130" cy="24" r="13" fill="#F1FAEE" stroke="${stroke}" stroke-width="3.5"/>
-        </g>`;
+      return `<g>
+        <path d="M68 74 C60 32, 110 18, 130 24 C150 18, 200 32, 192 74 C184 90, 76 90, 68 74 Z" fill="#FFFDF9" stroke="${stroke}" stroke-width="4.2"/>
+        <path d="M78 66 Q130 36 182 66 M84 44 Q130 74 176 44" fill="none" stroke="#E2D5C1" stroke-width="4" stroke-linecap="round"/>
+        <path d="M130 44 C134 16, 154 12, 158 26 C148 30, 140 38, 134 46 Z" fill="#FFD166" stroke="${stroke}" stroke-width="3.2"/>
+        <circle cx="130" cy="54" r="10" fill="#E63946" stroke="#FFD166" stroke-width="4"/>
+      </g>`;
+
+    case 'pirate_hat':
+      return `<g>
+        <path d="M48 84 C68 20, 192 20, 212 84 Q130 76 48 84 Z" fill="#1F1D1B" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M54 80 C72 26, 188 26, 206 80" fill="none" stroke="#F4B942" stroke-width="3.5"/>
+        <path d="M74 76 Q130 84 186 76 L184 88 Q130 96 76 88 Z" fill="#D62828" stroke="${stroke}" stroke-width="3.8"/>
+        <circle cx="130" cy="54" r="9" fill="#FFFFFF" stroke="${stroke}" stroke-width="2.5"/>
+        <circle cx="127" cy="53" r="2" fill="#1F1D1B"/><circle cx="133" cy="53" r="2" fill="#1F1D1B"/>
+      </g>`;
+
+    case 'detective_hat':
+      return `<g>
+        <ellipse cx="130" cy="84" rx="76" ry="12" fill="#7F5539" stroke="${stroke}" stroke-width="4.2"/>
+        <path d="M80 82 C82 32, 114 28, 130 36 C146 28, 178 32, 180 82 Z" fill="#9C6644" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M82 68 Q130 75 178 68 L179 80 Q130 87 81 80 Z" fill="#3D2618" stroke="${stroke}" stroke-width="3.5"/>
+      </g>`;
+
     case 'viking_helmet':
-      return `
-        <g>
-          <path d="M76 68 Q44 48 54 22 Q68 44 86 54" fill="#FFF3B0" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="M184 68 Q216 48 206 22 Q192 44 174 54" fill="#FFF3B0" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="M76 86 Q76 36 130 36 Q184 36 184 86 Z" fill="#8D99AE" stroke="${stroke}" stroke-width="4"/>
-          <rect x="72" y="74" width="116" height="14" rx="5" fill="#6C757D" stroke="${stroke}" stroke-width="3.5"/>
-        </g>`;
+      return `<g>
+        <path d="M78 66 C42 52, 42 18, 58 20 C60 40, 72 48, 86 52 Z" fill="#FFF3B0" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+        <path d="M182 66 C218 52, 218 18, 202 20 C200 40, 188 48, 174 52 Z" fill="#FFF3B0" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+        <path d="M74 84 C74 28, 186 28, 186 84 Z" fill="#8D99AE" stroke="${stroke}" stroke-width="4.2"/>
+        <path d="M72 72 Q130 80 188 72 L186 86 Q130 94 74 86 Z" fill="#5C677D" stroke="${stroke}" stroke-width="3.8"/>
+        <circle cx="96" cy="79" r="3" fill="#FFF"/><circle cx="130" cy="81" r="3" fill="#FFF"/><circle cx="164" cy="79" r="3" fill="#FFF"/>
+      </g>`;
+
+    case 'ghutra_agal':
+      return `<g>
+        <path d="M60 102 C60 28, 200 28, 200 102 L184 102 C180 64, 80 64, 76 102 Z" fill="#FFFFFF" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <rect x="74" y="44" width="112" height="11" rx="5.5" fill="#1D1A17" stroke="${stroke}" stroke-width="3.2"/>
+        <rect x="76" y="56" width="108" height="10" rx="5" fill="#1D1A17" stroke="${stroke}" stroke-width="3.2"/>
+      </g>`;
+
+    case 'winter_beanie':
+      return `<g>
+        <circle cx="130" cy="22" r="14" fill="#FFFDF7" stroke="${stroke}" stroke-width="4"/>
+        <path d="M76 82 C76 28, 184 28, 184 82 Z" fill="#E76F51" stroke="${stroke}" stroke-width="4.2"/>
+        <rect x="70" y="68" width="120" height="20" rx="9" fill="#F4A261" stroke="${stroke}" stroke-width="4"/>
+        <line x1="95" y1="68" x2="95" y2="88" stroke="${stroke}" stroke-width="3.2"/>
+        <line x1="118" y1="68" x2="118" y2="88" stroke="${stroke}" stroke-width="3.2"/>
+        <line x1="142" y1="68" x2="142" y2="88" stroke="${stroke}" stroke-width="3.2"/>
+        <line x1="165" y1="68" x2="165" y2="88" stroke="${stroke}" stroke-width="3.2"/>
+      </g>`;
+
+    case 'cowboy_hat':
+      return `<g>
+        <path d="M78 84 C78 32, 182 32, 182 84 Z" fill="#2A9D8F" stroke="${stroke}" stroke-width="4.2"/>
+        <path d="M98 48 Q120 36 146 42" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M50 84 Q84 64 142 82 L78 86 Z" fill="#1D3557" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <circle cx="130" cy="34" r="5" fill="#F4A261" stroke="${stroke}" stroke-width="3"/>
+      </g>`;
+
+    case 'Graduation_cap':
+      return `<g>
+        <path d="M84 64 L84 86 Q130 94 176 86 L176 64 Z" fill="#2B2D42" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+        <polygon points="130,28 206,52 130,74 54,52" fill="#2B2D42" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M130 52 L184 66 L184 94" fill="none" stroke="#FFD166" stroke-width="4.5" stroke-linecap="round"/>
+        <circle cx="184" cy="94" r="5.5" fill="#FFD166" stroke="${stroke}" stroke-width="2.5"/>
+      </g>`;
+
+    case 'pharaoh_nemes':
+      return `<g>
+        <path d="M62 96 C66 36, 82 26, 130 26 C178 26, 194 36, 198 96 L180 96 L176 78 L84 78 L80 96 Z" fill="#1D3557" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M84 32 L74 90 M106 28 L100 78 M154 28 L160 78 M176 32 L186 90" stroke="#FFD166" stroke-width="5.5" stroke-linecap="round"/>
+        <path d="M74 72 Q130 80 186 72 L184 86 Q130 94 76 86 Z" fill="#FFD166" stroke="${stroke}" stroke-width="3.8"/>
+        <circle cx="130" cy="50" r="9" fill="#FFD166" stroke="${stroke}" stroke-width="3.2"/>
+        <circle cx="130" cy="50" r="4" fill="#E63946"/>
+      </g>`;
+
+    case 'french_beret':
+      return `<g>
+        <path d="M68 82 C58 42, 118 22, 188 46 C204 54, 192 82, 174 84 Z" fill="#D62828" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M92 48 Q128 34 162 46" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M76 76 Q130 84 180 76 L178 86 Q130 94 78 86 Z" fill="#1D1A17" stroke="${stroke}" stroke-width="3.6"/>
+        <path d="M130 36 Q134 22 140 24" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>
+      </g>`;
+
+    case 'top_hat':
+      return `<g>
+        <ellipse cx="130" cy="84" rx="72" ry="12" fill="#212529" stroke="${stroke}" stroke-width="4.2"/>
+        <path d="M86 82 L82 22 Q130 16 178 22 L174 82 Z" fill="#343A40" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M96 30 L98 64" stroke="rgba(255,255,255,0.28)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M85 66 Q130 73 175 66 L174 80 Q130 87 86 80 Z" fill="#D62828" stroke="${stroke}" stroke-width="3.6"/>
+      </g>`;
+
     case 'dj_headphones':
-      return `
-        <g>
-          <path d="M62 128 Q62 32 130 32 Q198 32 198 128" fill="none" stroke="#2B2D42" stroke-width="10" stroke-linecap="round"/>
-          <rect x="46" y="104" width="22" height="44" rx="10" fill="#EF233C" stroke="${stroke}" stroke-width="4"/>
-          <rect x="192" y="104" width="22" height="44" rx="10" fill="#EF233C" stroke="${stroke}" stroke-width="4"/>
-        </g>`;
+      return `<g>
+        <path d="M58 128 C58 24, 202 24, 202 128" fill="none" stroke="#2B2D42" stroke-width="11" stroke-linecap="round"/>
+        <path d="M90 42 Q130 28 170 42" fill="none" stroke="#8D99AE" stroke-width="5" stroke-linecap="round"/>
+        <rect x="44" y="102" width="24" height="46" rx="11" fill="#EF233C" stroke="${stroke}" stroke-width="4"/>
+        <rect x="192" y="102" width="24" height="46" rx="11" fill="#EF233C" stroke="${stroke}" stroke-width="4"/>
+        <circle cx="56" cy="125" r="5" fill="#FFD166"/>
+        <circle cx="204" cy="125" r="5" fill="#FFD166"/>
+      </g>`;
+
     case 'propeller_cap':
-      return `
-        <g>
-          <path d="M76 86 Q76 38 130 38 Q184 38 184 86 Z" fill="#FFB703" stroke="${stroke}" stroke-width="4"/>
-          <path d="M106 86 Q106 38 130 38 Q154 38 154 86 Z" fill="#219EBC" stroke="${stroke}" stroke-width="3.5"/>
-          <line x1="130" y1="38" x2="130" y2="22" stroke="${stroke}" stroke-width="4"/>
-          <ellipse cx="130" cy="22" rx="34" ry="6" fill="#FB8500" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
+      return `<g>
+        <path d="M76 84 C76 34, 184 34, 184 84 Z" fill="#FFB703" stroke="${stroke}" stroke-width="4.2"/>
+        <path d="M104 84 C104 34, 156 34, 156 84 Z" fill="#219EBC" stroke="${stroke}" stroke-width="3.8"/>
+        <line x1="130" y1="36" x2="130" y2="20" stroke="${stroke}" stroke-width="4.5"/>
+        <ellipse cx="130" cy="20" rx="36" ry="6.5" fill="#FB8500" stroke="${stroke}" stroke-width="3.4"/>
+        <circle cx="130" cy="20" r="5" fill="#FFD166" stroke="${stroke}" stroke-width="2.5"/>
+      </g>`;
+
     case 'knight_helmet':
-      return `
-        <g>
-          <path d="M130 34 Q168 12 184 40 Q154 44 130 38" fill="#E63946" stroke="${stroke}" stroke-width="3.5"/>
-          <path d="M76 88 Q76 34 130 34 Q184 34 184 88 Z" fill="#ADB5BD" stroke="${stroke}" stroke-width="4"/>
-          <rect x="74" y="72" width="112" height="16" rx="5" fill="#6C757D" stroke="${stroke}" stroke-width="3.5"/>
-        </g>`;
+      return `<g>
+        <path d="M130 32 C164 8, 192 22, 186 44 C162 46, 144 40, 130 36 Z" fill="#E63946" stroke="${stroke}" stroke-width="3.6" stroke-linejoin="round"/>
+        <path d="M76 86 C76 30, 184 30, 184 86 Z" fill="#ADB5BD" stroke="${stroke}" stroke-width="4.2"/>
+        <path d="M72 70 Q130 80 188 70 L186 86 Q130 94 74 86 Z" fill="#6C757D" stroke="${stroke}" stroke-width="3.8"/>
+        <line x1="106" y1="54" x2="106" y2="66" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/>
+        <line x1="130" y1="52" x2="130" y2="66" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/>
+        <line x1="154" y1="54" x2="154" y2="66" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/>
+      </g>`;
+
     case 'whipped_cherry':
-      return `
-        <g>
-          <ellipse cx="130" cy="64" rx="28" ry="24" fill="#FFD166" stroke="${stroke}" stroke-width="4"/>
-          <circle cx="120" cy="60" r="3.5" fill="${stroke}"/>
-          <circle cx="140" cy="60" r="3.5" fill="${stroke}"/>
-          <polygon points="126,66 134,66 130,73" fill="#FB8500" stroke="${stroke}" stroke-width="2"/>
-          <path d="M126 40 Q130 28 136 38" fill="none" stroke="#FFD166" stroke-width="4" stroke-linecap="round"/>
-        </g>`;
+      return `<g>
+        <path d="M126 38 Q130 24 138 36" fill="none" stroke="#FFD166" stroke-width="4.5" stroke-linecap="round"/>
+        <ellipse cx="130" cy="62" rx="30" ry="25" fill="#FFD166" stroke="${stroke}" stroke-width="4.2"/>
+        <circle cx="118" cy="58" r="5" fill="${stroke}"/><circle cx="116" cy="56" r="1.8" fill="#FFF"/>
+        <circle cx="142" cy="58" r="5" fill="${stroke}"/><circle cx="140" cy="56" r="1.8" fill="#FFF"/>
+        <polygon points="124,64 136,64 130,73" fill="#FB8500" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>
+      </g>`;
+
     case 'jester_hat':
     default:
-      return `
-        <g>
-          <rect x="74" y="74" width="112" height="14" rx="7" fill="#52B788" stroke="${stroke}" stroke-width="3.5"/>
-          <circle cx="96" cy="78" r="11" fill="#FF4D6D" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="130" cy="76" r="13" fill="#FFB703" stroke="${stroke}" stroke-width="3"/>
-          <circle cx="164" cy="78" r="11" fill="#FF4D6D" stroke="${stroke}" stroke-width="3"/>
-        </g>`;
+      return `<g>
+        <path d="M72 74 Q130 84 188 74 L186 86 Q130 95 74 86 Z" fill="#52B788" stroke="${stroke}" stroke-width="3.8"/>
+        <circle cx="94" cy="76" r="12" fill="#FF4D6D" stroke="${stroke}" stroke-width="3.4"/>
+        <circle cx="94" cy="76" r="4.5" fill="#FFD166"/>
+        <circle cx="130" cy="73" r="14" fill="#FFB703" stroke="${stroke}" stroke-width="3.4"/>
+        <circle cx="130" cy="73" r="5" fill="#FFF"/>
+        <circle cx="166" cy="76" r="12" fill="#FF4D6D" stroke="${stroke}" stroke-width="3.4"/>
+        <circle cx="166" cy="76" r="4.5" fill="#FFD166"/>
+      </g>`;
   }
 }
 
 /**
- * بناء الشخصية الكرتونية الموحدة (Unified Character Rig — مطابقة للصورة المرجعية الثالثة)
+ * رسم مسار الجسم المنحني المميز لكل كوباية مع الحفاظ على حافة الكوباية العلوية الموحدة (X: 68..192, Y: 86)
+ */
+function renderBodyShape(outfitObj, gradId) {
+  const stroke = '#231710';
+  let bodyPath = '';
+  let extra = '';
+
+  switch (outfitObj.shape) {
+    case 'chubby':
+      bodyPath = 'M68 88 C52 145, 62 226, 130 226 C198 226, 208 145, 192 88 Z';
+      extra = `<ellipse cx="130" cy="225" rx="44" ry="6" fill="${outfitObj.rimColor}" stroke="${stroke}" stroke-width="4"/>`;
+      break;
+    case 'waisted':
+      bodyPath = 'M68 88 C80 132, 60 175, 76 212 C84 224, 176 224, 184 212 C200 175, 180 132, 192 88 Z';
+      extra = `<path d="M150 83 C158 68, 176 72, 168 86 Z" fill="#2A9D8F" stroke="${stroke}" stroke-width="3"/>`;
+      break;
+    case 'kanaka':
+      bodyPath = 'M72 88 C74 128, 56 176, 68 210 C76 226, 184 226, 192 210 C204 176, 186 128, 188 88 Z';
+      break;
+    case 'goblet':
+      bodyPath = 'M68 88 C66 156, 92 198, 130 198 C168 198, 194 156, 192 88 Z';
+      extra = `
+        <rect x="122" y="196" width="16" height="24" rx="4" fill="${outfitObj.rimColor}" stroke="${stroke}" stroke-width="4"/>
+        <ellipse cx="130" cy="222" rx="38" ry="6.5" fill="${outfitObj.rimColor}" stroke="${stroke}" stroke-width="4"/>
+      `;
+      break;
+    case 'dallah':
+      bodyPath = 'M74 88 C82 128, 58 172, 72 210 C82 226, 178 226, 188 210 C202 172, 178 128, 186 88 Z';
+      break;
+    case 'tapered':
+      bodyPath = 'M68 88 C70 154, 84 222, 130 222 C176 222, 190 154, 192 88 Z';
+      break;
+    case 'curved':
+      bodyPath = 'M68 88 C62 146, 72 222, 130 224 C188 222, 198 146, 192 88 Z';
+      break;
+    case 'mug':
+    default:
+      bodyPath = 'M68 88 C60 150, 74 224, 130 224 C186 224, 200 150, 192 88 Z';
+      extra = `<ellipse cx="130" cy="224" rx="40" ry="5.5" fill="${outfitObj.bandColor}" stroke="${stroke}" stroke-width="3.8"/>`;
+      break;
+  }
+
+  return `
+    ${extra}
+    <path d="${bodyPath}" fill="url(#${gradId})" stroke="${stroke}" stroke-width="4.8" stroke-linejoin="round"/>
+    <!-- لمعة كرتونية ثلاثية الأبعاد على جانب الكوباية -->
+    <path d="M80 112 C74 146, 78 182, 88 202" fill="none" stroke="rgba(255,255,255,0.34)" stroke-width="7" stroke-linecap="round"/>
+    <!-- ظل سفلي خفيف يعطي عمق كرتوني -->
+    <path d="M94 214 Q130 222 166 214" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="6" stroke-linecap="round"/>
+  `;
+}
+
+/**
+ * بناء الشخصية الكرتونية الموحدة (Modular Cartoon SVG Rig)
  */
 function buildCharacterSVG(cfg) {
   const safeCfg = cfg || {};
   const outfitObj = CHARACTER_PARTS.outfit.find(o => o.id === safeCfg.outfit) || CHARACTER_PARTS.outfit[0];
-  const faceId = safeCfg.face || 'mustache_boss';
+  const faceId = safeCfg.face || 'laugh_joy';
   const hatId = safeCfg.hat || 'fez_tarboush';
   const gradId = `cupGrad_${outfitObj.id}`;
   const stroke = '#231710';
 
   let sideHandlesSVG = '';
   if (outfitObj.handleSide === 'right' || outfitObj.handleSide === 'both') {
-    sideHandlesSVG += `<path d="M188 124 C220 124, 220 176, 184 176" fill="none" stroke="${outfitObj.rimColor}" stroke-width="15" stroke-linecap="round"/>`;
-    sideHandlesSVG += `<path d="M188 124 C220 124, 220 176, 184 176" fill="none" stroke="${stroke}" stroke-width="4.5" stroke-linecap="round"/>`;
+    sideHandlesSVG += `
+      <path d="M186 122 C222 120, 222 178, 182 176" fill="none" stroke="${stroke}" stroke-width="18" stroke-linecap="round"/>
+      <path d="M186 122 C222 120, 222 178, 182 176" fill="none" stroke="${outfitObj.rimColor}" stroke-width="10" stroke-linecap="round"/>
+    `;
   }
   if (outfitObj.handleSide === 'left') {
-    sideHandlesSVG += `<path d="M72 138 L30 122 L26 134 L70 152 Z" fill="${outfitObj.bandColor}" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>`;
+    sideHandlesSVG += `
+      <path d="M76 132 L28 110 C22 108, 18 118, 24 122 L72 146 Z" fill="${outfitObj.bandColor}" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+      <circle cx="28" cy="116" r="4" fill="#FFD166"/>
+    `;
   }
   if (outfitObj.handleSide === 'both') {
-    sideHandlesSVG += `<path d="M74 126 C42 120, 38 98, 52 96 C58 108, 64 114, 74 116 Z" fill="${outfitObj.bodyTop}" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>`;
+    sideHandlesSVG += `
+      <path d="M78 134 C46 128, 38 102, 48 94 C54 106, 64 116, 78 118 Z" fill="${outfitObj.bodyTop}" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+    `;
   }
-
-  const sleeveSVG = outfitObj.hasSleeve
-    ? `<path d="M75 184 L185 184 L181 208 L79 208 Z" fill="${outfitObj.bandColor}" opacity="0.28"/>`
-    : '';
 
   return `
     <svg viewBox="0 0 260 280" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" aria-label="${outfitObj.name}">
       <defs>
-        <linearGradient id="${gradId}" x1="0%" y1="0%" x2="0%" y2="100%">
+        <linearGradient id="${gradId}" x1="0%" y1="0%" x2="12%" y2="100%">
           <stop offset="0%" stop-color="${outfitObj.bodyTop}"/>
           <stop offset="100%" stop-color="${outfitObj.bodyBot}"/>
         </linearGradient>
       </defs>
 
       <!-- ظل الأرضية -->
-      <ellipse cx="130" cy="260" rx="58" ry="9" fill="rgba(35, 23, 16, 0.18)"/>
+      <ellipse cx="130" cy="260" rx="60" ry="9" fill="rgba(35, 23, 16, 0.2)"/>
 
-      <!-- الأرجل والأحذية الكرتونية اللطيفة كما في الصورة المرفقة -->
-      <path d="M108 220 L106 246" stroke="${stroke}" stroke-width="7" stroke-linecap="round"/>
-      <path d="M152 220 L154 246" stroke="${stroke}" stroke-width="7" stroke-linecap="round"/>
-      <ellipse cx="102" cy="250" rx="14" ry="8" fill="${outfitObj.shoeColor}" stroke="${stroke}" stroke-width="3.8"/>
-      <ellipse cx="158" cy="250" rx="14" ry="8" fill="${outfitObj.shoeColor}" stroke="${stroke}" stroke-width="3.8"/>
-
-      <!-- الأذرع الكرتونية -->
-      <path d="M72 162 Q48 176 56 196" fill="none" stroke="${stroke}" stroke-width="7" stroke-linecap="round"/>
-      <circle cx="56" cy="198" r="8" fill="#FFFDF9" stroke="${stroke}" stroke-width="3.8"/>
-      <path d="M188 162 Q212 176 204 196" fill="none" stroke="${stroke}" stroke-width="7" stroke-linecap="round"/>
-      <circle cx="204" cy="198" r="8" fill="#FFFDF9" stroke="${stroke}" stroke-width="3.8"/>
+      <!-- الأرجل والأحذية الكرتونية -->
+      <path d="M108 218 Q105 234 104 246" fill="none" stroke="${stroke}" stroke-width="7.5" stroke-linecap="round"/>
+      <path d="M152 218 Q155 234 156 246" fill="none" stroke="${stroke}" stroke-width="7.5" stroke-linecap="round"/>
+      <path d="M84 252 C84 238, 116 238, 118 252 Z" fill="${outfitObj.shoeColor}" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M142 252 C144 238, 176 238, 176 252 Z" fill="${outfitObj.shoeColor}" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
 
       <!-- المقابض الجانبية -->
       ${sideHandlesSVG}
 
-      <!-- جسم فنجان القهوة المستدير اللطيف مثل الصورة المرجعية الثالثة -->
-      <path d="M68 88 L192 88 L184 188 C182 216 160 226 130 226 C100 226 78 216 76 188 Z" fill="url(#${gradId})" stroke="${stroke}" stroke-width="5" stroke-linejoin="round"/>
+      <!-- الأذرع والجوانتيات الكرتونية -->
+      <path d="M72 158 C44 166, 44 190, 56 198" fill="none" stroke="${stroke}" stroke-width="7.5" stroke-linecap="round"/>
+      <circle cx="58" cy="200" r="9.5" fill="#FFFDF9" stroke="${stroke}" stroke-width="4"/>
+      <path d="M188 158 C216 166, 216 190, 204 198" fill="none" stroke="${stroke}" stroke-width="7.5" stroke-linecap="round"/>
+      <circle cx="202" cy="200" r="9.5" fill="#FFFDF9" stroke="${stroke}" stroke-width="4"/>
 
-      <!-- الحافة الكريمية العلوية الموحدة للفنجان -->
-      <path d="M66 86 Q130 98 194 86 L192 108 Q130 120 68 108 Z" fill="${outfitObj.rimColor}" stroke="${stroke}" stroke-width="4.5" stroke-linejoin="round"/>
-      <ellipse cx="130" cy="86" rx="64" ry="11" fill="${outfitObj.rimColor}" stroke="${stroke}" stroke-width="4.5"/>
+      <!-- جسم الكوباية الكرتوني المنحني -->
+      ${renderBodyShape(outfitObj, gradId)}
+
+      <!-- الحافة الكريمية العلوية الموحدة والمشروب -->
+      <path d="M65 86 Q130 98 195 86 L192 104 Q130 116 68 104 Z" fill="${outfitObj.rimColor}" stroke="${stroke}" stroke-width="4.2" stroke-linejoin="round"/>
+      <ellipse cx="130" cy="86" rx="64" ry="11" fill="${outfitObj.rimColor}" stroke="${stroke}" stroke-width="4.2"/>
       <ellipse cx="130" cy="87" rx="54" ry="6.5" fill="${outfitObj.liquidColor}"/>
-
-      ${sleeveSVG}
 
       <!-- ملامح الوجه الكرتوني -->
       ${renderFaceVector(faceId)}
 
-      <!-- الطاقية / التاج فوق الفنجان مباشرة -->
+      <!-- الطاقية / الإكسسوار الكرتوني فوق الكوباية -->
       ${renderHatVector(hatId)}
     </svg>
   `;
