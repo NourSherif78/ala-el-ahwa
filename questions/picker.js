@@ -49,7 +49,8 @@ const BANKS = {
       bluffs: (k.bluffs || []).slice(0, 3),
       difficulty: k.difficulty
     }))
-  ]
+  ],
+  yansoon: safeRequire('./yansoon.js')
 };
 
 // ---------- التطبيع العربي للمقارنة ----------
@@ -161,6 +162,13 @@ function isValidArabicItem(game, it) {
     if (!name || ENG_RE.test(name) || ENG_RE.test(brief)) return false;
     return true;
   }
+  if (game === 'yansoon') {
+    const word = String(it.word || '').trim();
+    if (!word || ENG_RE.test(word)) return false;
+    const len = it.len || word.length;
+    if (len < 3 || len > 8) return false;
+    return true;
+  }
   return false;
 }
 
@@ -186,11 +194,11 @@ function saveUsed() {
 }
 
 // تنظيف أي أسئلة AI قديمة بايظة أو فيها إنجليزي أو فراغين
-let AI_POOL = { karak: [], sahlab: [], tamr: [], annab: [] };
+let AI_POOL = { karak: [], sahlab: [], tamr: [], annab: [], yansoon: [] };
 try {
   if (fs.existsSync(AI_FILE)) {
     const rawPool = JSON.parse(fs.readFileSync(AI_FILE, 'utf8')) || {};
-    for (const g of ['karak', 'sahlab', 'tamr', 'annab']) {
+    for (const g of ['karak', 'sahlab', 'tamr', 'annab', 'yansoon']) {
       AI_POOL[g] = (Array.isArray(rawPool[g]) ? rawPool[g] : []).filter((it) => isValidArabicItem(g, it));
     }
   }
@@ -202,6 +210,7 @@ function saveAiPool() {
 function itemText(game, it) {
   if (game === 'karak' || game === 'annab') return it.q;
   if (game === 'sahlab') return it.answer;
+  if (game === 'yansoon') return it.word;
   return it.name;
 }
 
@@ -304,10 +313,12 @@ function prefetchAI(game, cats, n, difficulty = 'medium') {
 /**
  * اختيار n عنصر جديد للعبة مع مراعاة الكتالوج ومستوى الصعوبة (easy / medium / hard)
  */
-async function pickQuestions(game, cats, n, aiFresh = [], difficulty = 'medium') {
+async function pickQuestions(game, cats, n, aiFresh = [], difficulty = 'medium', extra = {}) {
   const diff = ['easy', 'medium', 'hard'].includes(difficulty) ? difficulty : 'medium';
+  const targetWordLen = game === 'yansoon' && extra && extra.wordLen ? Number(extra.wordLen) : null;
   const inCat = (it) => matchesCatWithAliases(it.cat, cats, false);
   const inRelatedCat = (it) => matchesCatWithAliases(it.cat, cats, true);
+  const inLen = (it) => !targetWordLen || (it.len || (it.word && it.word.length)) === targetWordLen;
 
   // ترتيب أولويات الصعوبة حسب اختيار الحكم
   const diffTiers =
@@ -328,7 +339,9 @@ async function pickQuestions(game, cats, n, aiFresh = [], difficulty = 'medium')
           (it) => true
         ];
 
-  const all = [...BANKS[game], ...AI_POOL[game]].filter((it) => isValidArabicItem(game, it));
+  const poolSource = BANKS[game] || [];
+  const aiSource = AI_POOL[game] || [];
+  const all = [...poolSource, ...aiSource].filter((it) => isValidArabicItem(game, it));
   const fresh = all.filter((it) => !isUsed(game, it));
 
   const chosen = [];
@@ -342,6 +355,19 @@ async function pickQuestions(game, cats, n, aiFresh = [], difficulty = 'medium')
       chosen.push(it);
     }
   };
+
+  // لو لعبة يانسون بنفلتر حسب طول الكلمة المطلوب
+  if (game === 'yansoon') {
+    const freshLen = fresh.filter(inLen);
+    const allLen = all.filter(inLen);
+    addFromPool(freshLen.filter(inCat));
+    if (chosen.length < n) addFromPool(freshLen);
+    if (chosen.length < n) addFromPool(allLen.filter(inCat));
+    if (chosen.length < n) addFromPool(allLen);
+    if (chosen.length < n) addFromPool(fresh);
+    if (chosen.length < n) addFromPool(all);
+    return shuffle(chosen);
+  }
 
   // 1) أسئلة جديدة من نفس الكتالوج حسب تدرج الصعوبة المختار
   for (const matchDiff of diffTiers) {
@@ -578,7 +604,7 @@ async function aiBluffsFor(questions) {
 function stats() {
   const r = {};
   for (const g of Object.keys(BANKS)) {
-    const all = [...BANKS[g], ...AI_POOL[g]];
+    const all = [...BANKS[g], ...(AI_POOL[g] || [])];
     r[g] = { total: all.length, fresh: all.filter((it) => !isUsed(g, it)).length };
   }
   return r;

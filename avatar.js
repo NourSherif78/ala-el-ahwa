@@ -104,6 +104,19 @@ const CHARACTER_PARTS = {
       shoeColor: '#D97724',
       handleSide: 'right',
       hasSleeve: false
+    },
+    {
+      id: 'yansoon_cup',
+      name: 'كوب اليانسون العشبي الذهبي',
+      shape: 'yansoon',
+      bodyTop: '#FDE68A',
+      bodyBot: '#D97706',
+      rimColor: '#FFFDF0',
+      liquidColor: '#F59E0B',
+      bandColor: '#92400E',
+      shoeColor: '#78350F',
+      handleSide: 'right',
+      hasSleeve: false
     }
   ],
 
@@ -196,7 +209,8 @@ const CHARACTER_PARTS = {
     { id: 'propeller_cap', name: 'طقية المروحة' },
     { id: 'knight_helmet', name: 'خوذة الفارس' },
     { id: 'whipped_cherry', name: 'كتكوت القهوة' },
-    { id: 'jester_hat', name: 'طوق الورد الملكي' }
+    { id: 'jester_hat', name: 'طوق الورد الملكي' },
+    { id: 'anise_star', name: 'نجمة اليانسون العطرية' }
   ]
 };
 
@@ -1077,6 +1091,16 @@ function renderHatVector(hatId) {
         <polygon points="124,64 136,64 130,73" fill="#FB8500" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>
       </g>`;
 
+    case 'anise_star':
+      return `<g>
+        <g transform="translate(130, 48) scale(1.15)">
+          <path d="M0 -22 L6 -6 L22 0 L6 6 L0 22 L-6 6 L-22 0 L-6 -6 Z" fill="#92400E" stroke="${stroke}" stroke-width="3.8" stroke-linejoin="round"/>
+          <path d="M-15 -15 L0 -5 L15 -15 L5 0 L15 15 L0 5 L-15 15 L-5 0 Z" fill="#B45309" stroke="${stroke}" stroke-width="3.2" stroke-linejoin="round"/>
+          <circle cx="0" cy="0" r="4.5" fill="#FDE68A" stroke="${stroke}" stroke-width="2"/>
+          <ellipse cx="-2" cy="-2" rx="1.5" ry="1.2" fill="#FFFFFF"/>
+        </g>
+      </g>`;
+
     case 'jester_hat':
     default:
       return `<g>
@@ -1100,6 +1124,18 @@ function renderBodyShape(outfitObj, gradId) {
   let extra = '';
 
   switch (outfitObj.shape) {
+    case 'yansoon':
+      bodyPath = 'M68 88 C56 142, 64 220, 130 226 C196 220, 204 142, 192 88 Z';
+      extra = `
+        <ellipse cx="130" cy="226" rx="42" ry="6" fill="${outfitObj.bandColor}" stroke="${stroke}" stroke-width="4"/>
+        <!-- نجمة يانسون خشبية عطرية مرسومة على الكوباية -->
+        <g transform="translate(130, 206) scale(0.72)">
+          <path d="M0 -14 L4 -4 L14 0 L4 4 L0 14 L-4 4 L-14 0 L-4 -4 Z" fill="#92400E" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M-10 -10 L0 -3 L10 -10 L3 0 L10 10 L0 3 L-10 10 L-3 0 Z" fill="#B45309" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/>
+          <circle cx="0" cy="0" r="3" fill="#FDE68A"/>
+        </g>
+      `;
+      break;
     case 'chubby':
       bodyPath = 'M68 88 C52 145, 62 226, 130 226 C198 226, 208 145, 192 88 Z';
       extra = `<ellipse cx="130" cy="225" rx="44" ry="6" fill="${outfitObj.rimColor}" stroke="${stroke}" stroke-width="4"/>`;
@@ -1216,4 +1252,14 @@ function buildCharacterSVG(cfg) {
       ${renderHatVector(hatId)}
     </svg>
   `;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    CHARACTER_PARTS,
+    buildCharacterSVG,
+    renderBodyShape,
+    renderFaceVector,
+    renderHatVector
+  };
 }

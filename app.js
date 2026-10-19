@@ -80,10 +80,11 @@ const GAMES = {
   karak: { name: 'كرك', img: '/assets/ui/karak.png', tag: 'لعبة الخداع', desc: 'سؤال غريب بفراغ، كل فريق يكتب إجابة مزيفة تخدع التاني وبعدين الكل يدور على الإجابة الصح وسط 6 إجابات.' },
   sahlab: { name: 'سحلب', img: '/assets/ui/sahlab.png', tag: 'سلم التلميحات', desc: 'صورة مموهة و5 تلميحات بتسهل واحدة ورا التانية. خمّن بدري تاخد نقط أكتر، وكل غلطة بتجمد فريقك.' },
   tamr: { name: 'لبن تمر هندي', img: '/assets/ui/tamr.png', tag: 'ساعة الشطرنج', desc: 'الشخصية السرية — كل فريق عنده شخصية سرية لازم يخمنها بأسئلة أه/لأ، وساعة شطرنج بتعد على الفريق اللي عليه الدور.' },
-  annab: { name: 'عنّاب', img: '/assets/ui/annab.png', tag: 'زرار الباز · 4 اختيارات', desc: '20 سؤال بـ 4 اختيارات وزرار باز لقائد كل فريق! اللي يدوس الأول يجاوب، ولو غلط بتتشطب إجابته والفرصة تروح للفريق التاني يختار من الـ 3 الباقيين.' }
+  annab: { name: 'عنّاب', img: '/assets/ui/annab.png', tag: 'زرار الباز · 4 اختيارات', desc: '20 سؤال بـ 4 اختيارات وزرار باز لقائد كل فريق! اللي يدوس الأول يجاوب، ولو غلط بتتشطب إجابته والفرصة تروح للفريق التاني يختار من الـ 3 الباقيين.' },
+  yansoon: { name: 'يانسون', img: '/assets/ui/yansoon.png', tag: 'لعبة الكلمات والحروف (Wordle)', desc: 'تحدي الكلمات الذكي بدون «الـ» التعريف! من 3 إلى 8 حروف و6 محاولات مع شبكة تلميحات لونية بالأخضر والأصفر والرمادي وكيبورد عربي تفاعلي.' }
 };
 
-// كتالوج شامل موحّد في كل الألعاب الأربعة (يشمل الـ 6 كتالوجات الجديدة + كل الكتالوجات السابقة)
+// كتالوج شامل موحّد في كل الألعاب الخمسة (يشمل الـ 6 كتالوجات الجديدة + كل الكتالوجات السابقة)
 const ALL_CATS = [
   ['spacetoon', 'كرتونات سبيستون'],
   ['egyptian_comedy', 'أفلام مصرية كوميدية'],
@@ -114,7 +115,8 @@ const CATS = {
   karak: ALL_CATS,
   sahlab: ALL_CATS,
   tamr: ALL_CATS,
-  annab: ALL_CATS
+  annab: ALL_CATS,
+  yansoon: ALL_CATS
 };
 
 // كروت الكتالوج المصورة (assets/cats/<id>.png) — لو صورة مش موجودة أو فشلت تتحمّل بيظهر كارت نصي بنفس الستايل
@@ -173,6 +175,8 @@ const S = {
     hintSec: 30,
     chessSec: 180,
     buzzSec: 20,
+    yansoonSec: 0,
+    wordLen: 5,
     useCustom: false,
     hideSecret: false,
     ...savedSetup
@@ -242,6 +246,7 @@ function normalizeCustomItem(it, game) {
 function isCustomValid(it, game) {
   if (!it || !String(it.truth || '').trim()) return false;
   if (game === 'tamr') return true;
+  if (game === 'yansoon') return it.truth.trim().length >= 3 && it.truth.trim().length <= 8;
   if (game === 'sahlab') return Array.isArray(it.hints) && it.hints.some((h) => String(h || '').trim());
   return Boolean(String(it.q || '').trim());
 }
@@ -250,14 +255,14 @@ function curCustomGame() {
   return (inRoom ? S.view.game : S.setup.game) || 'karak';
 }
 function customList(game = curCustomGame()) {
-  const g = ['karak', 'sahlab', 'tamr', 'annab'].includes(game) ? game : 'karak';
+  const g = ['karak', 'sahlab', 'tamr', 'annab', 'yansoon'].includes(game) ? game : 'karak';
   if (!Array.isArray(S.customByGame[g])) S.customByGame[g] = [];
   S.customByGame[g] = S.customByGame[g].map((it) => normalizeCustomItem(it, g));
   S.custom = S.customByGame[g];
   return S.customByGame[g];
 }
 function validCustomList(game = curCustomGame()) {
-  const g = ['karak', 'sahlab', 'tamr', 'annab'].includes(game) ? game : 'karak';
+  const g = ['karak', 'sahlab', 'tamr', 'annab', 'yansoon'].includes(game) ? game : 'karak';
   return customList(g).filter((it) => isCustomValid(it, g));
 }
 
@@ -265,6 +270,7 @@ const NON_BLOCKING_ACTIONS = new Set([
   'adjust_score', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
   'update_lobby', 'rename_team', 'kr_suggest', 'kr_vote_suggest', 'sh_suggest', 'tm_suggest',
   'toggle_secret', 'an_buzz', 'an_pick', 'an_suggest', 'an_reset_buzz', 'an_pass_turn', 'an_reveal',
+  'yn_suggest', 'yn_guess', 'yn_reveal', 'yn_pass', 'yn_hint',
   'set_team_count', 'set_play_mode', 'add_test_player', 'admin_join_team', 'admin_become_judge',
   'update_profile', 'unpick_team', 'leave_room'
 ]);
@@ -702,7 +708,7 @@ function render() {
   else if (v.status === 'lobby') html = isAdmin() ? viewLobbyAdmin() : myTeam() ? viewLobbyPlayer() : viewTeamPick();
   else if (v.status === 'playing') {
     if (!isAdmin() && !myTeam()) html = viewTeamPick();
-    else html = v.game === 'karak' ? viewKarak() : v.game === 'sahlab' ? viewSahlab() : v.game === 'annab' ? viewAnnab() : viewTamr();
+    else html = v.game === 'karak' ? viewKarak() : v.game === 'sahlab' ? viewSahlab() : v.game === 'annab' ? viewAnnab() : v.game === 'yansoon' ? viewYansoon() : viewTamr();
     if (isHost()) html += adminDrawer();
   } else if (v.status === 'finished') html = viewFinal() + (isHost() ? adminDrawer() : '');
 
@@ -1012,7 +1018,7 @@ function viewSetup() {
 
       <div class="card">
         <h2 class="h2"><span class="num">4</span> الوقت وشاشة الحكم</h2>
-        ${!g ? '<p class="note">اختار اللعبة الأول.</p>' : g === 'karak' ? rangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5) + rangeField('voteSec', 'وقت الاختيار', 15, 120, 5) : g === 'sahlab' ? rangeField('hintSec', 'وقت كل تلميح', 15, 120, 5) : g === 'annab' ? rangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5) : rangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15)}
+        ${!g ? '<p class="note">اختار اللعبة الأول.</p>' : g === 'karak' ? rangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5) + rangeField('voteSec', 'وقت الاختيار', 15, 120, 5) : g === 'sahlab' ? rangeField('hintSec', 'وقت كل تلميح', 15, 120, 5) : g === 'annab' ? rangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5) : g === 'yansoon' ? rangeFieldWordLen() + rangeFieldYansoonSec() : rangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15)}
         <button class="ai-toggle tv-toggle ${s.hideSecret ? 'on' : ''}" onclick="S.setup.hideSecret=!S.setup.hideSecret;LS.set('setup',S.setup);render()" aria-pressed="${Boolean(s.hideSecret)}">
           <span class="tv-orb" aria-hidden="true">${ic(s.hideSecret ? 'eyeOff' : 'tv')}</span>
           <span class="ai-txt"><b>وضع التلفزيون (إخفاء الإجابات من شاشة الحكم)</b><small>${s.hideSecret ? 'شغال — الإجابات السرية هتكون مخفية من شاشة الحكم وتقدر تظهرها بزرار في أي وقت' : 'مقفول — الإجابات الصح بتظهر للحكم من أول الجولة'}</small></span>
@@ -1059,6 +1065,16 @@ function rangeField(key, label, min, max, step) {
   const val = S.setup[key];
   return `<label class="field"><span>${label}: <b id="lbl_${key}">${fmtSec(val)}</b></span>
     <input type="range" class="range" min="${min}" max="${max}" step="${step}" value="${val}" oninput="S.setup.${key}=+this.value;document.getElementById('lbl_${key}').textContent=fmtSec(+this.value)"/></label>`;
+}
+function rangeFieldWordLen() {
+  const val = S.setup.wordLen || 5;
+  return `<label class="field"><span>طول الكلمة: <b id="lbl_wordLen">${val} حروف</b></span>
+    <input type="range" class="range" min="3" max="8" step="1" value="${val}" oninput="S.setup.wordLen=+this.value;document.getElementById('lbl_wordLen').textContent=this.value + ' حروف'"/></label>`;
+}
+function rangeFieldYansoonSec() {
+  const val = S.setup.yansoonSec || 0;
+  return `<label class="field"><span>وقت المحاولة: <b id="lbl_yansoonSec">${val === 0 ? 'بدون تايمر (هادي)' : fmtSec(val)}</b></span>
+    <input type="range" class="range" min="0" max="120" step="15" value="${val}" oninput="S.setup.yansoonSec=+this.value;document.getElementById('lbl_yansoonSec').textContent=+this.value === 0 ? 'بدون تايمر (هادي)' : fmtSec(+this.value)"/></label>`;
 }
 function pickGame(k) {
   S.setup.game = k;
@@ -1238,6 +1254,11 @@ function viewCustom() {
       title: 'أسئلتك الخاصة — لعبة عنّاب',
       desc: 'شبه كرك: اكتب <b>السؤال</b>، وبعدين <b>الإجابة الصح</b>، وبعدين <b>الاختيارات التانية الغلط</b> لو عايز تكتبها بإيدك — أو سيبها فاضية والـ <b>AI</b> هيكتب الاختيارات الباقية تلقائياً.',
       addLbl: 'أضف سؤال جديد'
+    },
+    yansoon: {
+      title: 'كلماتك الخاصة — لعبة يانسون (Wordle)',
+      desc: 'اكتب <b>الكلمة السرية</b> (من 3 إلى 8 حروف بدون «الـ» التعريف) و<b>تلميح اختياري</b> يقدر الحكم يظهره للفرق لو حابب يساعدهم.',
+      addLbl: 'أضف كلمة جديدة'
     }
   }[g];
 
@@ -1308,8 +1329,9 @@ function viewCustom() {
     }
 
     // عنّاب (annab)
-    return `<div class="card q-row custom-card custom-annab" data-custom-card="${i}">
-      <div class="q-card-head">
+    if (g === 'annab') {
+      return `<div class="card q-row custom-card custom-annab" data-custom-card="${i}">
+        <div class="q-card-head">
         <span class="q-badge">السؤال ${i + 1}</span>
         <span class="pill ai-bluff-pill" id="annabBluffBadge_${i}">${annabBluffStatusText(c)}</span>
         <button type="button" class="icon-btn danger" aria-label="حذف السؤال" title="حذف السؤال" onclick="removeCustomItem(${i})">${ic('trash')}</button>
@@ -1335,6 +1357,26 @@ function viewCustom() {
         </div>
       </div>
     </div>`;
+    }
+
+    if (g === 'yansoon') {
+      const wLen = String(c.truth || '').trim().length;
+      return `<div class="card q-row custom-card custom-yansoon" data-custom-card="${i}">
+        <div class="q-card-head">
+          <span class="q-badge">الكلمة ${i + 1}${wLen ? ` (${wLen} حروف)` : ' (من 3 لـ 8 حروف)'}</span>
+          <button type="button" class="icon-btn danger" aria-label="حذف الكلمة" title="حذف الكلمة" onclick="removeCustomItem(${i})">${ic('trash')}</button>
+        </div>
+        <div class="q-fields">
+          <label class="field"><span>الكلمة السرية (من 3 لـ 8 حروف بدون الـ)</span>
+            <input id="ca${i}" class="input" maxlength="8" value="${esc(c.truth)}" oninput="customList('yansoon')[${i}].truth=this.value.replace(/[\u064B-\u0652\u0640\s]/g,'');updateCustomMeta(${i})" placeholder="مثال: قهوة أو فنجان"/>
+          </label>
+          <label class="field"><span>تلميح الكلمة (اختياري — للحكم لو الفرق وقفت)</span>
+            <input id="cq${i}" class="input" maxlength="120" value="${esc(c.q)}" oninput="customList('yansoon')[${i}].q=this.value;updateCustomMeta(${i})" placeholder="مثال: مشروب ساخن شعبي"/>
+          </label>
+        </div>
+      </div>`;
+    }
+    return '';
   }).join('');
 
   const gamePacks = (S.savedPacks || []).filter((pk) => pk && pk.game === g);
@@ -1613,6 +1655,18 @@ function lobbyRangeField(key, label, min, max, step, val) {
       oninput="document.getElementById('llbl_${key}').textContent=fmtSec(+this.value)"
       onchange="lobbySetSetting('${key}',+this.value)"/></label>`;
 }
+function lobbyRangeWordLen(val) {
+  return `<label class="field"><span>طول الكلمة: <b id="llbl_wordLen">${val} حروف</b></span>
+    <input type="range" class="range" min="3" max="8" step="1" value="${val}"
+      oninput="document.getElementById('llbl_wordLen').textContent=this.value + ' حروف'"
+      onchange="lobbySetSetting('wordLen',+this.value)"/></label>`;
+}
+function lobbyRangeYansoonSec(val) {
+  return `<label class="field"><span>وقت المحاولة: <b id="llbl_yansoonSec">${val === 0 ? 'بدون تايمر (هادي)' : fmtSec(val)}</b></span>
+    <input type="range" class="range" min="0" max="120" step="15" value="${val}"
+      oninput="document.getElementById('llbl_yansoonSec').textContent=+this.value === 0 ? 'بدون تايمر (هادي)' : fmtSec(+this.value)"
+      onchange="lobbySetSetting('yansoonSec',+this.value)"/></label>`;
+}
 
 function lobbyPickGame(k) {
   S.setup.game = k;
@@ -1625,6 +1679,10 @@ function lobbyPickGame(k) {
   if (k === 'annab') {
     S.setup.count = 20;
     nextSettings.count = 20;
+  }
+  if (k === 'yansoon') {
+    nextSettings.wordLen = S.setup.wordLen || 5;
+    nextSettings.yansoonSec = S.setup.yansoonSec || 0;
   }
   LS.set('setup', S.setup);
   const custom = validCustomList(k);
@@ -1854,7 +1912,9 @@ function viewLobbyAdmin() {
                   ? lobbyRangeField('hintSec', 'وقت كل تلميح', 15, 120, 5, s.hintSec)
                   : g === 'annab'
                     ? lobbyRangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5, s.buzzSec || 20)
-                    : lobbyRangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15, s.chessSec)}
+                    : g === 'yansoon'
+                      ? lobbyRangeWordLen(s.wordLen || 5) + lobbyRangeYansoonSec(s.yansoonSec || 0)
+                      : lobbyRangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15, s.chessSec)}
               <button class="ai-toggle tv-toggle ${s.hideSecret ? 'on' : ''}" onclick="lobbySetSetting('hideSecret', ${!s.hideSecret})" aria-pressed="${Boolean(s.hideSecret)}">
                 <span class="tv-orb" aria-hidden="true">${ic(s.hideSecret ? 'eyeOff' : 'tv')}</span>
                 <span class="ai-txt"><b>وضع التلفزيون (إخفاء الإجابات من شاشة الحكم)</b><small>${s.hideSecret ? 'شغال — الإجابات مخفية من شاشة الحكم وتقدر تظهرها بزرار جوه اللعبة' : 'مقفول — الإجابات الصح بتظهر للحكم'}</small></span>
@@ -2483,6 +2543,307 @@ function anConfirmPick() {
   api('an_pick', { opt }).then((r) => {
     if (r.ok) S.pickOpt = null;
   });
+}
+
+// ==================================================================
+// يانسون (لعبة الكلمات والحروف · Wordle العربي)
+// ==================================================================
+const YN_KB_ROWS = [
+  ['ض', 'ص', 'ث', 'ق', 'ف', 'غ', 'ع', 'ه', 'خ', 'ح', 'ج', 'د'],
+  ['ش', 'س', 'ي', 'ب', 'ل', 'ا', 'ت', 'ن', 'م', 'ك', 'ط'],
+  ['ENTER', 'ذ', 'ء', 'ؤ', 'ر', 'ى', 'ة', 'و', 'ز', 'ظ', 'BACK']
+];
+
+function ynClickKey(char) {
+  const v = S.view;
+  if (!v || !v.yn || v.phase !== 'play') return;
+  const yn = v.yn;
+  const admin = isAdmin();
+  const cap = me().captain;
+  const isMyTurn = admin || (myTeam() && myTeam() === yn.turn && cap);
+  if (!isMyTurn) return;
+
+  if (char === 'BACK') {
+    S.draft.ynWord = String(S.draft.ynWord || '').slice(0, -1);
+    render();
+    return;
+  }
+  if (char === 'ENTER') {
+    ynSubmitGuess();
+    return;
+  }
+  const cur = String(S.draft.ynWord || '');
+  if (cur.length < yn.len) {
+    S.draft.ynWord = cur + char;
+    render();
+  }
+}
+
+function ynSubmitGuess() {
+  const v = S.view;
+  if (!v || !v.yn || v.phase !== 'play') return;
+  const yn = v.yn;
+  const word = String(S.draft.ynWord || '').trim();
+  if (!word) return toast('اكتب كلمة الأول', 'err');
+  if (word.length !== yn.len) {
+    return toast(`الكلمة لازم تكون ${yn.len} حروف بالظبط (أنت كتبت ${word.length})`, 'err');
+  }
+  api('yn_guess', { word }).then((r) => {
+    if (r.ok) {
+      S.draft.ynWord = '';
+    }
+  });
+}
+
+function ynSuggestWord() {
+  const input = document.getElementById('ynSugInput');
+  if (!input) return;
+  const word = input.value.trim();
+  if (!word) return;
+  api('yn_suggest', { word }).then((r) => {
+    if (r.ok) {
+      toast('اقتراحك وصل لقائد فريقك');
+      input.value = '';
+    }
+  });
+}
+
+if (typeof window !== 'undefined' && !window._ynKeyHandlerAttached) {
+  window._ynKeyHandlerAttached = true;
+  window.addEventListener('keydown', (e) => {
+    if (!S.view || S.view.status !== 'playing' || S.view.game !== 'yansoon') return;
+    if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+    const v = S.view;
+    const yn = v.yn;
+    if (!yn || v.phase !== 'play') return;
+    const admin = isAdmin();
+    const isMyTurn = admin || (myTeam() && myTeam() === yn.turn && me().captain);
+    if (!isMyTurn) return;
+
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      S.draft.ynWord = String(S.draft.ynWord || '').slice(0, -1);
+      render();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      ynSubmitGuess();
+    } else if (/^[\u0600-\u06FF]$/.test(e.key)) {
+      e.preventDefault();
+      const cur = String(S.draft.ynWord || '');
+      if (cur.length < yn.len) {
+        S.draft.ynWord = cur + e.key;
+        render();
+      }
+    }
+  });
+}
+
+function viewYansoon() {
+  const v = S.view;
+  const yn = v.yn;
+  const admin = isAdmin();
+  const t = myTeam();
+  const cap = me().captain;
+  const solved = v.phase === 'solved';
+  const revealed = v.phase === 'revealed';
+  const isEnded = solved || revealed;
+  const isMyTurn = !isEnded && (admin || (t && t === yn.turn && cap));
+  const typedWord = String(S.draft.ynWord || '');
+
+  // شريط حالة الجولة والدور
+  let banner = '';
+  if (solved) {
+    const w = yn.winner ? teamOf(yn.winner) : null;
+    banner = `<div class="card yn-banner solved team-${yn.winner || 'none'}">
+      ${ic('trophy')}
+      <div class="yn-banner-content">
+        <span class="sub">مبروك! الإجابة الصح:</span>
+        <h2 class="h1">«${esc(yn.target || '')}»</h2>
+        <p><b>${w ? esc(w.name) : 'فريق'}</b> كشف الكلمة في المحاولة <b>#${yn.guesses.length}</b> وأخد <b>+${yn.wonPts}</b> نقطة!</p>
+        ${yn.hint ? `<span class="yn-banner-hint">${ic('bulb')} التلميح: ${esc(yn.hint)}</span>` : ''}
+      </div>
+    </div>`;
+  } else if (revealed) {
+    banner = `<div class="card yn-banner revealed">
+      ${ic('lock')}
+      <div class="yn-banner-content">
+        <span class="sub">خلصت الـ 6 محاولات!</span>
+        <h2 class="h1">«${esc(yn.target || '')}»</h2>
+        <p>محدش جاب الكلمة الصح المرة دي — الكلمة كانت: <b>${esc(yn.target || '')}</b></p>
+        ${yn.hint ? `<span class="yn-banner-hint">${ic('bulb')} التلميح: ${esc(yn.hint)}</span>` : ''}
+      </div>
+    </div>`;
+  } else {
+    const activeTeamObj = teamOf(yn.turn);
+    if (admin) {
+      banner = `<div class="card yn-banner team-${yn.turn}">
+        ${ic('pencil')}
+        <div>
+          <b>دور ${esc(activeTeamObj.name)}</b> <small>(محاولة ${yn.guesses.length + 1} من ${yn.maxAttempts})</small>
+          <p class="sub">تقدر تكتب الكلمة من الكيبورد تحت نيابة عنهم لو بتلعبوا على شاشة كبيرة أو ذكية.</p>
+        </div>
+      </div>`;
+    } else if (isMyTurn) {
+      banner = `<div class="card yn-banner my-turn team-${yn.turn}">
+        ${ic('bolt')}
+        <div>
+          <b>دور فريقك دلوقتي! اكتب الكلمة المكونة من ${yn.len} حروف</b>
+          <p class="sub">اكتب الحروف من الكيبورد ودوس تخمين (المحاولة ${yn.guesses.length + 1} من ${yn.maxAttempts}).</p>
+        </div>
+      </div>`;
+    } else if (t === yn.turn && !cap) {
+      banner = `<div class="card yn-banner team-${yn.turn}">
+        ${ic('users')}
+        <div>
+          <b>دور فريقك! القائد بيكتب الكلمة</b>
+          <p class="sub">اقترح كلمة على القائد في الخانة اللي تحت.</p>
+        </div>
+      </div>`;
+    } else {
+      banner = `<div class="card yn-banner other-turn team-${yn.turn}">
+        ${ic('clock')}
+        <div>
+          <b>دور ${esc(activeTeamObj.name)}</b> <small>(المحاولة ${yn.guesses.length + 1} من ${yn.maxAttempts})</small>
+          <p class="sub">بيفكروا ويكتبوا الكلمة دلوقتي...</p>
+        </div>
+      </div>`;
+    }
+  }
+
+  // شبكة الكلمات الـ 6 صفوف
+  const rowsHtml = Array.from({ length: yn.maxAttempts }, (_, r) => {
+    const isSubmitted = r < yn.guesses.length;
+    const isActive = r === yn.guesses.length && !isEnded;
+    const guess = isSubmitted ? yn.guesses[r] : null;
+
+    let tilesHtml = '';
+    for (let c = 0; c < yn.len; c++) {
+      if (isSubmitted) {
+        const char = (guess.word && guess.word[c]) || '';
+        const col = (guess.colors && guess.colors[c]) || 'absent';
+        tilesHtml += `<div class="yn-tile ${col} is-flipped" style="animation-delay: ${c * 90}ms">${esc(char)}</div>`;
+      } else if (isActive) {
+        const char = typedWord[c] || '';
+        const isCurrentSlot = isMyTurn && c === typedWord.length;
+        tilesHtml += `<div class="yn-tile ${char ? 'filled' : ''} ${isCurrentSlot ? 'active-slot' : ''}">${esc(char)}</div>`;
+      } else {
+        tilesHtml += `<div class="yn-tile empty"></div>`;
+      }
+    }
+
+    let badge = '';
+    if (isSubmitted) {
+      const gTeam = teamOf(guess.team);
+      badge = `<span class="yn-row-badge team-${guess.team}">${esc(gTeam.name)}</span>`;
+    } else if (isActive) {
+      const tTeam = teamOf(yn.turn);
+      badge = `<span class="yn-row-badge active team-${yn.turn}">${esc(tTeam.name)}</span>`;
+    } else {
+      badge = `<span class="yn-row-badge empty">#${r + 1}</span>`;
+    }
+
+    return `<div class="yn-row ${isActive ? 'row-active' : ''} ${isSubmitted ? 'row-submitted' : ''}">
+      ${badge}
+      <div class="yn-tiles-wrap">${tilesHtml}</div>
+    </div>`;
+  }).join('');
+
+  // الكيبورد العربي التفاعلي
+  const kbHtml = `<div class="yn-keyboard">
+    ${YN_KB_ROWS.map((row) => `
+      <div class="yn-kb-row">
+        ${row.map((k) => {
+          if (k === 'ENTER') {
+            const canSubmit = isMyTurn && typedWord.length === yn.len;
+            return `<button type="button" class="yn-key yn-key-action yn-key-enter" ${canSubmit ? '' : 'disabled'} onclick="ynClickKey('ENTER')">
+              ${ic('check')} تخمين
+            </button>`;
+          }
+          if (k === 'BACK') {
+            return `<button type="button" class="yn-key yn-key-action yn-key-back" onclick="ynClickKey('BACK')" aria-label="مسح">
+              ⌫ مسح
+            </button>`;
+          }
+          const state = yn.alphabet && yn.alphabet[Q.normalizeAr(k)];
+          const cls = state ? `yn-key-${state}` : '';
+          return `<button type="button" class="yn-key ${cls}" onclick="ynClickKey('${k}')">${k}</button>`;
+        }).join('')}
+      </div>
+    `).join('')}
+  </div>`;
+
+  // مقترحات الفريق (للأعضاء غير القائد)
+  let suggestionsHtml = '';
+  if (!isEnded) {
+    if (!admin && t && !cap) {
+      suggestionsHtml = `<div class="card yn-sug-box">
+        <label class="field">
+          <span>${ic('bulb')} عندك كلمة مقترحة من ${yn.len} حروف؟ اقترحها على قائد فريقك:</span>
+          <div class="row">
+            <input id="ynSugInput" class="input" maxlength="${yn.len}" placeholder="اكتب كلمة من ${yn.len} حروف..." onkeydown="if(event.key==='Enter')ynSuggestWord()"/>
+            <button type="button" class="btn olive" onclick="ynSuggestWord()">${ic('next')} ابعت</button>
+          </div>
+        </label>
+      </div>`;
+    }
+
+    const mySugs = (yn.suggestions && (admin ? Object.values(yn.suggestions).flatMap(Object.values) : (t ? Object.values(yn.suggestions[t] || {}) : []))) || [];
+    if (mySugs.length) {
+      suggestionsHtml += `<div class="card yn-sugs-list">
+        <b>${ic('bulb')} اقتراحات الفريق:</b>
+        <div class="yn-sug-tags">
+          ${mySugs.map((sug) => `<button type="button" class="yn-sug-pill" onclick="S.draft.ynWord='${esc(sug.text)}';render()">${esc(sug.text)} <small>(${esc(sug.name)})</small></button>`).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
+  // تحكم الحكم
+  let adminControls = '';
+  if (admin) {
+    const scorePanel = `<div class="card judge-score-panel">
+      <h3 class="h3">${ic('trophy')} تحكم الحكم في النقاط <small>(زود أو نقص لأي فريق براحتك)</small></h3>
+      <div class="judge-score-grid teams-count-${v.teams.length}">
+        ${v.teams.map((tm) => `<div class="judge-score-box team-${tm.id}">
+          <div class="js-head"><b>${esc(tm.name)}</b><span class="js-val">${tm.score}</span></div>
+          <div class="js-btns">
+            ${[10, 5, 2, -2, -5, -10].map((d) => `<button class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${tm.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+
+    const roundTools = !isEnded ? `<div class="card admin-tools">
+      <button class="btn ghost sm" onclick="api('yn_hint')">${ic('bulb')} ${yn.showHint ? 'إخفاء التلميح' : 'إظهار تلميح للفرق'}</button>
+      <button class="btn ghost sm" onclick="api('yn_pass')">${ic('swap')} فوت الدور للفرقة التانية</button>
+      <button class="btn danger sm" onclick="api('yn_reveal')">${ic('bolt')} اكشف الكلمة دلوقتي</button>
+    </div>` : `<div class="next-bar"><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' الكلمة الجاية'}</button></div>`;
+
+    adminControls = `${scorePanel}${roundTools}`;
+  } else if (isEnded) {
+    adminControls = isHost()
+      ? `<div class="next-bar"><span class="why">${v.aiJudge ? 'الـ AI هينقل للجولة الجاية تلقائياً أو دوس دلوقتي' : ''}</span><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' الكلمة الجاية'}</button></div>`
+      : `<div class="waiting small"><p>${v.aiJudge ? 'الـ AI بيفتح الكلمة الجاية تلقائياً' : 'مستنيين الحكم للكلمة الجاية'}<span class="dots"><i></i><i></i><i></i></span></p></div>`;
+  }
+
+  return `${topbar()}<section class="wrap game yansoon-game">${scorebar()}
+    <div class="card yn-game-head">
+      <div class="yn-head-row">
+        <span class="yn-cat-pill">${ic('folder')} ${esc(CAT_LABELS[yn.cat] || yn.cat)}</span>
+        <span class="yn-len-pill">${ic('pencil')} كلمة من <b>${yn.len}</b> حروف</span>
+        <span class="yn-rule-pill">${ic('star')} بدون «الـ»</span>
+      </div>
+      ${yn.showHint && yn.hint ? `<div class="yn-hint-callout">${ic('bulb')} <span><b>تلميح:</b> ${esc(yn.hint)}</span></div>` : ''}
+      ${admin && yn.target ? secretBar(`الكلمة السرية (${yn.len} حروف — ماتورهاش لحد)`, esc(yn.target)) : ''}
+    </div>
+    ${banner}
+    <div class="yn-board-card">
+      <div class="yn-board">${rowsHtml}</div>
+    </div>
+    ${!isEnded ? kbHtml : ''}
+    ${suggestionsHtml}
+    ${adminControls}
+  </section>`;
 }
 
 // ==================================================================

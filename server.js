@@ -61,7 +61,8 @@ const POINTS = {
   karak: { truth: 10, fooled: 5, houseBluff: -5 },
   sahlab: [10, 8, 6, 4, 2],
   tamr: { guess: 20, timeout: 10 },
-  annab: { first: 10, steal: 5 }
+  annab: { first: 10, steal: 5 },
+  yansoon: [20, 16, 12, 8, 5, 2]
 };
 const DEFAULT_SETTINGS = {
   playMode: 'teams', // 'teams' | 'solo'
@@ -74,13 +75,15 @@ const DEFAULT_SETTINGS = {
   hintSec: 30,
   chessSec: 180,
   buzzSec: 20,
+  yansoonSec: 0,
+  wordLen: 5,
   hideSecret: false,
   teamCount: 2,
   teamNames: [...DEFAULT_TEAM_NAMES],
   adminPlays: false,
   adminTeam: 'A'
 };
-const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], chessSec: [60, 600], buzzSec: [10, 60], teamCount: [2, 4] };
+const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], chessSec: [60, 600], buzzSec: [10, 60], yansoonSec: [0, 180], wordLen: [3, 8], teamCount: [2, 4] };
 
 // ============================================================
 // درع الحماية الشامل ضد الثغرات (Injection Shield)
@@ -409,7 +412,7 @@ function scheduleAutoNext(room, sec = 6) {
   room.autoNextTimer = setTimeout(async () => {
     room.autoNextTimer = null;
     if (room.status !== 'playing') return;
-    const readyForNext = (room.game === 'karak' && room.phase === 'reveal') || (room.game !== 'karak' && room.phase === 'solved');
+    const readyForNext = (room.game === 'karak' && room.phase === 'reveal') || (room.game === 'yansoon' && (room.phase === 'solved' || room.phase === 'revealed')) || (room.game !== 'karak' && room.game !== 'yansoon' && room.phase === 'solved');
     if (!readyForNext) return;
     room.paused = false;
     await nextRound(room);
@@ -592,6 +595,8 @@ function sanitizeSettings(game, s = {}) {
   out.hintSec = clamp(s.hintSec ?? out.hintSec, LIMITS.hintSec);
   out.chessSec = clamp(s.chessSec ?? out.chessSec, LIMITS.chessSec);
   out.buzzSec = clamp(s.buzzSec ?? out.buzzSec, LIMITS.buzzSec);
+  out.yansoonSec = clamp(s.yansoonSec ?? out.yansoonSec, LIMITS.yansoonSec);
+  out.wordLen = clamp(s.wordLen ?? out.wordLen, LIMITS.wordLen);
   out.hideSecret = !!s.hideSecret;
   out.teamCount = clamp(s.teamCount ?? out.teamCount, LIMITS.teamCount);
   out.categories = Array.isArray(s.categories) ? s.categories.map((c) => clean(c, 24)).slice(0, 30) : [];
@@ -636,7 +641,7 @@ function sanitizeCustom(list, game = 'karak') {
     })
     .filter((x) => {
       if (!x || !x.truth) return false;
-      if (game === 'tamr') return true;
+      if (game === 'tamr' || game === 'yansoon') return true;
       if (game === 'sahlab') return x.hints.length > 0;
       return Boolean(x.q && x.truth);
     })
@@ -718,6 +723,10 @@ async function startGame(room) {
         const hints = Array.isArray(c.hints) && c.hints.filter(Boolean).length ? c.hints.filter(Boolean).slice(0, 5) : [c.q || 'خمّن الإجابة'];
         return { id: 'custom_' + i, custom: true, answer: c.truth, aliases: [], imageQuery: '', customPhoto: c.photo || null, hints };
       }
+      if (room.game === 'yansoon') {
+        const w = clean(c.truth || c.word, 20).replace(/[\u064B-\u0652\u0640\s]/g, '').trim();
+        return { id: 'custom_yn_' + i, custom: true, word: w, len: w.length, hint: c.q || (c.hints && c.hints[0]) || '' };
+      }
       return { id: 'custom_' + i, custom: true, name: c.truth, brief: '', imageQuery: '', customPhoto: c.photo || null };
     });
     if (room.game === 'karak' || room.game === 'annab') {
@@ -743,7 +752,7 @@ async function startGame(room) {
   } else {
     const need = room.game === 'tamr' ? s.count * tCount : s.count;
     const aiFresh = Array.isArray(room.aiReadyList) && room.aiReadyList.length ? room.aiReadyList : [];
-    items = await Q.pickQuestions(room.game, s.categories, need, aiFresh, s.difficulty);
+    items = await Q.pickQuestions(room.game, s.categories, need, aiFresh, s.difficulty, { wordLen: s.wordLen });
     room.aiUsed = items.filter((x) => x.ai).length;
   }
   if (!items.length) throw new Error('مفيش أسئلة متاحة حالياً — جرب فئات تانية');
@@ -766,6 +775,7 @@ async function nextRound(room) {
   if (room.game === 'karak') startKarakRound(room);
   else if (room.game === 'sahlab') await startSahlabRound(room);
   else if (room.game === 'annab') startAnnabRound(room);
+  else if (room.game === 'yansoon') startYansoonRound(room);
   else await startTamrRound(room);
 }
 
@@ -1244,6 +1254,174 @@ function annabTimeout(room) {
 }
 
 // ============================================================
+// يانسون (لعبة الكلمات والحروف · Wordle العربي من 3 إلى 8 حروف)
+// ============================================================
+function startYansoonRound(room) {
+  const item = room.queue[room.round];
+  Q.markUsed('yansoon', item);
+  const ids = teamIds(room);
+  const rawWord = String(item.word || '').trim();
+  const target = rawWord.replace(/[\u064B-\u0652\u0640]/g, '').trim();
+  const len = target.length || room.settings.wordLen || 5;
+
+  room.yn = {
+    target,
+    len,
+    cat: item.cat || 'general',
+    hint: item.hint || '',
+    showHint: false,
+    guesses: [],
+    alphabet: {},
+    maxAttempts: 6,
+    turn: ids[0] || 'A',
+    suggestions: Object.fromEntries(ids.map((id) => [id, {}])),
+    winner: null,
+    wonPts: 0,
+    solved: false,
+    revealed: false
+  };
+  room.phase = 'play';
+  if (room.settings.yansoonSec > 0) {
+    setDeadline(room, room.settings.yansoonSec);
+  } else {
+    setDeadline(room, 0);
+  }
+  event(room, 'round', { round: room.round, len });
+}
+
+function evaluateWordleGuess(target, guess) {
+  const normT = Q.normalizeAr(target).replace(/\s+/g, '');
+  const normG = Q.normalizeAr(guess).replace(/\s+/g, '');
+  const T = normT.split('');
+  const G = normG.split('');
+  const colors = Array(G.length).fill('absent');
+  const counts = {};
+
+  for (let i = 0; i < G.length; i++) {
+    if (G[i] === T[i]) {
+      colors[i] = 'correct';
+    } else {
+      counts[T[i]] = (counts[T[i]] || 0) + 1;
+    }
+  }
+
+  for (let i = 0; i < G.length; i++) {
+    if (colors[i] !== 'correct') {
+      const ch = G[i];
+      if (counts[ch] && counts[ch] > 0) {
+        colors[i] = 'present';
+        counts[ch]--;
+      }
+    }
+  }
+  return colors;
+}
+
+function updateAlphabetColors(alphabet, word, colors) {
+  const normWord = Q.normalizeAr(word).replace(/\s+/g, '');
+  for (let i = 0; i < normWord.length; i++) {
+    const ch = normWord[i];
+    const col = colors[i];
+    const cur = alphabet[ch];
+    if (col === 'correct') {
+      alphabet[ch] = 'correct';
+    } else if (col === 'present' && cur !== 'correct') {
+      alphabet[ch] = 'present';
+    } else if (col === 'absent' && !cur) {
+      alphabet[ch] = 'absent';
+    }
+  }
+}
+
+function yansoonSubmitGuess(room, teamId, rawWord) {
+  const yn = room.yn;
+  if (!yn || room.phase !== 'play') ERR('الجولة مش شغالة');
+  const guess = clean(rawWord, 20).replace(/[\u064B-\u0652\u0640\s]/g, '').trim();
+  if (!guess) ERR('اكتب كلمة صح');
+  if (guess.length !== yn.len) {
+    ERR(`الكلمة لازم تكون ${yn.len} حروف بالظبط (أنت كتبت ${guess.length})`);
+  }
+  if (!/^[\u0600-\u06FF]+$/.test(guess)) {
+    ERR('اكتب حروف عربية فقط');
+  }
+
+  const colors = evaluateWordleGuess(yn.target, guess);
+  updateAlphabetColors(yn.alphabet, guess, colors);
+  const isWin = colors.every((c) => c === 'correct');
+  const attemptIdx = yn.guesses.length;
+
+  yn.guesses.push({
+    team: teamId,
+    word: guess,
+    colors
+  });
+
+  if (isWin) {
+    yn.solved = true;
+    yn.winner = teamId;
+    const pts = POINTS.yansoon[attemptIdx] || 2;
+    yn.wonPts = pts;
+    const t = room.teams.find((x) => x.id === teamId);
+    if (t) t.score += pts;
+    room.phase = 'solved';
+    setDeadline(room, 0);
+    event(room, 'yn_solved', { winner: teamId, pts, word: yn.target });
+    if (room.aiJudge) scheduleAutoNext(room, 6);
+  } else if (yn.guesses.length >= yn.maxAttempts) {
+    room.phase = 'revealed';
+    yn.revealed = true;
+    setDeadline(room, 0);
+    event(room, 'yn_revealed', { word: yn.target, reason: 'attempts' });
+    if (room.aiJudge) scheduleAutoNext(room, 6);
+  } else {
+    yn.turn = nextTeamId(room, yn.turn);
+    if (room.settings.yansoonSec > 0) {
+      setDeadline(room, room.settings.yansoonSec);
+    }
+    event(room, 'yn_guess', { team: teamId, word: guess, colors, nextTurn: yn.turn });
+  }
+}
+
+function yansoonTimeout(room) {
+  const yn = room.yn;
+  if (!yn || room.phase !== 'play') return;
+  const timedOutTeam = yn.turn;
+  yn.turn = nextTeamId(room, yn.turn);
+  if (room.settings.yansoonSec > 0) {
+    setDeadline(room, room.settings.yansoonSec);
+  }
+  event(room, 'yn_timeout', { timedOutTeam, nextTurn: yn.turn });
+}
+
+function yansoonReveal(room) {
+  const yn = room.yn;
+  if (!yn || room.phase !== 'play') return;
+  room.phase = 'revealed';
+  yn.revealed = true;
+  setDeadline(room, 0);
+  event(room, 'yn_revealed', { word: yn.target, reason: 'referee' });
+  if (room.aiJudge) scheduleAutoNext(room, 6);
+}
+
+function yansoonPass(room) {
+  const yn = room.yn;
+  if (!yn || room.phase !== 'play') return;
+  const passedTeam = yn.turn;
+  yn.turn = nextTeamId(room, yn.turn);
+  if (room.settings.yansoonSec > 0) {
+    setDeadline(room, room.settings.yansoonSec);
+  }
+  event(room, 'yn_pass', { passedTeam, nextTurn: yn.turn });
+}
+
+function yansoonToggleHint(room) {
+  const yn = room.yn;
+  if (!yn) return;
+  yn.showHint = !yn.showHint;
+  event(room, 'yn_hint', { showHint: yn.showHint, hint: yn.showHint ? yn.hint : '' });
+}
+
+// ============================================================
 // المؤقت العام
 // ============================================================
 setInterval(() => {
@@ -1272,6 +1450,7 @@ setInterval(() => {
       else if (room.game === 'karak' && room.phase === 'vote') karakReveal(room);
       else if (room.game === 'sahlab' && room.phase === 'play') sahlabNextHint(room);
       else if (room.game === 'annab' && room.phase === 'play') annabTimeout(room);
+      else if (room.game === 'yansoon' && room.phase === 'play') yansoonTimeout(room);
       shouldBroadcast = true;
     }
     if (shouldBroadcast) broadcast(room);
@@ -1467,6 +1646,31 @@ function viewFor(room, pid) {
       v.an.truth = an.truth;
     }
   }
+
+  if (room.game === 'yansoon' && room.yn) {
+    const yn = room.yn;
+    const isEnded = room.phase === 'solved' || room.phase === 'revealed';
+    v.yn = {
+      len: yn.len,
+      cat: yn.cat,
+      guesses: yn.guesses,
+      alphabet: yn.alphabet,
+      maxAttempts: yn.maxAttempts,
+      turn: yn.turn,
+      winner: yn.winner,
+      wonPts: yn.wonPts || 0,
+      solved: yn.solved,
+      revealed: yn.revealed,
+      showHint: yn.showHint,
+      hint: (isJudgeView || yn.showHint || isEnded) ? yn.hint : null,
+      suggestions: isJudgeView ? yn.suggestions : myTeam ? (yn.suggestions && yn.suggestions[myTeam]) || {} : {}
+    };
+    if (isJudgeView || isEnded) {
+      if (!room.settings.hideSecret || isEnded) {
+        v.yn.target = yn.target;
+      }
+    }
+  }
   return v;
 }
 
@@ -1506,13 +1710,13 @@ async function handleAction(b) {
   b.secret = reqSecret;
 
   if (action === 'create_room') {
-    const game = ['karak', 'sahlab', 'tamr', 'annab'].includes(b.game) ? b.game : ERR('اختار اللعبة الأول');
+    const game = ['karak', 'sahlab', 'tamr', 'annab', 'yansoon'].includes(b.game) ? b.game : ERR('اختار اللعبة الأول');
     const profile = { name: clean(b.profile && b.profile.name, 20) || 'الحكم', outfit: cleanId(b.profile && b.profile.outfit, 30), face: cleanId(b.profile && b.profile.face, 30), hat: cleanId(b.profile && b.profile.hat, 30) };
     const custom = sanitizeCustom(b.customPack, game);
     const settings = sanitizeSettings(game, b.settings);
     if (settings.useCustom && !custom.length) ERR('اكتب أسئلة الكاستم الأول');
     if (game === 'tamr' && settings.useCustom && custom.length < 2) ERR('تمر هندي محتاج شخصيتين على الأقل في الكاستم');
-    if ((game === 'karak' || game === 'annab' || game === 'sahlab') && settings.useCustom && custom.length < 1) ERR('محتاج سؤال واحد على الأقل');
+    if ((game === 'karak' || game === 'annab' || game === 'sahlab' || game === 'yansoon') && settings.useCustom && custom.length < 1) ERR('محتاج سؤال واحد على الأقل');
     const room = createRoom({ pid: reqPid, secret: reqSecret, profile }, game, settings, custom);
     startAiPrefetch(room);
     return { room };
@@ -1754,6 +1958,25 @@ async function handleAction(b) {
     }
   }
 
+  if (p && ['yn_suggest', 'yn_guess'].includes(action) && room.game === 'yansoon' && room.yn && room.phase === 'play') {
+    const yn = room.yn;
+    if (!p.team || !ids.includes(p.team)) ERR('اختار فريق الأول');
+    if (action === 'yn_suggest') {
+      const text = clean(b.word || b.text, 16).replace(/[\u064B-\u0652\u0640\s]/g, '');
+      if (!text) ERR('اكتب كلمة');
+      if (!yn.suggestions) yn.suggestions = {};
+      if (!yn.suggestions[p.team]) yn.suggestions[p.team] = {};
+      yn.suggestions[p.team][p.id] = { name: p.name, text, ts: Date.now() };
+      return { room };
+    }
+    if (action === 'yn_guess') {
+      if (!isCaptain(room, p.id)) ERR('قائد الفريق بس هو اللي بيسجل الكلمة');
+      if (p.team !== yn.turn) ERR('مش دور فريقك دلوقتي');
+      yansoonSubmitGuess(room, p.team, b.word);
+      return { room };
+    }
+  }
+
   // ---------- أكشنز الحكم / مضيف الغرفة ----------
   if (!admin) ERR('الأكشن ده للحكم بس');
 
@@ -1799,13 +2022,13 @@ async function handleAction(b) {
       room.status = 'lobby';
       room.phase = null;
       clearRoomTimers(room);
-      room.kr = room.sh = room.tm = room.an = null;
+      room.kr = room.sh = room.tm = room.an = room.yn = null;
       room.round = -1;
       setDeadline(room, 0);
       room.paused = false;
 
       const oldGame = room.game;
-      if (['karak', 'sahlab', 'tamr', 'annab'].includes(b.game)) room.game = b.game;
+      if (['karak', 'sahlab', 'tamr', 'annab', 'yansoon'].includes(b.game)) room.game = b.game;
       if (b.customPack !== undefined) room.customPack = sanitizeCustom(b.customPack, room.game);
 
       const merged = { ...room.settings, ...(b.settings || {}) };
@@ -2080,9 +2303,32 @@ async function handleAction(b) {
       break;
     }
 
+    // يانسون
+    case 'yn_guess': {
+      if (room.game !== 'yansoon' || !room.yn || room.phase !== 'play') ERR('مش وقته');
+      const team = b.team && teamIds(room).includes(b.team) ? b.team : room.yn.turn;
+      yansoonSubmitGuess(room, team, b.word);
+      break;
+    }
+    case 'yn_reveal': {
+      if (room.game !== 'yansoon' || !room.yn || room.phase !== 'play') ERR('مش وقته');
+      yansoonReveal(room);
+      break;
+    }
+    case 'yn_pass': {
+      if (room.game !== 'yansoon' || !room.yn || room.phase !== 'play') ERR('مش وقته');
+      yansoonPass(room);
+      break;
+    }
+    case 'yn_hint': {
+      if (room.game !== 'yansoon' || !room.yn) ERR('مش وقته');
+      yansoonToggleHint(room);
+      break;
+    }
+
     case 'next': {
       if (room.status !== 'playing' || room._busy) ERR('مش وقته');
-      const ok = (room.game === 'karak' && room.phase === 'reveal') || (room.game !== 'karak' && room.phase === 'solved');
+      const ok = (room.game === 'karak' && room.phase === 'reveal') || (room.game === 'yansoon' && (room.phase === 'solved' || room.phase === 'revealed')) || (room.game !== 'karak' && room.game !== 'yansoon' && room.phase === 'solved');
       if (!ok) ERR('خلص الجولة الأول');
       room.paused = false;
       room._busy = true;
@@ -2220,7 +2466,7 @@ const server = http.createServer(async (req, res) => {
       const secHash = secret ? hashSecret(secret) : '';
       if (!pid || !secHash) return json(res, 403, { ok: false, error: 'هوية غير صحيحة' });
       if (b.action === 'save') {
-        const game = ['karak', 'sahlab', 'tamr', 'annab'].includes(b.game) ? b.game : 'karak';
+        const game = ['karak', 'sahlab', 'tamr', 'annab', 'yansoon'].includes(b.game) ? b.game : 'karak';
         const items = sanitizeCustom(b.items, game);
         if (!items.length) return json(res, 200, { ok: false, error: 'مفيش أسئلة مكتوبة عشان تتحفظ' });
         const name = clean(b.name, 50) || `باقة ${game} (${items.length})`;
