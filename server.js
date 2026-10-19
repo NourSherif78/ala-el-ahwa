@@ -33,10 +33,11 @@ const LAN_IP = getLanIp();
 function getBaseUrl(req) {
   if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '');
   if (req && req.headers) {
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    if (host) {
-      const proto = req.headers['x-forwarded-proto'] || 'http';
-      return `${proto}://${host}`;
+    const rawHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    const rawProto = String(req.headers['x-forwarded-proto'] || 'http').split(',')[0].trim().toLowerCase();
+    if (/^[A-Za-z0-9.-]+(:\d{1,5})?$/.test(rawHost)) {
+      const proto = rawProto === 'https' ? 'https' : 'http';
+      return `${proto}://${rawHost}`;
     }
   }
   return `http://${LAN_IP}:${PORT}`;
@@ -82,11 +83,50 @@ const DEFAULT_SETTINGS = {
 const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], chessSec: [60, 600], buzzSec: [10, 60], teamCount: [2, 4] };
 
 // ============================================================
-// أدوات وحفظ الأسئلة الخاصة
+// درع الحماية الشامل ضد الثغرات (Injection Shield)
+// يحمي من: SQLi · XSS · HTMLi · Command Injection · Code Injection · Prompt Injection · SSTI · Prototype Pollution
 // ============================================================
+const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'toString', 'valueOf', 'hasOwnProperty', '__defineGetter__', '__defineSetter__', '__lookupGetter__', '__lookupSetter__']);
+
+function stripInjections(raw) {
+  let s = String(raw == null ? '' : raw);
+  // 1) إزالة محارف التحكم والـ Null Bytes ومحارف التوجيه الخفية
+  s = s.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, ' ');
+  // 2) حماية XSS و HTML Injection (إزالة أي تاجات HTML أو بروتوكولات خبيثة أو Event Handlers)
+  s = s.replace(/<[^>]*>/g, '');
+  s = s.replace(/[<>`]/g, '');
+  s = s.replace(/\b(?:javascript|vbscript|data\s*:\s*text\/html)\s*:/gi, '');
+  s = s.replace(/\bon[a-z]{2,20}\s*=/gi, '');
+  // 3) حماية Server-Side Template Injection (SSTI) و Code Injection
+  s = s.replace(/\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}|\$\{[\s\S]*?\}|<%[\s\S]*?%>|#\{[\s\S]*?\}/g, '');
+  s = s.replace(/\b(?:eval|Function|setTimeout|setInterval|setImmediate|require|import)\s*\(/gi, '');
+  s = s.replace(/\b(?:process\.env|child_process|globalThis|__proto__|prototype|constructor)\b/gi, '');
+  // 4) حماية Command Injection (أوامر النظام والشيل)
+  s = s.replace(/\$\([^)]*\)/g, '');
+  s = s.replace(/(?:;|\|\||&&|\|)\s*(?:rm|cat|ls|dir|whoami|id|uname|nc|netcat|bash|sh|zsh|cmd|powershell|pwsh|curl|wget|python|node|php|perl|ruby|chmod|chown)\b/gi, '');
+  s = s.replace(/\b(?:\/bin\/(?:sh|bash|zsh)|cmd\.exe|powershell\.exe|\/etc\/passwd|\/etc\/shadow)\b/gi, '');
+  // 5) حماية SQL Injection (SQLi) و NoSQL Injection
+  s = s.replace(/\bUNION\s+(?:ALL\s+)?SELECT\b/gi, '');
+  s = s.replace(/\b(?:DROP|ALTER|TRUNCATE)\s+(?:TABLE|DATABASE|USER)\b/gi, '');
+  s = s.replace(/\b(?:INSERT\s+INTO|DELETE\s+FROM|UPDATE\s+\w+\s+SET)\b/gi, '');
+  s = s.replace(/['"]\s*(?:OR|AND)\s+['"]?\w+['"]?\s*=\s*['"]?\w+/gi, '');
+  s = s.replace(/\b(?:xp_cmdshell|SLEEP\s*\(\s*\d+\s*\)|BENCHMARK\s*\(|WAITFOR\s+DELAY|INFORMATION_SCHEMA)\b/gi, '');
+  s = s.replace(/\/\*[\s\S]*?\*\/|--\s*$/gm, '');
+  // 6) حماية Prompt Injection (اختراق أو خداع الذكاء الاصطناعي بالعربي والإنجليزي)
+  s = s.replace(/\b(?:ignore|disregard|forget|override)\s+(?:all\s+|any\s+)?(?:previous|prior|above|system|developer)?\s*(?:instructions|rules|prompts|directives|constraints)\b/gi, '');
+  s = s.replace(/\b(?:system\s*prompt|developer\s*message|you\s+are\s+now\s+in\s+developer\s+mode|jailbreak|do\s+anything\s+now)\b/gi, '');
+  s = s.replace(/<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>|\[INST\]|\[\/INST\]|<<SYS>>|<\/SYS>>/gi, '');
+  s = s.replace(/(?:انسى|تجاهل|الغِ|تخطى)\s+(?:كل\s+|جميع\s+)?(?:التعليمات|الأوامر|القواعد|الإرشادات)\s*(?:السابقة|القديمة|الأولى)?/g, '');
+  return s.replace(/\s+/g, ' ').trim();
+}
+
 const rid = (n = 8) => crypto.randomBytes(n).toString('hex');
 const clamp = (v, [a, b]) => Math.max(a, Math.min(b, Number(v) || a));
-const clean = (s, max = 80) => String(s == null ? '' : s).replace(/[<>]/g, '').trim().slice(0, max);
+const clean = (s, max = 80) => stripInjections(s).slice(0, max);
+const cleanId = (s, max = 40) => {
+  const out = String(s == null ? '' : s).replace(/[^A-Za-z0-9_-]/g, '').slice(0, max);
+  return FORBIDDEN_KEYS.has(out) ? '' : out;
+};
 
 const SAVED_PACKS_FILE = path.join(BASE_DIR, 'data', 'saved_custom_packs.json');
 let SAVED_PACKS = [];
@@ -1397,28 +1437,43 @@ function broadcast(room) {
 // ============================================================
 // الأكشنز
 // ============================================================
-function authAdmin(room, b) { return room.admin.pid === b.pid && room.admin.secret === b.secret; }
-function authPlayer(room, b) { const p = room.players[b.pid]; return p && p.secret === b.secret ? p : null; }
+function authAdmin(room, b) {
+  const pid = cleanId(b && b.pid, 40);
+  const secret = cleanId(b && b.secret, 40);
+  return Boolean(pid && secret && room.admin.pid === pid && room.admin.secret === secret);
+}
+function authPlayer(room, b) {
+  const pid = cleanId(b && b.pid, 40);
+  const secret = cleanId(b && b.secret, 40);
+  if (!pid || !secret || !Object.prototype.hasOwnProperty.call(room.players, pid)) return null;
+  const p = room.players[pid];
+  return p && p.secret === secret ? p : null;
+}
 
 const ERR = (m) => { const e = new Error(m); e.user = true; throw e; };
 
 async function handleAction(b) {
-  const action = b.action;
+  const action = cleanId(b && b.action, 40);
+  const reqPid = cleanId(b && b.pid, 40);
+  const reqSecret = cleanId(b && b.secret, 40);
+  if (!reqPid || !reqSecret) ERR('هوية غير صحيحة');
+  b.pid = reqPid;
+  b.secret = reqSecret;
 
   if (action === 'create_room') {
     const game = ['karak', 'sahlab', 'tamr', 'annab'].includes(b.game) ? b.game : ERR('اختار اللعبة الأول');
-    const profile = { name: clean(b.profile && b.profile.name, 20) || 'الحكم', outfit: clean(b.profile && b.profile.outfit, 30), face: clean(b.profile && b.profile.face, 30), hat: clean(b.profile && b.profile.hat, 30) };
+    const profile = { name: clean(b.profile && b.profile.name, 20) || 'الحكم', outfit: cleanId(b.profile && b.profile.outfit, 30), face: cleanId(b.profile && b.profile.face, 30), hat: cleanId(b.profile && b.profile.hat, 30) };
     const custom = sanitizeCustom(b.customPack, game);
     const settings = sanitizeSettings(game, b.settings);
     if (settings.useCustom && !custom.length) ERR('اكتب أسئلة الكاستم الأول');
     if (game === 'tamr' && settings.useCustom && custom.length < 2) ERR('تمر هندي محتاج شخصيتين على الأقل في الكاستم');
     if ((game === 'karak' || game === 'annab' || game === 'sahlab') && settings.useCustom && custom.length < 1) ERR('محتاج سؤال واحد على الأقل');
-    const room = createRoom({ pid: clean(b.pid, 40), secret: clean(b.secret, 40), profile }, game, settings, custom);
+    const room = createRoom({ pid: reqPid, secret: reqSecret, profile }, game, settings, custom);
     startAiPrefetch(room);
     return { room };
   }
 
-  const room = ROOMS.get(clean(b.code, 10).toUpperCase());
+  const room = ROOMS.get(cleanId(b.code, 10).toUpperCase());
   if (!room) ERR('الغرفة دي مش موجودة أو اتقفلت');
   room.touched = Date.now();
   const admin = authAdmin(room, b);
@@ -1429,17 +1484,17 @@ async function handleAction(b) {
     if (room.kicked.has(b.pid)) ERR('الحكم طلعك من الغرفة دي');
     if (room.admin.pid === b.pid) return { room };
     const prof = b.profile || {};
-    const existing = room.players[b.pid];
+    const existing = Object.prototype.hasOwnProperty.call(room.players, b.pid) ? room.players[b.pid] : null;
     if (existing && existing.secret !== b.secret) ERR('هوية غير صحيحة');
     const roomCap = isSoloMode(room) ? MAX_SOLO : MAX_PLAYERS;
     if (!existing && Object.keys(room.players).length >= roomCap) {
       ERR(isSoloMode(room) ? `الوضع الفردي كامل (${MAX_SOLO} لاعبين كحد أقصى)` : `الغرفة كاملة (${MAX_PLAYERS} لاعب)`);
     }
-    const p = existing || { id: clean(b.pid, 40), secret: clean(b.secret, 40), team: null, conns: 0 };
+    const p = existing || { id: reqPid, secret: reqSecret, team: null, conns: 0 };
     p.name = clean(prof.name, 20) || p.name || 'لاعب';
-    p.outfit = clean(prof.outfit, 30) || p.outfit;
-    p.face = clean(prof.face, 30) || p.face;
-    p.hat = clean(prof.hat, 30) || p.hat;
+    p.outfit = cleanId(prof.outfit, 30) || p.outfit;
+    p.face = cleanId(prof.face, 30) || p.face;
+    p.hat = cleanId(prof.hat, 30) || p.hat;
     room.players[p.id] = p;
     if (isSoloMode(room)) {
       syncSoloTeams(room);
@@ -1496,10 +1551,10 @@ async function handleAction(b) {
     if (!admin && !p) ERR('ادخل الغرفة الأول');
     if (admin) {
       room.admin.profile.name = clean(prof.name, 20) || room.admin.profile.name || 'الحكم';
-      room.admin.profile.outfit = clean(prof.outfit, 30) || room.admin.profile.outfit;
-      room.admin.profile.face = clean(prof.face, 30) || room.admin.profile.face;
-      room.admin.profile.hat = clean(prof.hat, 30) || room.admin.profile.hat;
-      const admPl = room.players[room.admin.pid];
+      room.admin.profile.outfit = cleanId(prof.outfit, 30) || room.admin.profile.outfit;
+      room.admin.profile.face = cleanId(prof.face, 30) || room.admin.profile.face;
+      room.admin.profile.hat = cleanId(prof.hat, 30) || room.admin.profile.hat;
+      const admPl = Object.prototype.hasOwnProperty.call(room.players, room.admin.pid) ? room.players[room.admin.pid] : null;
       if (admPl) {
         admPl.name = room.admin.profile.name;
         admPl.outfit = room.admin.profile.outfit;
@@ -1509,9 +1564,9 @@ async function handleAction(b) {
     }
     if (p) {
       p.name = clean(prof.name, 20) || p.name || 'لاعب';
-      p.outfit = clean(prof.outfit, 30) || p.outfit;
-      p.face = clean(prof.face, 30) || p.face;
-      p.hat = clean(prof.hat, 30) || p.hat;
+      p.outfit = cleanId(prof.outfit, 30) || p.outfit;
+      p.face = cleanId(prof.face, 30) || p.face;
+      p.hat = cleanId(prof.hat, 30) || p.hat;
     }
     if (isSoloMode(room)) syncSoloTeams(room);
     return { room };
@@ -1722,7 +1777,8 @@ async function handleAction(b) {
       break;
     }
     case 'set_captain': {
-      const target = room.players[b.target];
+      const tid = cleanId(b.target, 40);
+      const target = tid && Object.prototype.hasOwnProperty.call(room.players, tid) ? room.players[tid] : null;
       if (!target || !target.team) ERR('اللاعب مش في فريق');
       const tm = room.teams.find((t) => t.id === target.team);
       if (tm) tm.captainId = target.id;
@@ -1730,7 +1786,8 @@ async function handleAction(b) {
     }
     case 'move_player': {
       if (isSoloMode(room)) break;
-      const target = room.players[b.target] || ERR('لاعب غير موجود');
+      const tid = cleanId(b.target, 40);
+      const target = (tid && Object.prototype.hasOwnProperty.call(room.players, tid) ? room.players[tid] : null) || ERR('لاعب غير موجود');
       const old = target.team;
       const dest = ids.includes(b.team) ? b.team : nextTeamId(room, old || ids[ids.length - 1]);
       if (dest !== old) assertTeamRoom(room, dest, target.id);
@@ -1744,7 +1801,8 @@ async function handleAction(b) {
       break;
     }
     case 'kick': {
-      const target = room.players[b.target] || ERR('لاعب غير موجود');
+      const tid = cleanId(b.target, 40);
+      const target = (tid && Object.prototype.hasOwnProperty.call(room.players, tid) ? room.players[tid] : null) || ERR('لاعب غير موجود');
       if (target.id === room.admin.pid) {
         syncAdminPlaying(room, false, null);
         break;
@@ -1779,7 +1837,7 @@ async function handleAction(b) {
       const n = Object.values(room.players).filter((x) => x.isTest).length + 1;
       const parts = b.parts || {};
       const id = 'test_' + rid(4);
-      room.players[id] = { id, secret: rid(8), name: 'لاعب تجريبي ' + n, outfit: parts.outfit, face: parts.face, hat: parts.hat, team: targetTeam, isTest: true, conns: 0 };
+      room.players[id] = { id, secret: rid(8), name: 'لاعب تجريبي ' + n, outfit: cleanId(parts.outfit, 30), face: cleanId(parts.face, 30), hat: cleanId(parts.hat, 30), team: targetTeam, isTest: true, conns: 0 };
       if (isSoloMode(room)) {
         syncSoloTeams(room);
       } else if (room.players[id].team) {
@@ -1990,24 +2048,96 @@ async function handleAction(b) {
 }
 
 // ============================================================
-// HTTP
+// HTTP + جدار الحماية (Security Headers & Rate Limiting)
 // ============================================================
+const SECURITY_HEADERS = {
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'X-XSS-Protection': '1; mode=block',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin'
+};
+
+function applySecurityHeaders(res) {
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
+    try { res.setHeader(k, v); } catch (e) {}
+  }
+}
+
+const RATE_BUCKETS = new Map();
+function checkRateLimit(req, limit = 180, windowMs = 10000) {
+  const ip = String((req.headers && req.headers['x-forwarded-for']) || (req.socket && req.socket.remoteAddress) || 'unknown').split(',')[0].trim();
+  const now = Date.now();
+  let b = RATE_BUCKETS.get(ip);
+  if (!b || now - b.start > windowMs) {
+    b = { start: now, count: 0 };
+    RATE_BUCKETS.set(ip, b);
+    if (RATE_BUCKETS.size > 5000) {
+      for (const [k, v] of RATE_BUCKETS) if (now - v.start > windowMs) RATE_BUCKETS.delete(k);
+    }
+  }
+  b.count++;
+  return b.count <= limit;
+}
+
+function safeJsonParse(raw) {
+  try {
+    return JSON.parse(raw || '{}', (key, val) => {
+      if (FORBIDDEN_KEYS.has(key) || (key && key.startsWith('$'))) return undefined;
+      return val;
+    });
+  } catch (e) {
+    return {};
+  }
+}
+
 function readBody(req) {
   return new Promise((resolve) => {
     let body = '';
-    req.on('data', (c) => { body += c; if (body.length > 5e6) req.destroy(); });
-    req.on('end', () => { try { resolve(JSON.parse(body || '{}')); } catch (e) { resolve({}); } });
+    req.on('data', (c) => { body += c; if (body.length > 1.2e6) req.destroy(); });
+    req.on('end', () => {
+      const parsed = safeJsonParse(body);
+      resolve(parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {});
+    });
     req.on('error', () => resolve({}));
   });
 }
 function json(res, code, obj) {
+  applySecurityHeaders(res);
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(obj));
 }
 
+const ASSETS_ROOT = path.resolve(BASE_DIR, 'assets');
+
 const server = http.createServer(async (req, res) => {
-  const parsed = url.parse(req.url, true);
-  let p = decodeURI(parsed.pathname || '/');
+  applySecurityHeaders(res);
+  if (!checkRateLimit(req)) {
+    return json(res, 429, { ok: false, error: 'طلبات كتير في وقت قصير، استنى ثواني وجرب تاني' });
+  }
+
+  let parsed;
+  try {
+    parsed = url.parse(req.url || '/', true);
+  } catch (e) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Bad Request');
+  }
+
+  let p = '/';
+  try {
+    p = decodeURIComponent(parsed.pathname || '/');
+  } catch (e) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Bad Request');
+  }
+  if (p.includes('\0')) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Bad Request');
+  }
 
   if (p === '/api/custom-packs') {
     if (req.method === 'GET') {
@@ -2020,7 +2150,7 @@ const server = http.createServer(async (req, res) => {
         const items = sanitizeCustom(b.items, game);
         if (!items.length) return json(res, 200, { ok: false, error: 'مفيش أسئلة مكتوبة عشان تتحفظ' });
         const name = clean(b.name, 50) || `باقة ${game} (${items.length})`;
-        const id = clean(b.id, 40) || ('pack_' + rid(5));
+        const id = cleanId(b.id, 40) || ('pack_' + rid(5));
         const pack = { id, name, game, count: items.length, items, updatedAt: Date.now() };
         const existingIdx = SAVED_PACKS.findIndex((x) => x.id === id);
         if (existingIdx >= 0) SAVED_PACKS[existingIdx] = pack;
@@ -2030,7 +2160,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true, pack, packs: SAVED_PACKS });
       }
       if (b.action === 'delete') {
-        const id = clean(b.id, 40);
+        const id = cleanId(b.id, 40);
         SAVED_PACKS = SAVED_PACKS.filter((x) => x.id !== id);
         persistSavedPacks();
         return json(res, 200, { ok: true, packs: SAVED_PACKS });
@@ -2044,7 +2174,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const out = await handleAction(b);
       if (out.room) broadcast(out.room);
-      const pid = clean(b.pid, 40);
+      const pid = cleanId(b.pid, 40);
       return json(res, 200, { ok: true, code: out.room ? out.room.code : null, view: out.room ? viewFor(out.room, pid) : null });
     } catch (e) {
       if (!e.user) console.error(e);
@@ -2053,18 +2183,18 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (p === '/api/state') {
-    const code = clean(parsed.query.code, 10).toUpperCase();
+    const code = cleanId(parsed.query.code, 10).toUpperCase();
     const room = ROOMS.get(code);
-    const pid = clean(parsed.query.pid, 40);
+    const pid = cleanId(parsed.query.pid, 40);
     if (!room) return json(res, 404, { ok: false, error: 'الغرفة مش موجودة' });
     return json(res, 200, { ok: true, view: viewFor(room, pid) });
   }
 
   if (p === '/api/stream') {
-    const code = clean(parsed.query.code, 10).toUpperCase();
+    const code = cleanId(parsed.query.code, 10).toUpperCase();
     const room = ROOMS.get(code);
-    const pid = clean(parsed.query.pid, 40);
-    const secret = clean(parsed.query.secret, 40);
+    const pid = cleanId(parsed.query.pid, 40);
+    const secret = cleanId(parsed.query.secret, 40);
     if (!room) return json(res, 404, { ok: false, error: 'الغرفة مش موجودة' });
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
@@ -2073,8 +2203,8 @@ const server = http.createServer(async (req, res) => {
       'X-Accel-Buffering': 'no'
     });
     if (res.socket && typeof res.socket.setNoDelay === 'function') res.socket.setNoDelay(true);
-    const isAdm = room.admin.pid === pid && room.admin.secret === secret;
-    const pl = room.players[pid] && room.players[pid].secret === secret ? room.players[pid] : null;
+    const isAdm = Boolean(pid && secret && room.admin.pid === pid && room.admin.secret === secret);
+    const pl = pid && secret && Object.prototype.hasOwnProperty.call(room.players, pid) && room.players[pid].secret === secret ? room.players[pid] : null;
     const who = isAdm ? room.admin : pl;
     if (who) who.conns = (who.conns || 0) + 1;
     const client = { res, pid: who ? pid : 'guest_' + rid(3) };
@@ -2091,12 +2221,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (p === '/api/room-exists') {
-    const room = ROOMS.get(clean(parsed.query.code, 10).toUpperCase());
+    const room = ROOMS.get(cleanId(parsed.query.code, 10).toUpperCase());
     return json(res, 200, { ok: !!room, game: room && room.game, status: room && room.status });
   }
 
   if (p === '/api/qr') {
-    const room = ROOMS.get(clean(parsed.query.code, 10).toUpperCase());
+    const room = ROOMS.get(cleanId(parsed.query.code, 10).toUpperCase());
     const base = getBaseUrl(req);
     const target = room ? `${base}/room/${room.code}` : `${base}/`;
     let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
@@ -2123,7 +2253,11 @@ const server = http.createServer(async (req, res) => {
   if (p === '/' || p.startsWith('/room/')) p = '/index.html';
   const isAsset = p.startsWith('/assets/') && !p.includes('..');
   if (!PUBLIC_FILES.has(p) && !isAsset) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Not found'); }
-  const fp = path.join(BASE_DIR, p);
+  const fp = path.resolve(BASE_DIR, '.' + p);
+  if (isAsset && !fp.startsWith(ASSETS_ROOT + path.sep)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Forbidden');
+  }
   fs.stat(fp, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404); return res.end('Not found'); }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(fp).toLowerCase()] || 'application/octet-stream', 'Cache-Control': isAsset ? 'public, max-age=3600' : 'no-store' });

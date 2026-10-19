@@ -60,7 +60,7 @@ function sticker(name, w, cls = '') {
   return `<span class="sticker ${cls}" aria-hidden="true" style="width:${w}px;height:${Math.round(sh * s)}px;background-size:${Math.round(1264 * s)}px auto;background-position:-${Math.round(x * s)}px -${Math.round(y * s)}px"></span>`;
 }
 
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"'`]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' }[c]));
 const $ = (sel) => document.querySelector(sel);
 
 // ------------------------------------------------------------------
@@ -1962,8 +1962,8 @@ function srcLabel(src) {
   if (src === 'admin') return 'كذبة الحكم';
   if (src === 'ai') return 'كذبة الـ AI';
   const t = S.view && S.view.teams ? S.view.teams.find((x) => x.id === src) : null;
-  if (t) return `كذبة ${t.name}`;
-  if (ALL_TEAM_IDS.includes(src)) return `كذبة ${teamOf(src).name}`;
+  if (t) return `كذبة ${esc(t.name)}`;
+  if (ALL_TEAM_IDS.includes(src)) return `كذبة ${esc(teamOf(src).name)}`;
   return 'كذبة الـ AI';
 }
 
