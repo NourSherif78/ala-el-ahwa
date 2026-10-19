@@ -88,8 +88,9 @@ const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSe
 // ============================================================
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'toString', 'valueOf', 'hasOwnProperty', '__defineGetter__', '__defineSetter__', '__lookupGetter__', '__lookupSetter__']);
 
-function stripInjections(raw) {
-  let s = String(raw == null ? '' : raw);
+function stripInjections(raw, maxLen = 400) {
+  // قص النص قبل تطبيق الـ Regex لمنع هجمات ReDoS (Regular Expression Denial of Service)
+  let s = String(raw == null ? '' : raw).slice(0, Math.max(512, maxLen * 4));
   // 1) إزالة محارف التحكم والـ Null Bytes ومحارف التوجيه الخفية
   s = s.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, ' ');
   // 2) حماية XSS و HTML Injection (إزالة أي تاجات HTML أو بروتوكولات خبيثة أو Event Handlers)
@@ -122,11 +123,19 @@ function stripInjections(raw) {
 
 const rid = (n = 8) => crypto.randomBytes(n).toString('hex');
 const clamp = (v, [a, b]) => Math.max(a, Math.min(b, Number(v) || a));
-const clean = (s, max = 80) => stripInjections(s).slice(0, max);
+const clean = (s, max = 80) => stripInjections(s, max).slice(0, max);
 const cleanId = (s, max = 40) => {
   const out = String(s == null ? '' : s).replace(/[^A-Za-z0-9_-]/g, '').slice(0, max);
   return FORBIDDEN_KEYS.has(out) ? '' : out;
 };
+function safeEqualSecret(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b || a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+  } catch (e) {
+    return false;
+  }
+}
 
 const SAVED_PACKS_FILE = path.join(BASE_DIR, 'data', 'saved_custom_packs.json');
 let SAVED_PACKS = [];
@@ -157,17 +166,22 @@ function makeCode() {
 }
 
 const WIKI_UA = 'AlaElAhwa/15 (https://ala-el-ahwa.onrender.com; contact@alaelahwa.com)';
+const ALLOWED_WIKI_API = /^https:\/\/(en\.wikipedia\.org|ar\.wikipedia\.org|commons\.wikimedia\.org)\/w\/api\.php\?/i;
 
 function fetchJson(target, timeoutMs = 6500, redirectsLeft = 4) {
+  if (!ALLOWED_WIKI_API.test(target)) return Promise.resolve(null);
   return new Promise((resolve) => {
     const req = https.get(target, { headers: { 'User-Agent': WIKI_UA, Accept: 'application/json' }, timeout: timeoutMs }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
         res.resume();
         const nextUrl = new URL(res.headers.location, target).href;
+        if (!ALLOWED_WIKI_API.test(nextUrl)) return resolve(null);
         return fetchJson(nextUrl, timeoutMs, redirectsLeft - 1).then(resolve);
       }
       let raw = '';
-      res.on('data', (c) => (raw += c));
+      res.on('data', (c) => {
+        if (raw.length <= 2 * 1024 * 1024) raw += c;
+      });
       res.on('end', () => { try { resolve(JSON.parse(raw)); } catch (e) { resolve(null); } });
     });
     req.on('error', () => resolve(null));
@@ -1440,14 +1454,14 @@ function broadcast(room) {
 function authAdmin(room, b) {
   const pid = cleanId(b && b.pid, 40);
   const secret = cleanId(b && b.secret, 40);
-  return Boolean(pid && secret && room.admin.pid === pid && room.admin.secret === secret);
+  return Boolean(pid && secret && room.admin.pid === pid && safeEqualSecret(room.admin.secret, secret));
 }
 function authPlayer(room, b) {
   const pid = cleanId(b && b.pid, 40);
   const secret = cleanId(b && b.secret, 40);
   if (!pid || !secret || !Object.prototype.hasOwnProperty.call(room.players, pid)) return null;
   const p = room.players[pid];
-  return p && p.secret === secret ? p : null;
+  return p && safeEqualSecret(p.secret, secret) ? p : null;
 }
 
 const ERR = (m) => { const e = new Error(m); e.user = true; throw e; };
@@ -2112,9 +2126,25 @@ function json(res, code, obj) {
 }
 
 const ASSETS_ROOT = path.resolve(BASE_DIR, 'assets');
+const MAX_CLIENTS_PER_ROOM = 80;
+const ROOM_TTL_MS = 3 * 60 * 60 * 1000; // 3 ساعات
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, r] of ROOMS) {
+    if (now - (r.touched || 0) > ROOM_TTL_MS && (!r.clients || r.clients.size === 0)) {
+      clearRoomTimers(r);
+      ROOMS.delete(code);
+    }
+  }
+}, 10 * 60 * 1000).unref();
 
 const server = http.createServer(async (req, res) => {
   applySecurityHeaders(res);
+  if (!['GET', 'POST', 'HEAD'].includes(req.method || '')) {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, POST, HEAD' });
+    return res.end('Method Not Allowed');
+  }
   if (!checkRateLimit(req)) {
     return json(res, 429, { ok: false, error: 'طلبات كتير في وقت قصير، استنى ثواني وجرب تاني' });
   }
@@ -2196,6 +2226,7 @@ const server = http.createServer(async (req, res) => {
     const pid = cleanId(parsed.query.pid, 40);
     const secret = cleanId(parsed.query.secret, 40);
     if (!room) return json(res, 404, { ok: false, error: 'الغرفة مش موجودة' });
+    if (room.clients.size >= MAX_CLIENTS_PER_ROOM) return json(res, 429, { ok: false, error: 'الغرفة وصلت للحد الأقصى من الاتصالات' });
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
@@ -2203,8 +2234,8 @@ const server = http.createServer(async (req, res) => {
       'X-Accel-Buffering': 'no'
     });
     if (res.socket && typeof res.socket.setNoDelay === 'function') res.socket.setNoDelay(true);
-    const isAdm = Boolean(pid && secret && room.admin.pid === pid && room.admin.secret === secret);
-    const pl = pid && secret && Object.prototype.hasOwnProperty.call(room.players, pid) && room.players[pid].secret === secret ? room.players[pid] : null;
+    const isAdm = Boolean(pid && secret && room.admin.pid === pid && safeEqualSecret(room.admin.secret, secret));
+    const pl = pid && secret && Object.prototype.hasOwnProperty.call(room.players, pid) && safeEqualSecret(room.players[pid].secret, secret) ? room.players[pid] : null;
     const who = isAdm ? room.admin : pl;
     if (who) who.conns = (who.conns || 0) + 1;
     const client = { res, pid: who ? pid : 'guest_' + rid(3) };
