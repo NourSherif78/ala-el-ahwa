@@ -781,7 +781,7 @@ function viewHome() {
     ${logo('lg')}
     <p class="home-sub">ألعاب السهرة على القهوة — فرق، حكم، وأسئلة عمرها ما بتتكرر</p>
     <div class="home-art" aria-hidden="true">
-      <img src="/assets/ui/karak.png" alt=""/><img src="/assets/ui/sahlab.png" alt=""/><img src="/assets/ui/tamr.png" alt=""/><img src="/assets/ui/annab.png" alt=""/>
+      <img src="/assets/ui/karak.png" alt=""/><img src="/assets/ui/sahlab.png" alt=""/><img src="/assets/ui/yansoon.png" alt=""/><img src="/assets/ui/annab.png" alt=""/><img src="/assets/ui/tamr.png" alt=""/>
     </div>
     <div class="card tape home-card">
       <button type="button" class="home-my-avatar" onclick="openAvatarEditor()" title="اضغط على شخصيتك لتغيير شكلها أو اسمك">

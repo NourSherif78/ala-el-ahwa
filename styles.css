@@ -285,10 +285,12 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .home { text-align: center; padding-top: 10px; }
 .home-sub { font-size: 1.05rem; color: var(--ink-2); margin: 18px auto 6px; max-width: 420px; }
 .home-art { display: flex; justify-content: center; align-items: flex-end; gap: 0; margin: 4px auto -18px; height: 150px; }
-.home-art img { width: 130px; height: 130px; object-fit: cover; }
-.home-art img:nth-child(1) { transform: rotate(-8deg) translateY(6px); }
-.home-art img:nth-child(2) { width: 150px; height: 150px; z-index: 1; }
-.home-art img:nth-child(3) { transform: rotate(8deg) translateY(6px); }
+.home-art img { width: 112px; height: 112px; object-fit: cover; margin: 0 -6px; }
+.home-art img:nth-child(1) { transform: rotate(-10deg) translateY(6px); }
+.home-art img:nth-child(2) { transform: rotate(-4deg) translateY(2px); z-index: 1; }
+.home-art img:nth-child(3) { width: 136px; height: 136px; z-index: 2; transform: translateY(-4px); }
+.home-art img:nth-child(4) { transform: rotate(4deg) translateY(2px); z-index: 1; }
+.home-art img:nth-child(5) { transform: rotate(10deg) translateY(6px); }
 .home-card { text-align: right; padding: 26px 20px 20px; }
 .or { display: flex; align-items: center; gap: 12px; color: var(--ink-3); margin: 18px 0 8px; font-size: .9rem; }
 .or::before, .or::after { content: ''; flex: 1; height: 1.5px; background: repeating-linear-gradient(90deg, var(--line-2) 0 6px, transparent 6px 11px); }
@@ -324,7 +326,8 @@ textarea.input { resize: vertical; line-height: 1.5; }
 
 /* ---------- الإعداد ---------- */
 .setup-head { text-align: center; margin-bottom: 14px; }
-.games { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.games { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+@media (min-width: 1100px) { .games { grid-template-columns: repeat(5, 1fr); } }
 @media (max-width: 960px) { .games { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 640px) { .games { grid-template-columns: 1fr; } }
 .game-card {
