@@ -1401,7 +1401,7 @@ function viewCustom() {
 
 async function fetchSavedPacksFromServer() {
   try {
-    const r = await fetch('/api/custom-packs').then((x) => x.json());
+    const r = await fetch(`/api/custom-packs?pid=${encodeURIComponent(ident.pid)}&secret=${encodeURIComponent(ident.secret)}`).then((x) => x.json());
     if (r && r.ok && Array.isArray(r.packs)) {
       const byId = new Map();
       (S.savedPacks || []).forEach((p) => { if (p && p.id) byId.set(p.id, p); });
@@ -1422,7 +1422,7 @@ async function saveCustomPackNow() {
   const packName = rawName || `أسئلة ${GAMES[g].name} (${new Date().toLocaleDateString('ar-EG')})`;
   const existingIdx = (S.savedPacks || []).findIndex((p) => p && p.game === g && p.name === packName);
   const entry = {
-    id: existingIdx >= 0 ? S.savedPacks[existingIdx].id : 'pk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+    id: existingIdx >= 0 ? S.savedPacks[existingIdx].id : 'pk_' + Date.now().toString(36) + '_' + randId(3),
     name: packName,
     game: g,
     items: JSON.parse(JSON.stringify(valid)),
@@ -1436,7 +1436,7 @@ async function saveCustomPackNow() {
     await fetch('/api/custom-packs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'save', id: entry.id, name: entry.name, game: entry.game, items: entry.items })
+      body: JSON.stringify({ action: 'save', pid: ident.pid, secret: ident.secret, id: entry.id, name: entry.name, game: entry.game, items: entry.items })
     });
   } catch (e) {}
   toast(`اتحفظ «${packName}» (${valid.length} ${g === 'tamr' ? 'شخصية' : 'سؤال'}) للاستعمال في أي وقت!`);
@@ -1469,7 +1469,7 @@ async function deleteSavedPack(packId) {
     await fetch('/api/custom-packs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete', id: packId })
+      body: JSON.stringify({ action: 'delete', pid: ident.pid, secret: ident.secret, id: packId })
     });
   } catch (e) {}
   toast(`اتحذف باكج «${pk.name}»`);
@@ -1501,7 +1501,7 @@ function importSavedPackFile(inputEl) {
       if (!items.length) return toast('الملف مفيهوش أسئلة صالحة', 'err');
       const name = String(data.name || file.name.replace(/\.json$/i, '') || `باكج مستورد`).slice(0, 50);
       const entry = {
-        id: 'pk_' + Date.now().toString(36),
+        id: 'pk_' + Date.now().toString(36) + '_' + randId(3),
         name,
         game: g,
         items,
@@ -1515,7 +1515,7 @@ function importSavedPackFile(inputEl) {
         await fetch('/api/custom-packs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'save', id: entry.id, name: entry.name, game: entry.game, items: entry.items })
+          body: JSON.stringify({ action: 'save', pid: ident.pid, secret: ident.secret, id: entry.id, name: entry.name, game: entry.game, items: entry.items })
         });
       } catch (e) {}
       toast(`اتحفظ واستورد «${name}» (${items.length}) بنجاح!`);

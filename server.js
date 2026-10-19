@@ -158,10 +158,14 @@ function persistSavedPacks() {
 }
 loadSavedPacks();
 
+function hashSecret(secret) {
+  return crypto.createHash('sha256').update(String(secret || '')).digest('hex');
+}
+
 function makeCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let c = '';
-  for (let i = 0; i < 6; i++) c += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 6; i++) c += chars[crypto.randomInt(0, chars.length)];
   return c.slice(0, 3) + '-' + c.slice(3);
 }
 
@@ -193,20 +197,21 @@ function fetchJson(target, timeoutMs = 6500, redirectsLeft = 4) {
 const IMG_BYTES_CACHE = new Map();
 const IMG_INFLIGHT = new Map();
 const ALLOWED_IMG_HOST = /^https:\/\/(upload|thumb)\.wikimedia\.org\//i;
+const SAFE_IMG_MIME = /^image\/(jpeg|jpg|png|webp|gif|avif)\b/i;
 
 function fetchImageBytes(target, timeoutMs = 8000, redirectsLeft = 5) {
   if (!ALLOWED_IMG_HOST.test(target)) return Promise.resolve(null);
   if (IMG_BYTES_CACHE.has(target)) return Promise.resolve(IMG_BYTES_CACHE.get(target));
   if (IMG_INFLIGHT.has(target)) return IMG_INFLIGHT.get(target);
   const job = new Promise((resolve) => {
-    const req = https.get(target, { headers: { 'User-Agent': WIKI_UA, Accept: 'image/*,*/*;q=0.8' }, timeout: timeoutMs }, (res) => {
+    const req = https.get(target, { headers: { 'User-Agent': WIKI_UA, Accept: 'image/webp,image/png,image/jpeg,*/*;q=0.5' }, timeout: timeoutMs }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
         res.resume();
         const nextUrl = new URL(res.headers.location, target).href;
         return fetchImageBytes(nextUrl, timeoutMs, redirectsLeft - 1).then(resolve);
       }
-      const ct = String(res.headers['content-type'] || '');
-      if (res.statusCode !== 200 || !ct.startsWith('image/')) {
+      const ct = String(res.headers['content-type'] || '').toLowerCase().split(';')[0].trim();
+      if (res.statusCode !== 200 || !SAFE_IMG_MIME.test(ct)) {
         res.resume();
         return resolve(null);
       }
@@ -521,7 +526,25 @@ function syncRoomTeams(room, teamCount, teamNames) {
   room.teams.forEach((t) => ensureCaptain(room, t.id));
 }
 
+const MAX_ROOMS = 500;
 function createRoom(admin, game, settings, customPack) {
+  if (ROOMS.size >= MAX_ROOMS) {
+    let victimCode = null;
+    let oldestTouch = Infinity;
+    for (const [k, r] of ROOMS) {
+      if ((!r.clients || r.clients.size === 0) && (r.touched || 0) < oldestTouch) {
+        oldestTouch = r.touched || 0;
+        victimCode = k;
+      }
+    }
+    if (victimCode) {
+      const vr = ROOMS.get(victimCode);
+      if (vr) clearRoomTimers(vr);
+      ROOMS.delete(victimCode);
+    } else {
+      ERR('السيرفر وصل للحد الأقصى من الغرف النشطة حالياً، جرب بعد دقيقة');
+    }
+  }
   let code = makeCode();
   while (ROOMS.has(code)) code = makeCode();
   const room = {
@@ -593,7 +616,9 @@ function cleanPhoto(raw) {
 
 function sanitizeCustom(list, game = 'karak') {
   if (!Array.isArray(list)) return [];
+  let totalPhotoBytes = 0;
   return list
+    .slice(0, 50)
     .map((x) => {
       if (!x || typeof x !== 'object') return null;
       const q = clean(x.q, 220);
@@ -602,7 +627,11 @@ function sanitizeCustom(list, game = 'karak') {
       const nonEmptyHints = rawHints.filter(Boolean);
       const hints = nonEmptyHints.length ? nonEmptyHints : (q ? [q] : []);
       const bluffs = Array.isArray(x.bluffs) ? x.bluffs.map((b) => clean(b, 60)).filter(Boolean).slice(0, 3) : [];
-      const photo = cleanPhoto(x.photo);
+      let photo = cleanPhoto(x.photo);
+      if (photo) {
+        if (totalPhotoBytes + photo.length > 3 * 1024 * 1024) photo = '';
+        else totalPhotoBytes += photo.length;
+      }
       return { q, truth, hints, bluffs, photo };
     })
     .filter((x) => {
@@ -646,8 +675,10 @@ function event(room, type, data = {}) {
 }
 
 function addScore(room, teamId, pts) {
+  const n = Number(pts);
+  if (!Number.isFinite(n)) return;
   const t = room.teams.find((x) => x.id === teamId);
-  if (t) t.score += pts;
+  if (t) t.score = Math.max(-9999, Math.min(99999, (Number(t.score) || 0) + Math.trunc(n)));
 }
 
 function otherTeam(id) { return id === 'A' ? 'B' : 'A'; }
@@ -1499,7 +1530,7 @@ async function handleAction(b) {
     if (room.admin.pid === b.pid) return { room };
     const prof = b.profile || {};
     const existing = Object.prototype.hasOwnProperty.call(room.players, b.pid) ? room.players[b.pid] : null;
-    if (existing && existing.secret !== b.secret) ERR('هوية غير صحيحة');
+    if (existing && !safeEqualSecret(existing.secret, b.secret)) ERR('هوية غير صحيحة');
     const roomCap = isSoloMode(room) ? MAX_SOLO : MAX_PLAYERS;
     if (!existing && Object.keys(room.players).length >= roomCap) {
       ERR(isSoloMode(room) ? `الوضع الفردي كامل (${MAX_SOLO} لاعبين كحد أقصى)` : `الغرفة كاملة (${MAX_PLAYERS} لاعب)`);
@@ -1524,6 +1555,9 @@ async function handleAction(b) {
       return { room };
     }
     if (!ids.includes(b.team)) ERR('فريق غير صحيح');
+    if (room.status === 'playing' && p.team && p.team !== b.team) {
+      ERR('ماينفعش تغير فريقك أثناء اللعب — استنى لغرفة الانتظار');
+    }
     if (p.team !== b.team) assertTeamRoom(room, b.team, p.id);
     const old = p.team;
     p.team = b.team;
@@ -1860,7 +1894,7 @@ async function handleAction(b) {
       break;
     }
     case 'start_game': {
-      if (room.status === 'playing') ERR('اللعبة شغالة بالفعل');
+      if (room.status === 'playing' || room._busy) ERR('اللعبة شغالة بالفعل');
       if (isSoloMode(room)) {
         syncSoloTeams(room);
         if (room.teams.length < 2) ERR('وضع اللعب الفردي محتاج لاعبين اتنين على الأقل في الغرفة عشان تبدأ اللعبة');
@@ -1870,7 +1904,8 @@ async function handleAction(b) {
       if (room.settings.useCustom && !room.customPack.length) ERR('اكتب أسئلة الكاستم الأول أو اختار بنك الأسئلة');
       if (room.settings.useCustom && room.game === 'tamr' && room.customPack.length < 2) ERR('تمر هندي محتاج شخصيتين على الأقل في الكاستم');
       room.teams.forEach((t) => ensureCaptain(room, t.id));
-      await startGame(room);
+      room._busy = true;
+      try { await startGame(room); } finally { room._busy = false; }
       break;
     }
     case 'pause': {
@@ -1888,7 +1923,8 @@ async function handleAction(b) {
       break;
     }
     case 'adjust_score': {
-      const d = Math.round(Number(b.delta) || 0);
+      const rawD = Number(b.delta);
+      const d = Number.isFinite(rawD) ? Math.round(rawD) : 0;
       if (!d || Math.abs(d) > 100) ERR('قيمة غير مسموحة');
       const teamId = validTeamId(room, b.team);
       addScore(room, teamId, d);
@@ -2048,11 +2084,12 @@ async function handleAction(b) {
     }
 
     case 'next': {
-      if (room.status !== 'playing') ERR('مش وقته');
+      if (room.status !== 'playing' || room._busy) ERR('مش وقته');
       const ok = (room.game === 'karak' && room.phase === 'reveal') || (room.game !== 'karak' && room.phase === 'solved');
       if (!ok) ERR('خلص الجولة الأول');
       room.paused = false;
-      await nextRound(room);
+      room._busy = true;
+      try { await nextRound(room); } finally { room._busy = false; }
       break;
     }
     default:
@@ -2069,7 +2106,7 @@ const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'X-XSS-Protection': '1; mode=block',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Referrer-Policy': 'no-referrer',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin'
@@ -2170,30 +2207,45 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (p === '/api/custom-packs') {
+    const publicPack = (pk) => ({ id: pk.id, name: pk.name, game: pk.game, count: pk.count, items: pk.items, updatedAt: pk.updatedAt });
+    const ownsPack = (pk, pid, secHash) => Boolean(pid && secHash && pk.ownerPid === pid && safeEqualSecret(pk.ownerHash, secHash));
     if (req.method === 'GET') {
-      return json(res, 200, { ok: true, packs: SAVED_PACKS });
+      const pid = cleanId(parsed.query.pid, 40);
+      const secret = cleanId(parsed.query.secret, 40);
+      const secHash = secret ? hashSecret(secret) : '';
+      const myPacks = pid && secHash ? SAVED_PACKS.filter((pk) => ownsPack(pk, pid, secHash)).map(publicPack) : [];
+      return json(res, 200, { ok: true, packs: myPacks });
     }
     if (req.method === 'POST') {
       const b = await readBody(req);
+      const pid = cleanId(b.pid, 40);
+      const secret = cleanId(b.secret, 40);
+      const secHash = secret ? hashSecret(secret) : '';
+      if (!pid || !secHash) return json(res, 403, { ok: false, error: 'هوية غير صحيحة' });
       if (b.action === 'save') {
         const game = ['karak', 'sahlab', 'tamr', 'annab'].includes(b.game) ? b.game : 'karak';
         const items = sanitizeCustom(b.items, game);
         if (!items.length) return json(res, 200, { ok: false, error: 'مفيش أسئلة مكتوبة عشان تتحفظ' });
         const name = clean(b.name, 50) || `باقة ${game} (${items.length})`;
         const id = cleanId(b.id, 40) || ('pack_' + rid(5));
-        const pack = { id, name, game, count: items.length, items, updatedAt: Date.now() };
         const existingIdx = SAVED_PACKS.findIndex((x) => x.id === id);
+        if (existingIdx >= 0 && SAVED_PACKS[existingIdx].ownerPid && !ownsPack(SAVED_PACKS[existingIdx], pid, secHash)) {
+          return json(res, 403, { ok: false, error: 'مش مسموح تعدل باقة مش بتاعتك' });
+        }
+        const pack = { id, name, game, count: items.length, items, ownerPid: pid, ownerHash: secHash, updatedAt: Date.now() };
         if (existingIdx >= 0) SAVED_PACKS[existingIdx] = pack;
         else SAVED_PACKS.unshift(pack);
         if (SAVED_PACKS.length > 100) SAVED_PACKS = SAVED_PACKS.slice(0, 100);
         persistSavedPacks();
-        return json(res, 200, { ok: true, pack, packs: SAVED_PACKS });
+        const myPacks = SAVED_PACKS.filter((pk) => ownsPack(pk, pid, secHash)).map(publicPack);
+        return json(res, 200, { ok: true, pack: publicPack(pack), packs: myPacks });
       }
       if (b.action === 'delete') {
         const id = cleanId(b.id, 40);
-        SAVED_PACKS = SAVED_PACKS.filter((x) => x.id !== id);
+        SAVED_PACKS = SAVED_PACKS.filter((x) => !(x.id === id && ownsPack(x, pid, secHash)));
         persistSavedPacks();
-        return json(res, 200, { ok: true, packs: SAVED_PACKS });
+        const myPacks = SAVED_PACKS.filter((pk) => ownsPack(pk, pid, secHash)).map(publicPack);
+        return json(res, 200, { ok: true, packs: myPacks });
       }
       return json(res, 400, { ok: false, error: 'أكشن غير معروف' });
     }
@@ -2276,7 +2328,9 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, {
       'Content-Type': entry.type,
       'Content-Length': entry.buf.length,
-      'Cache-Control': 'public, max-age=86400'
+      'Cache-Control': 'public, max-age=86400',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'X-Content-Type-Options': 'nosniff'
     });
     return res.end(entry.buf);
   }
