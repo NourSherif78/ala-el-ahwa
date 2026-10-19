@@ -1617,7 +1617,10 @@ function lobbyRangeField(key, label, min, max, step, val) {
 function lobbyPickGame(k) {
   S.setup.game = k;
   const valid = (CATS[k] || []).map((x) => x[0]);
-  S.setup.categories = (S.setup.categories || []).filter((c) => valid.includes(c));
+  const curCats = (S.view && S.view.settings && Array.isArray(S.view.settings.categories))
+    ? S.view.settings.categories
+    : S.setup.categories;
+  S.setup.categories = (curCats || []).filter((c) => valid.includes(c));
   const nextSettings = { categories: S.setup.categories };
   if (k === 'annab') {
     S.setup.count = 20;
