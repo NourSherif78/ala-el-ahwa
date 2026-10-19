@@ -77,11 +77,11 @@ const DIFF_DESCS = {
 };
 
 const GAMES = {
-  karak: { name: 'كرك', img: '/assets/ui/karak.png', tag: 'لعبة الخداع', desc: 'سؤال غريب بفراغ، كل فريق يكتب إجابة مزيفة تخدع التاني وبعدين الكل يدور على الإجابة الصح وسط 6 إجابات.' },
-  sahlab: { name: 'سحلب', img: '/assets/ui/sahlab.png', tag: 'سلم التلميحات', desc: 'صورة مموهة و5 تلميحات بتسهل واحدة ورا التانية. خمّن بدري تاخد نقط أكتر، وكل غلطة بتجمد فريقك.' },
-  tamr: { name: 'لبن تمر هندي', img: '/assets/ui/tamr.png', tag: 'ساعة الشطرنج', desc: 'الشخصية السرية — كل فريق عنده شخصية سرية لازم يخمنها بأسئلة أه/لأ، وساعة شطرنج بتعد على الفريق اللي عليه الدور.' },
-  annab: { name: 'عنّاب', img: '/assets/ui/annab.png', tag: 'زرار الباز · 4 اختيارات', desc: '20 سؤال بـ 4 اختيارات وزرار باز لقائد كل فريق! اللي يدوس الأول يجاوب، ولو غلط بتتشطب إجابته والفرصة تروح للفريق التاني يختار من الـ 3 الباقيين.' },
-  yansoon: { name: 'يانسون', img: '/assets/ui/yansoon.png', tag: 'لعبة الكلمات (Wordle)', desc: 'خمّن الكلمة السرية (من 3 لـ 8 حروف ومن غير «الـ») في 6 محاولات — كل حرف بيتلوّن أخضر أو أصفر أو رمادي، والفرق بتتبادل الدور.' }
+  karak: { name: 'كرك', img: '/assets/ui/karak.png?v=30', tag: 'لعبة الخداع', desc: 'سؤال غريب بفراغ، كل فريق يكتب إجابة مزيفة تخدع التاني وبعدين الكل يدور على الإجابة الصح وسط 6 إجابات.' },
+  sahlab: { name: 'سحلب', img: '/assets/ui/sahlab.png?v=30', tag: 'سلم التلميحات', desc: 'صورة مموهة و5 تلميحات بتسهل واحدة ورا التانية. خمّن بدري تاخد نقط أكتر، وكل غلطة بتجمد فريقك.' },
+  tamr: { name: 'لبن تمر هندي', img: '/assets/ui/tamr.png?v=30', tag: 'ساعة الشطرنج', desc: 'الشخصية السرية — كل فريق عنده شخصية سرية لازم يخمنها بأسئلة أه/لأ، وساعة شطرنج بتعد على الفريق اللي عليه الدور.' },
+  annab: { name: 'عنّاب', img: '/assets/ui/annab.png?v=30', tag: 'زرار الباز · 4 اختيارات', desc: '20 سؤال بـ 4 اختيارات وزرار باز لقائد كل فريق! اللي يدوس الأول يجاوب، ولو غلط بتتشطب إجابته والفرصة تروح للفريق التاني يختار من الـ 3 الباقيين.' },
+  yansoon: { name: 'يانسون', img: '/assets/ui/yansoon.png?v=30', tag: 'لعبة الكلمات (Wordle)', desc: 'خمّن الكلمة السرية (من 3 لـ 8 حروف ومن غير «الـ») في 6 محاولات — كل حرف بيتلوّن أخضر أو أصفر أو رمادي، والفرق بتتبادل الدور.' }
 };
 
 // كتالوج شامل موحّد في كل الألعاب الخمسة (يشمل الـ 6 كتالوجات الجديدة + كل الكتالوجات السابقة)
@@ -302,8 +302,9 @@ async function api(action, data = {}) {
       signal: ctrl ? ctrl.signal : undefined
     });
     const j = await r.json();
+    if (!j.ok && j.closed) { closedRoom(); return j; }
     if (!j.ok && j.error) toast(j.error, 'err');
-    if (j.ok && j.view) { try { applyView(j.view); } catch (err) { console.error('applyView error', err); } }
+    if (j.view) { try { applyView(j.view); } catch (err) { console.error('applyView error', err); } }
     return j;
   } catch (e) {
     toast('الاتصال بالسيرفر اتأخر أو وقع — جرب تاني', 'err');
@@ -390,11 +391,15 @@ function onEvent(v) {
     an_wrong_steal: () => `إجابة ${tn(e.wrongTeam)} غلط! الفرصة راحت لـ ${tn(e.nextTeam)} يختار من الاختيارات الباقية`,
     an_both_wrong: () => `كل المحاولات غلط! اتكشفت الإجابة الصح`,
     an_timeout_steal: () => `وقت ${tn(e.wrongTeam)} خلص! الفرصة راحت لـ ${tn(e.nextTeam)}`,
-    an_reset: () => `اتفتح الباز من الأول لكل الفرق!`
+    an_reset: () => `اتفتح الباز من الأول لكل الفرق!`,
+    yn_solved: () => `${tn(e.winner)} كشف الكلمة «${e.word}» (+${e.pts} نقطة)!`,
+    yn_revealed: () => `اتكشفت الكلمة: «${e.word}»`,
+    yn_pass: () => `الدور اتنقل لـ ${tn(e.nextTurn)}`,
+    yn_hint: () => e.showHint ? 'الحكم فتح تلميح للكلمة!' : 'الحكم خفّى التلميح'
   };
   const m = msgs[e.type] && msgs[e.type]();
   if (m) toast(m);
-  if (e.type === 'final') setTimeout(confetti, 300);
+  if (e.type === 'final' || e.type === 'yn_solved') setTimeout(confetti, 300);
 }
 
 // ------------------------------------------------------------------
@@ -629,6 +634,7 @@ function phaseTotal() {
   if (v.game === 'karak') return v.phase === 'vote' ? s.voteSec : v.phase === 'write' && v.kr && remaining() > s.writeSec ? remaining() : s.writeSec;
   if (v.game === 'sahlab') return s.hintSec;
   if (v.game === 'annab') return s.buzzSec || 20;
+  if (v.game === 'yansoon') return s.yansoonSec || 60;
   return s.chessSec;
 }
 function timerRing() {
@@ -786,7 +792,7 @@ function viewHome() {
     ${logo('lg')}
     <p class="home-sub">ألعاب السهرة على القهوة — فرق، حكم، وأسئلة عمرها ما بتتكرر</p>
     <div class="home-art" aria-hidden="true">
-      <img src="/assets/ui/karak.png" alt=""/><img src="/assets/ui/sahlab.png" alt=""/><img src="/assets/ui/yansoon.png" alt=""/><img src="/assets/ui/annab.png" alt=""/><img src="/assets/ui/tamr.png" alt=""/>
+      <img src="/assets/ui/karak.png?v=30" alt=""/><img src="/assets/ui/sahlab.png?v=30" alt=""/><img src="/assets/ui/yansoon.png?v=30" alt=""/><img src="/assets/ui/annab.png?v=30" alt=""/><img src="/assets/ui/tamr.png?v=30" alt=""/>
     </div>
     <div class="card tape home-card">
       <button type="button" class="home-my-avatar" onclick="openAvatarEditor()" title="اضغط على شخصيتك لتغيير شكلها أو اسمك">
@@ -1742,7 +1748,7 @@ function viewLobbyAdmin() {
   const soloNeedMore = isSolo && v.teams.length < 2;
   const cannotStart = isSolo ? soloNeedMore : empty.length > 0;
   const tc = v.teams.length;
-  const timers = v.game === 'karak' ? `كتابة ${s.writeSec}ث · اختيار ${s.voteSec}ث` : v.game === 'sahlab' ? `كل تلميح ${s.hintSec}ث` : v.game === 'annab' ? `الباز والإجابة ${s.buzzSec || 20}ث` : `ساعة ${mmss(s.chessSec)} لكل ${isSolo ? 'لاعب' : 'فريق'}`;
+  const timers = v.game === 'karak' ? `كتابة ${s.writeSec}ث · اختيار ${s.voteSec}ث` : v.game === 'sahlab' ? `كل تلميح ${s.hintSec}ث` : v.game === 'annab' ? `الباز والإجابة ${s.buzzSec || 20}ث` : v.game === 'yansoon' ? `كلمة ${s.wordLen || 5} حروف · ${s.yansoonSec ? `محاولة ${s.yansoonSec}ث` : 'بدون تايمر'}` : `ساعة ${mmss(s.chessSec)} لكل ${isSolo ? 'لاعب' : 'فريق'}`;
   const catNames = s.useCustom ? `كاستم (${customReady} ${g === 'tamr' ? 'شخصية' : 'سؤال'})` : s.categories.length ? s.categories.map((c) => (cats.find((x) => x[0] === c) || [c, c])[1]).join('، ') : 'كوكتيل';
   return `${topbar(stepper(['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'], 2))}
   <section class="wrap wide lobby">
@@ -2558,6 +2564,14 @@ const YN_KB_ROWS = [
   ['ش', 'س', 'ي', 'ب', 'ل', 'ا', 'ت', 'ن', 'م', 'ك', 'ط'],
   ['ENTER', 'ذ', 'ء', 'ؤ', 'ر', 'ى', 'ة', 'و', 'ز', 'ظ', 'BACK']
 ];
+const YN_CAT_LABELS = {
+  ...Object.fromEntries(ALL_CATS),
+  drinks: 'مشروبات',
+  nature: 'طبيعة',
+  body: 'جسم الإنسان',
+  culture: 'ثقافة وفنون',
+  general: 'كلمات عامة'
+};
 // نفس توحيد الحروف اللي السيرفر بيعمله (أ/إ/آ → ا، ة → ه، ى/ئ → ي، ؤ → و) عشان ألوان الكيبورد تطابق
 function ynNormChar(ch) {
   return String(ch || '')
@@ -2567,14 +2581,25 @@ function ynNormChar(ch) {
     .replace(/ؤ/g, 'و');
 }
 
+function ynCanType() {
+  const v = S.view;
+  if (!v || !v.yn || v.phase !== 'play') return false;
+  const yn = v.yn;
+  if (isAdmin()) return true;
+  if (myTeam() && myTeam() === yn.turn && me().captain) return true;
+  if (isHost()) {
+    const activeTeam = v.teams.find((x) => x.id === yn.turn);
+    const activeCap = activeTeam ? v.players.find((p) => p.id === activeTeam.captainId) : null;
+    if (activeCap && activeCap.isTest) return true;
+  }
+  return false;
+}
+
 function ynClickKey(char) {
   const v = S.view;
   if (!v || !v.yn || v.phase !== 'play') return;
   const yn = v.yn;
-  const admin = isAdmin();
-  const cap = me().captain;
-  const isMyTurn = admin || (myTeam() && myTeam() === yn.turn && cap);
-  if (!isMyTurn) return;
+  if (!ynCanType()) return;
 
   if (char === 'BACK') {
     S.draft.ynWord = String(S.draft.ynWord || '').slice(0, -1);
@@ -2629,9 +2654,7 @@ if (typeof window !== 'undefined' && !window._ynKeyHandlerAttached) {
     const v = S.view;
     const yn = v.yn;
     if (!yn || v.phase !== 'play') return;
-    const admin = isAdmin();
-    const isMyTurn = admin || (myTeam() && myTeam() === yn.turn && me().captain);
-    if (!isMyTurn) return;
+    if (!ynCanType()) return;
 
     if (e.key === 'Backspace') {
       e.preventDefault();
@@ -2655,12 +2678,13 @@ function viewYansoon() {
   const v = S.view;
   const yn = v.yn;
   const admin = isAdmin();
+  const host = isHost();
   const t = myTeam();
   const cap = me().captain;
   const solved = v.phase === 'solved';
   const revealed = v.phase === 'revealed';
   const isEnded = solved || revealed;
-  const isMyTurn = !isEnded && (admin || (t && t === yn.turn && cap));
+  const isMyTurn = !isEnded && ynCanType();
   // تتبع اللي اتحرك قبل كده عشان الأنيميشن مايتعادش مع كل تحديث (كان بيعمل رعشة/جليتش)
   if (!S.ynSeen || S.ynSeen.round !== v.round) {
     S.ynSeen = { round: v.round, rows: 0, typed: '' };
@@ -2705,7 +2729,7 @@ function viewYansoon() {
           <p class="sub">تقدر تكتب الكلمة من الكيبورد تحت نيابة عنهم لو بتلعبوا على شاشة كبيرة أو ذكية.</p>
         </div>
       </div>`;
-    } else if (isMyTurn) {
+    } else if (t && t === yn.turn && cap) {
       banner = `<div class="card yn-banner my-turn team-${yn.turn}">
         ${ic('bolt')}
         <div>
@@ -2820,10 +2844,10 @@ function viewYansoon() {
     }
   }
 
-  // تحكم الحكم
+  // تحكم الحكم / مضيف الغرفة
   let adminControls = '';
-  if (admin) {
-    const scorePanel = `<div class="card judge-score-panel">
+  if (host) {
+    const scorePanel = admin ? `<div class="card judge-score-panel">
       <h3 class="h3">${ic('trophy')} تحكم الحكم في النقاط <small>(زود أو نقص لأي فريق براحتك)</small></h3>
       <div class="judge-score-grid teams-count-${v.teams.length}">
         ${v.teams.map((tm) => `<div class="judge-score-box team-${tm.id}">
@@ -2833,25 +2857,23 @@ function viewYansoon() {
           </div>
         </div>`).join('')}
       </div>
-    </div>`;
+    </div>` : '';
 
     const roundTools = !isEnded ? `<div class="card admin-tools">
       <button class="btn ghost sm" onclick="api('yn_hint')">${ic('bulb')} ${yn.showHint ? 'إخفاء التلميح' : 'إظهار تلميح للفرق'}</button>
       <button class="btn ghost sm" onclick="api('yn_pass')">${ic('swap')} فوت الدور للفرقة التانية</button>
       <button class="btn danger sm" onclick="api('yn_reveal')">${ic('bolt')} اكشف الكلمة دلوقتي</button>
-    </div>` : `<div class="next-bar"><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' الكلمة الجاية'}</button></div>`;
+    </div>` : `<div class="next-bar"><span class="why">${v.aiJudge ? 'الـ AI هينقل للجولة الجاية تلقائياً أو دوس دلوقتي' : ''}</span><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' الكلمة الجاية'}</button></div>`;
 
     adminControls = `${scorePanel}${roundTools}`;
   } else if (isEnded) {
-    adminControls = isHost()
-      ? `<div class="next-bar"><span class="why">${v.aiJudge ? 'الـ AI هينقل للجولة الجاية تلقائياً أو دوس دلوقتي' : ''}</span><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' الكلمة الجاية'}</button></div>`
-      : `<div class="waiting small"><p>${v.aiJudge ? 'الـ AI بيفتح الكلمة الجاية تلقائياً' : 'مستنيين الحكم للكلمة الجاية'}<span class="dots"><i></i><i></i><i></i></span></p></div>`;
+    adminControls = `<div class="waiting small"><p>${v.aiJudge ? 'الـ AI بيفتح الكلمة الجاية تلقائياً' : 'مستنيين الحكم للكلمة الجاية'}<span class="dots"><i></i><i></i><i></i></span></p></div>`;
   }
 
   return `${topbar()}<section class="wrap game yansoon-game">${scorebar()}
     <div class="card yn-game-head">
       <div class="yn-head-row">
-        <span class="yn-cat-pill">${ic('folder')} ${esc(((ALL_CATS.find((c) => c[0] === yn.cat) || [])[1]) || yn.cat || 'كلمات عامة')}</span>
+        <span class="yn-cat-pill">${ic('folder')} ${esc(YN_CAT_LABELS[yn.cat] || yn.cat || 'كلمات عامة')}</span>
         <span class="yn-len-pill">${ic('pencil')} كلمة من <b>${yn.len}</b> حروف</span>
         <span class="yn-rule-pill">${ic('star')} بدون «الـ»</span>
       </div>

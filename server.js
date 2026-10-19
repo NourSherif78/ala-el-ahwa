@@ -370,9 +370,83 @@ async function warmQueueImages(items, waitFirstCount = 2) {
 }
 
 // ============================================================
-// الغرف
+// الغرف (مع حفظ واسترجاع تلقائي عشان السيرفر لو عمل ريستارت الغرف ماتقعش)
 // ============================================================
 const ROOMS = new Map();
+const ACTIVE_ROOMS_FILE = path.join(BASE_DIR, 'data', 'active_rooms.json');
+let _saveRoomsTimer = null;
+
+function serializeRoom(r) {
+  return {
+    code: r.code,
+    seq: r.seq || 1,
+    inviteUrl: r.inviteUrl,
+    admin: {
+      pid: r.admin.pid,
+      secret: r.admin.secret,
+      profile: r.admin.profile,
+      playingTeam: r.admin.playingTeam || null,
+      conns: 0
+    },
+    aiJudge: !!r.aiJudge,
+    game: r.game,
+    settings: r.settings,
+    customPack: r.customPack || [],
+    status: r.status,
+    teams: r.teams || [],
+    players: Object.fromEntries(
+      Object.entries(r.players || {}).map(([k, p]) => [k, { ...p, conns: 0 }])
+    ),
+    kicked: Array.from(r.kicked || []),
+    queue: r.queue || [],
+    round: r.round,
+    totalRounds: r.totalRounds,
+    phase: r.phase,
+    deadline: r.deadline,
+    pausedLeft: r.pausedLeft,
+    paused: !!r.paused,
+    kr: r.kr || null,
+    sh: r.sh ? { ...r.sh, autoHintTimer: null } : null,
+    tm: r.tm || null,
+    an: r.an || null,
+    yn: r.yn || null,
+    lastEvent: r.lastEvent || null,
+    touched: r.touched || Date.now()
+  };
+}
+
+function schedulePersistRooms() {
+  if (_saveRoomsTimer) return;
+  _saveRoomsTimer = setTimeout(() => {
+    _saveRoomsTimer = null;
+    try {
+      const now = Date.now();
+      const list = [];
+      for (const r of ROOMS.values()) {
+        if (now - (r.touched || 0) < 3 * 3600e3) list.push(serializeRoom(r));
+      }
+      fs.writeFileSync(ACTIVE_ROOMS_FILE, JSON.stringify(list), 'utf8');
+    } catch (e) {}
+  }, 400);
+}
+
+(function loadPersistedRooms() {
+  try {
+    if (!fs.existsSync(ACTIVE_ROOMS_FILE)) return;
+    const raw = JSON.parse(fs.readFileSync(ACTIVE_ROOMS_FILE, 'utf8'));
+    if (!Array.isArray(raw)) return;
+    const now = Date.now();
+    for (const item of raw) {
+      if (!item || !item.code || now - (item.touched || 0) > 3 * 3600e3) continue;
+      item.kicked = new Set(Array.isArray(item.kicked) ? item.kicked : []);
+      item.clients = new Set();
+      item.autoNextTimer = null;
+      item.ynBotTimer = null;
+      if (item.sh) item.sh.autoHintTimer = null;
+      ROOMS.set(item.code, item);
+    }
+  } catch (e) {}
+})();
 
 function newTeams(names, teamCount = 2) {
   const n = clamp(teamCount, LIMITS.teamCount);
@@ -403,6 +477,7 @@ function nextTeamId(room, curId) {
 function clearRoomTimers(room) {
   if (room.sh && room.sh.autoHintTimer) { clearTimeout(room.sh.autoHintTimer); room.sh.autoHintTimer = null; }
   if (room.autoNextTimer) { clearTimeout(room.autoNextTimer); room.autoNextTimer = null; }
+  if (room.ynBotTimer) { clearTimeout(room.ynBotTimer); room.ynBotTimer = null; }
 }
 
 function scheduleAutoNext(room, sec = 6) {
@@ -663,8 +738,9 @@ function ensureCaptain(room, teamId) {
   const t = room.teams.find((x) => x.id === teamId);
   if (!t) return;
   const members = teamMembers(room, teamId);
-  if (t.captainId && members.some((m) => m.id === t.captainId)) return;
   const real = members.filter((m) => !m.isTest);
+  const curCap = t.captainId ? members.find((m) => m.id === t.captainId) : null;
+  if (curCap && (!curCap.isTest || real.length === 0)) return;
   t.captainId = (real[0] || members[0] || {}).id || null;
 }
 
@@ -1256,6 +1332,39 @@ function annabTimeout(room) {
 // ============================================================
 // يانسون (لعبة الكلمات والحروف · Wordle العربي من 3 إلى 8 حروف)
 // ============================================================
+function scheduleYansoonTestBotIfNeeded(room) {
+  if (room.ynBotTimer) {
+    clearTimeout(room.ynBotTimer);
+    room.ynBotTimer = null;
+  }
+  const yn = room.yn;
+  if (!yn || room.status !== 'playing' || room.game !== 'yansoon' || room.phase !== 'play') return;
+  const activeTeam = room.teams.find((t) => t.id === yn.turn);
+  if (!activeTeam || !activeTeam.captainId) return;
+  const capPlayer = room.players[activeTeam.captainId];
+  if (!capPlayer || !capPlayer.isTest) return;
+  // لو الفريق اللي عليه الدور قائده لاعب تجريبي، يلعب تلقائياً بعد ثانيتين
+  const hasRealMembers = Object.values(room.players).some((p) => p.team === yn.turn && !p.isTest);
+  if (hasRealMembers) return;
+  room.ynBotTimer = setTimeout(() => {
+    room.ynBotTimer = null;
+    if (!room.yn || room.status !== 'playing' || room.game !== 'yansoon' || room.phase !== 'play') return;
+    if (room.yn.turn !== activeTeam.id) return;
+    const usedNorms = new Set(room.yn.guesses.map((g) => Q.normalizeAr(g.word)));
+    const targetNorm = Q.normalizeAr(room.yn.target);
+    const pool = (Q.BANKS.yansoon || []).filter((it) => {
+      const w = String(it.word || '').replace(/[\u064B-\u0652\u0640\s]/g, '').trim();
+      const nw = Q.normalizeAr(w);
+      return w.length === room.yn.len && !usedNorms.has(nw) && nw !== targetNorm;
+    });
+    const pick = pool.length ? pool[Math.floor(Math.random() * pool.length)].word : room.yn.target;
+    try {
+      yansoonSubmitGuess(room, activeTeam.id, pick);
+      broadcast(room);
+    } catch (e) {}
+  }, 2200);
+}
+
 function startYansoonRound(room) {
   const item = room.queue[room.round];
   Q.markUsed('yansoon', item);
@@ -1287,6 +1396,7 @@ function startYansoonRound(room) {
     setDeadline(room, 0);
   }
   event(room, 'round', { round: room.round, len });
+  scheduleYansoonTestBotIfNeeded(room);
 }
 
 function evaluateWordleGuess(target, guess) {
@@ -1336,6 +1446,7 @@ function updateAlphabetColors(alphabet, word, colors) {
 function yansoonSubmitGuess(room, teamId, rawWord) {
   const yn = room.yn;
   if (!yn || room.phase !== 'play') ERR('الجولة مش شغالة');
+  if (room.ynBotTimer) { clearTimeout(room.ynBotTimer); room.ynBotTimer = null; }
   const guess = clean(rawWord, 20).replace(/[\u064B-\u0652\u0640\s]/g, '').trim();
   if (!guess) ERR('اكتب كلمة صح');
   if (guess.length !== yn.len) {
@@ -1379,6 +1490,7 @@ function yansoonSubmitGuess(room, teamId, rawWord) {
       setDeadline(room, room.settings.yansoonSec);
     }
     event(room, 'yn_guess', { team: teamId, word: guess, colors, nextTurn: yn.turn });
+    scheduleYansoonTestBotIfNeeded(room);
   }
 }
 
@@ -1391,11 +1503,13 @@ function yansoonTimeout(room) {
     setDeadline(room, room.settings.yansoonSec);
   }
   event(room, 'yn_timeout', { timedOutTeam, nextTurn: yn.turn });
+  scheduleYansoonTestBotIfNeeded(room);
 }
 
 function yansoonReveal(room) {
   const yn = room.yn;
   if (!yn || room.phase !== 'play') return;
+  if (room.ynBotTimer) { clearTimeout(room.ynBotTimer); room.ynBotTimer = null; }
   room.phase = 'revealed';
   yn.revealed = true;
   setDeadline(room, 0);
@@ -1406,12 +1520,14 @@ function yansoonReveal(room) {
 function yansoonPass(room) {
   const yn = room.yn;
   if (!yn || room.phase !== 'play') return;
+  if (room.ynBotTimer) { clearTimeout(room.ynBotTimer); room.ynBotTimer = null; }
   const passedTeam = yn.turn;
   yn.turn = nextTeamId(room, yn.turn);
   if (room.settings.yansoonSec > 0) {
     setDeadline(room, room.settings.yansoonSec);
   }
   event(room, 'yn_pass', { passedTeam, nextTurn: yn.turn });
+  scheduleYansoonTestBotIfNeeded(room);
 }
 
 function yansoonToggleHint(room) {
@@ -1680,6 +1796,7 @@ function send(client, room) {
 function broadcast(room) {
   room.touched = Date.now();
   room.seq = (room.seq || 0) + 1;
+  schedulePersistRooms();
   for (const c of room.clients) send(c, room);
 }
 
@@ -1970,6 +2087,11 @@ async function handleAction(b) {
       return { room };
     }
     if (action === 'yn_guess') {
+      if (admin) {
+        const team = b.team && ids.includes(b.team) ? b.team : yn.turn;
+        yansoonSubmitGuess(room, team, b.word);
+        return { room };
+      }
       if (!isCaptain(room, p.id)) ERR('قائد الفريق بس هو اللي بيسجل الكلمة');
       if (p.team !== yn.turn) ERR('مش دور فريقك دلوقتي');
       yansoonSubmitGuess(room, p.team, b.word);
@@ -2496,14 +2618,21 @@ const server = http.createServer(async (req, res) => {
 
   if (p === '/api/action' && req.method === 'POST') {
     const b = await readBody(req);
+    const pid = cleanId(b.pid, 40);
     try {
       const out = await handleAction(b);
       if (out.room) broadcast(out.room);
-      const pid = cleanId(b.pid, 40);
       return json(res, 200, { ok: true, code: out.room ? out.room.code : null, view: out.room ? viewFor(out.room, pid) : null });
     } catch (e) {
       if (!e.user) console.error(e);
-      return json(res, 200, { ok: false, error: e.user ? e.message : 'حصلت مشكلة، جرب تاني' });
+      const code = cleanId(b && b.code, 10).toUpperCase();
+      const existingRoom = code ? ROOMS.get(code) : null;
+      return json(res, 200, {
+        ok: false,
+        error: e.user ? e.message : 'حصلت مشكلة، جرب تاني',
+        closed: Boolean(code && !existingRoom && b.action !== 'create_room'),
+        view: existingRoom ? viewFor(existingRoom, pid) : null
+      });
     }
   }
 
@@ -2511,7 +2640,7 @@ const server = http.createServer(async (req, res) => {
     const code = cleanId(parsed.query.code, 10).toUpperCase();
     const room = ROOMS.get(code);
     const pid = cleanId(parsed.query.pid, 40);
-    if (!room) return json(res, 404, { ok: false, error: 'الغرفة مش موجودة' });
+    if (!room) return json(res, 404, { ok: false, closed: true, error: 'الغرفة مش موجودة' });
     return json(res, 200, { ok: true, view: viewFor(room, pid) });
   }
 

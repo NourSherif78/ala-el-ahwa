@@ -1722,11 +1722,12 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
 .yn-banner {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  margin-bottom: 12px;
+  gap: 10px;
+  padding: 9px 14px;
+  margin-bottom: 8px;
   border-radius: 14px;
 }
+.yn-banner p.sub { margin: 1px 0 0; }
 .yn-banner.solved {
   background: linear-gradient(135deg, #ECFDF5, #D1FAE5);
   border: 2px solid #10B981;
@@ -1762,34 +1763,34 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
 
 /* بطاقة شبكة Wordle */
 .yn-board-card {
-  padding: 18px 12px;
+  padding: 10px;
   background: #FFFFFF;
   border: 1.5px solid var(--border);
-  border-radius: 18px;
+  border-radius: 16px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.04);
-  margin-bottom: 14px;
+  margin-bottom: 8px;
   display: flex;
   justify-content: center;
 }
 .yn-board {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
   align-items: center;
   width: 100%;
 }
 .yn-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   justify-content: center;
 }
 .yn-row-badge {
-  font-size: .74rem;
+  font-size: .72rem;
   font-weight: 700;
-  padding: 3px 8px;
+  padding: 2px 8px;
   border-radius: 6px;
-  min-width: 64px;
+  min-width: 62px;
   text-align: center;
   background: var(--card-2);
   color: var(--sub);
@@ -1802,18 +1803,18 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
 }
 .yn-tiles-wrap {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   direction: rtl;
 }
 
 /* المربعات (Tiles) */
 .yn-tile {
-  width: 48px;
-  height: 52px;
-  border: 2.5px solid #CBD5E1;
-  border-radius: 10px;
+  width: 40px;
+  height: 41px;
+  border: 2px solid #CBD5E1;
+  border-radius: 9px;
   background: #FFFDF9;
-  font-size: 1.75rem;
+  font-size: 1.45rem;
   font-weight: 800;
   line-height: 1;
   display: flex;
@@ -1874,10 +1875,10 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
 .yn-keyboard {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
   max-width: 580px;
-  margin: 12px auto;
+  margin: 6px auto;
   direction: rtl;
   user-select: none;
 }
@@ -1888,8 +1889,8 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
   justify-content: center;
 }
 .yn-key {
-  height: 48px;
-  min-width: 32px;
+  height: 38px;
+  min-width: 30px;
   flex: 1;
   background: #FFFFFF;
   border: 1.5px solid #CBD5E1;

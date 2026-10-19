@@ -236,7 +236,8 @@ function shuffle(arr) {
 
 const CAT_LABELS = {
   history: 'تاريخ', geography: 'جغرافيا', science: 'علوم', sports: 'رياضة', cinema: 'أفلام ومسلسلات',
-  food: 'أكل ومشروبات', egypt: 'مصر', animals: 'حيوانات', weird: 'غرائب وعادات الشعوب', language: 'لغة وكلمات',
+  food: 'أكل ومشروبات', drinks: 'مشروبات', nature: 'طبيعة', body: 'جسم الإنسان', culture: 'ثقافة وفنون',
+  egypt: 'مصر', animals: 'حيوانات', weird: 'غرائب وعادات الشعوب', language: 'لغة وكلمات',
   places: 'أماكن ومعالم', people: 'مشاهير ونجوم', movies: 'أفلام', things: 'أشياء واختراعات', celebs: 'مشاهير ونجوم',
   anime: 'أنمي', islamic_history: 'تاريخ إسلامي', islamic: 'أسئلة دينية إسلامية', quran: 'القرآن الكريم', hadith: 'الأحاديث النبوية',
   spacetoon: 'كرتونات سبيستون', egyptian_comedy: 'أفلام مصرية كوميدية', foreign_movies: 'أفلام أجنبية',
@@ -246,7 +247,11 @@ const CAT_LABELS = {
 const CAT_ALIASES = {
   people: ['people', 'celebs'],
   celebs: ['celebs', 'people'],
-  cinema: ['cinema', 'movies', 'egyptian_comedy', 'foreign_movies', 'foreign_series'],
+  food: ['food', 'drinks'],
+  geography: ['geography', 'places', 'nature'],
+  science: ['science', 'body', 'nature'],
+  language: ['language', 'culture'],
+  cinema: ['cinema', 'movies', 'egyptian_comedy', 'foreign_movies', 'foreign_series', 'culture'],
   movies: ['movies', 'cinema', 'egyptian_comedy', 'foreign_movies'],
   places: ['places', 'geography'],
   geography: ['geography', 'places'],
