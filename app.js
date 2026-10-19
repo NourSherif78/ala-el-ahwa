@@ -81,7 +81,7 @@ const GAMES = {
   sahlab: { name: 'سحلب', img: '/assets/ui/sahlab.png', tag: 'سلم التلميحات', desc: 'صورة مموهة و5 تلميحات بتسهل واحدة ورا التانية. خمّن بدري تاخد نقط أكتر، وكل غلطة بتجمد فريقك.' },
   tamr: { name: 'لبن تمر هندي', img: '/assets/ui/tamr.png', tag: 'ساعة الشطرنج', desc: 'الشخصية السرية — كل فريق عنده شخصية سرية لازم يخمنها بأسئلة أه/لأ، وساعة شطرنج بتعد على الفريق اللي عليه الدور.' },
   annab: { name: 'عنّاب', img: '/assets/ui/annab.png', tag: 'زرار الباز · 4 اختيارات', desc: '20 سؤال بـ 4 اختيارات وزرار باز لقائد كل فريق! اللي يدوس الأول يجاوب، ولو غلط بتتشطب إجابته والفرصة تروح للفريق التاني يختار من الـ 3 الباقيين.' },
-  yansoon: { name: 'يانسون', img: '/assets/ui/yansoon.png', tag: 'لعبة الكلمات والحروف (Wordle)', desc: 'تحدي الكلمات الذكي بدون «الـ» التعريف! من 3 إلى 8 حروف و6 محاولات مع شبكة تلميحات لونية بالأخضر والأصفر والرمادي وكيبورد عربي تفاعلي.' }
+  yansoon: { name: 'يانسون', img: '/assets/ui/yansoon.png', tag: 'لعبة الكلمات (Wordle)', desc: 'خمّن الكلمة السرية (من 3 لـ 8 حروف ومن غير «الـ») في 6 محاولات — كل حرف بيتلوّن أخضر أو أصفر أو رمادي، والفرق بتتبادل الدور.' }
 };
 
 // كتالوج شامل موحّد في كل الألعاب الخمسة (يشمل الـ 6 كتالوجات الجديدة + كل الكتالوجات السابقة)
@@ -303,7 +303,7 @@ async function api(action, data = {}) {
     });
     const j = await r.json();
     if (!j.ok && j.error) toast(j.error, 'err');
-    if (j.ok && j.view) applyView(j.view);
+    if (j.ok && j.view) { try { applyView(j.view); } catch (err) { console.error('applyView error', err); } }
     return j;
   } catch (e) {
     toast('الاتصال بالسيرفر اتأخر أو وقع — جرب تاني', 'err');
@@ -707,8 +707,13 @@ function render() {
   } else if (key === 'kicked') html = viewKicked();
   else if (v.status === 'lobby') html = isAdmin() ? viewLobbyAdmin() : myTeam() ? viewLobbyPlayer() : viewTeamPick();
   else if (v.status === 'playing') {
-    if (!isAdmin() && !myTeam()) html = viewTeamPick();
-    else html = v.game === 'karak' ? viewKarak() : v.game === 'sahlab' ? viewSahlab() : v.game === 'annab' ? viewAnnab() : v.game === 'yansoon' ? viewYansoon() : viewTamr();
+    try {
+      if (!isAdmin() && !myTeam()) html = viewTeamPick();
+      else html = v.game === 'karak' ? viewKarak() : v.game === 'sahlab' ? viewSahlab() : v.game === 'annab' ? viewAnnab() : v.game === 'yansoon' ? viewYansoon() : viewTamr();
+    } catch (err) {
+      console.error('render error', err);
+      html = `${topbar()}<section class="wrap narrow center-page"><div class="card tape"><h1 class="h1">حصلت مشكلة في عرض اللعبة</h1><p class="sub">جرب تحدّث الصفحة. ${isHost() ? 'أو ارجع لغرفة الانتظار من غير ما الفرق تخرج.' : ''}</p>${isHost() ? `<button class="btn primary block" onclick="returnToLobby()">${ic('sliders')} ارجع لغرفة الانتظار</button>` : ''}<button class="btn ghost block" onclick="location.reload()">${ic('home')} تحديث الصفحة</button></div></section>`;
+    }
     if (isHost()) html += adminDrawer();
   } else if (v.status === 'finished') html = viewFinal() + (isHost() ? adminDrawer() : '');
 
@@ -2553,6 +2558,14 @@ const YN_KB_ROWS = [
   ['ش', 'س', 'ي', 'ب', 'ل', 'ا', 'ت', 'ن', 'م', 'ك', 'ط'],
   ['ENTER', 'ذ', 'ء', 'ؤ', 'ر', 'ى', 'ة', 'و', 'ز', 'ظ', 'BACK']
 ];
+// نفس توحيد الحروف اللي السيرفر بيعمله (أ/إ/آ → ا، ة → ه، ى/ئ → ي، ؤ → و) عشان ألوان الكيبورد تطابق
+function ynNormChar(ch) {
+  return String(ch || '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[ىئ]/g, 'ي')
+    .replace(/ؤ/g, 'و');
+}
 
 function ynClickKey(char) {
   const v = S.view;
@@ -2648,7 +2661,16 @@ function viewYansoon() {
   const revealed = v.phase === 'revealed';
   const isEnded = solved || revealed;
   const isMyTurn = !isEnded && (admin || (t && t === yn.turn && cap));
+  // تتبع اللي اتحرك قبل كده عشان الأنيميشن مايتعادش مع كل تحديث (كان بيعمل رعشة/جليتش)
+  if (!S.ynSeen || S.ynSeen.round !== v.round) {
+    S.ynSeen = { round: v.round, rows: 0, typed: '' };
+    S.draft.ynWord = '';
+  }
+  const flipFrom = S.ynSeen.rows;
+  S.ynSeen.rows = yn.guesses.length;
   const typedWord = String(S.draft.ynWord || '');
+  const popIdx = typedWord.length > S.ynSeen.typed.length ? typedWord.length - 1 : -1;
+  S.ynSeen.typed = typedWord;
 
   // شريط حالة الجولة والدور
   let banner = '';
@@ -2721,11 +2743,11 @@ function viewYansoon() {
       if (isSubmitted) {
         const char = (guess.word && guess.word[c]) || '';
         const col = (guess.colors && guess.colors[c]) || 'absent';
-        tilesHtml += `<div class="yn-tile ${col} is-flipped" style="animation-delay: ${c * 90}ms">${esc(char)}</div>`;
+        tilesHtml += `<div class="yn-tile ${col} ${r >= flipFrom ? 'is-flipped' : ''}" style="animation-delay: ${c * 90}ms">${esc(char)}</div>`;
       } else if (isActive) {
         const char = typedWord[c] || '';
         const isCurrentSlot = isMyTurn && c === typedWord.length;
-        tilesHtml += `<div class="yn-tile ${char ? 'filled' : ''} ${isCurrentSlot ? 'active-slot' : ''}">${esc(char)}</div>`;
+        tilesHtml += `<div class="yn-tile ${char ? 'filled' : ''} ${c === popIdx ? 'pop' : ''} ${isCurrentSlot ? 'active-slot' : ''}">${esc(char)}</div>`;
       } else {
         tilesHtml += `<div class="yn-tile empty"></div>`;
       }
@@ -2764,7 +2786,7 @@ function viewYansoon() {
               ⌫ مسح
             </button>`;
           }
-          const state = yn.alphabet && yn.alphabet[Q.normalizeAr(k)];
+          const state = yn.alphabet && yn.alphabet[ynNormChar(k)];
           const cls = state ? `yn-key-${state}` : '';
           return `<button type="button" class="yn-key ${cls}" onclick="ynClickKey('${k}')">${k}</button>`;
         }).join('')}
@@ -2829,7 +2851,7 @@ function viewYansoon() {
   return `${topbar()}<section class="wrap game yansoon-game">${scorebar()}
     <div class="card yn-game-head">
       <div class="yn-head-row">
-        <span class="yn-cat-pill">${ic('folder')} ${esc(CAT_LABELS[yn.cat] || yn.cat)}</span>
+        <span class="yn-cat-pill">${ic('folder')} ${esc(((ALL_CATS.find((c) => c[0] === yn.cat) || [])[1]) || yn.cat || 'كلمات عامة')}</span>
         <span class="yn-len-pill">${ic('pencil')} كلمة من <b>${yn.len}</b> حروف</span>
         <span class="yn-rule-pill">${ic('star')} بدون «الـ»</span>
       </div>
