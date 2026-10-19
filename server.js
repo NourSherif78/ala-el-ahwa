@@ -1809,9 +1809,6 @@ async function handleAction(b) {
       if (b.customPack !== undefined) room.customPack = sanitizeCustom(b.customPack, room.game);
 
       const merged = { ...room.settings, ...(b.settings || {}) };
-      if (room.game !== oldGame && (!b.settings || b.settings.categories === undefined)) {
-        merged.categories = [];
-      }
       if (room.game === 'annab' && room.game !== oldGame && (!b.settings || b.settings.count === undefined)) {
         merged.count = 20;
       }

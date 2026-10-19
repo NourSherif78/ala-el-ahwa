@@ -1062,12 +1062,20 @@ function rangeField(key, label, min, max, step) {
 }
 function pickGame(k) {
   S.setup.game = k;
-  S.setup.categories = [];
+  const valid = (CATS[k] || []).map((x) => x[0]);
+  S.setup.categories = (S.setup.categories || []).filter((c) => valid.includes(c));
   if (k === 'annab') S.setup.count = 20;
+  LS.set('setup', S.setup);
   customList(k);
   render();
 }
-function toggleCat(id) { const c = S.setup.categories; const i = c.indexOf(id); i >= 0 ? c.splice(i, 1) : c.push(id); render(); }
+function toggleCat(id) {
+  const c = S.setup.categories;
+  const i = c.indexOf(id);
+  i >= 0 ? c.splice(i, 1) : c.push(id);
+  LS.set('setup', S.setup);
+  render();
+}
 async function createRoom() {
   const s = S.setup;
   if (!s.game) return toast('اختار اللعبة الأول', 'err');
@@ -1608,8 +1616,9 @@ function lobbyRangeField(key, label, min, max, step, val) {
 
 function lobbyPickGame(k) {
   S.setup.game = k;
-  S.setup.categories = [];
-  const nextSettings = { categories: [] };
+  const valid = (CATS[k] || []).map((x) => x[0]);
+  S.setup.categories = (S.setup.categories || []).filter((c) => valid.includes(c));
+  const nextSettings = { categories: S.setup.categories };
   if (k === 'annab') {
     S.setup.count = 20;
     nextSettings.count = 20;
