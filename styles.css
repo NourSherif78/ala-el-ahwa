@@ -2013,4 +2013,63 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
   }
 }
 
+/* =========================================================
+   مفتاح تغيير اللغة (العربية / English / Türkçe)
+   ========================================================= */
+.home-lang-bar {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--card-2);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 4px;
+  box-shadow: 0 3px 0 var(--ink);
+  direction: ltr;
+}
+
+.lang-btn {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-body);
+  font-size: .92rem;
+  font-weight: 800;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, transform .1s ease;
+  line-height: 1.2;
+}
+
+.lang-btn:hover {
+  color: var(--ink);
+  background: rgba(58, 38, 24, 0.07);
+}
+
+.lang-btn.on {
+  background: var(--terra);
+  color: #FFFBF2;
+  box-shadow: 0 2px 0 var(--terra-dark);
+}
+
+.lang-switch-sm {
+  padding: 2px;
+  gap: 2px;
+  border-width: 1.5px;
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+.lang-switch-sm .lang-btn {
+  font-size: .78rem;
+  padding: 4px 9px;
+}
+
+
 

@@ -199,7 +199,8 @@ const S = {
   prevScores: null,
   bumps: {},
   lastKey: null,
-  resumable: null
+  resumable: null,
+  lang: ['ar', 'en', 'tr'].includes(LS.get('lang', 'ar')) ? LS.get('lang', 'ar') : 'ar'
 };
 if (!S.setup.buzzSec) S.setup.buzzSec = 20;
 if (S.setup.playMode !== 'solo') S.setup.playMode = 'teams';
@@ -403,13 +404,408 @@ function onEvent(v) {
 }
 
 // ------------------------------------------------------------------
+// نظام اللغات (العربية هو الأصل + الإنجليزية + التركية)
+// ------------------------------------------------------------------
+const I18N_EXACT = {
+  // الصفحة الرئيسية والشريط العلوي
+  'ألعاب السهرة على القهوة — فرق، حكم، وأسئلة عمرها ما بتتكرر': {
+    en: 'Multiplayer Cafe Party Games — Teams, Host & Never-Repeating Questions',
+    tr: 'Kahvehane Parti Oyunları — Takımlar, Hakem ve Tekrarlanmayan Sorular'
+  },
+  'شخصيتك على القهوة': {
+    en: 'Your Cafe Character',
+    tr: 'Kahvehane Karakterin'
+  },
+  'اضغط على شخصيتك لتغيير الشكل أو الوش أو الطاقية': {
+    en: 'Tap your character to customize outfit, face, or hat',
+    tr: 'Kıyafet, yüz veya şapkayı değiştirmek için karakterine dokun'
+  },
+  'اعمل غرفة (أنا الحكم أو العب معاهم)': {
+    en: 'Create Room (Be Host or Play Along)',
+    tr: 'Oda Kur (Hakem Ol veya Birlikte Oyna)'
+  },
+  'أو': { en: 'OR', tr: 'VEYA' },
+  'عندك كود غرفة؟': { en: 'Have a room code?', tr: 'Oda kodun var mı?' },
+  'ادخل': { en: 'Join', tr: 'Katıl' },
+  'اعمل شخصيتك': { en: 'Create Your Character', tr: 'Karakterini Oluştur' },
+  'الحكم يعمل الغرفة (2 لـ 4 فرق) أو يلعب معاهم': {
+    en: 'Host sets up the room (2–4 teams) or plays along',
+    tr: 'Hakem odayı kurar (2–4 takım) veya birlikte oynar'
+  },
+  'امسح الـ QR وادخل من موبايلك': {
+    en: 'Scan the QR code & join from your phone',
+    tr: 'QR kodu okut ve telefonundan katıl'
+  },
+  'العبوا والنقط بتتحسب لوحدها': {
+    en: 'Play together & scores update automatically',
+    tr: 'Birlikte oynayın, puanlar otomatik olarak hesaplansın'
+  },
+  'رجوع': { en: 'Back', tr: 'Geri' },
+  'رجوع للصفحة السابقة': { en: 'Back to previous page', tr: 'Önceki sayfaya dön' },
+  'شخصيتي': { en: 'My Character', tr: 'Karakterim' },
+  'غيّر شكلك': { en: 'Edit Look', tr: 'Görünümü Değiştir' },
+  'اضغط لتغيير شكل شخصيتك أو اسمك': {
+    en: 'Tap to change your character or name',
+    tr: 'Karakterini veya adını değiştirmek için dokun'
+  },
+  'كود الغرفة': { en: 'Room Code', tr: 'Oda Kodu' },
+
+  // المراحل وصفحة الشخصية
+  'الشخصية': { en: 'Character', tr: 'Karakter' },
+  'إعداد اللعبة': { en: 'Game Setup', tr: 'Oyun Kurulumu' },
+  'غرفة الانتظار': { en: 'Lobby', tr: 'Bekleme Odası' },
+  'اللعب': { en: 'Play', tr: 'Oyun' },
+  'الفريق': { en: 'Team', tr: 'Takım' },
+  'الانتظار': { en: 'Waiting', tr: 'Bekleme' },
+  'غيّر شكل شخصيتك': { en: 'Customize Your Character', tr: 'Karakterini Özelleştir' },
+  'اسمك': { en: 'Your Name', tr: 'Adın' },
+  'اكتب اسمك هنا': { en: 'Enter your name here', tr: 'Adını buraya yaz' },
+  'شخصية عشوائية': { en: 'Random Character', tr: 'Rastgele Karakter' },
+  'الشكل': { en: 'Outfit', tr: 'Kıyafet' },
+  'الوش': { en: 'Face', tr: 'Yüz' },
+  'الطاقية': { en: 'Hat', tr: 'Şapka' },
+  'حفظ الشكل والرجوع': { en: 'Save & Return', tr: 'Kaydet ve Dön' },
+  'التالي': { en: 'Next', tr: 'İleri' },
+  'السابق': { en: 'Previous', tr: 'Önceki' },
+
+  // أسماء الألعاب والوصف
+  'كرك': { en: 'Karak (Bluff)', tr: 'Karak (Blöf)' },
+  'الكل بيكدب': { en: 'Bluff & Trivia', tr: 'Herkes Blöf Yapıyor' },
+  'سؤال غريب، كل فريق يألف إجابة تقنع التانيين، والنقط للي يقفش الصح أو يخدع غيره.': {
+    en: 'Weird trivia where each team invents a believable fake answer—score by finding the truth or fooling others!',
+    tr: 'İlginç sorulara inandırıcı yanlış cevaplar uydurun; doğruyu bulun veya rakipleri kandırarak puan toplayın!'
+  },
+  'سحلب': { en: 'Sahlab (5 Hints)', tr: 'Sahlep (5 İpucu)' },
+  'خمس تلميحات': { en: 'Five Hints', tr: 'Beş İpucu' },
+  'من الصعب للسهل بـ 100 لـ 20 نقطة. جاوبت غلط؟ تتجمد لحد التلميح الجاي.': {
+    en: '5 progressive hints from 100 down to 20 points. Wrong guess? Your team freezes until the next hint!',
+    tr: '100 puandan 20 puana doğru 5 ipucu. Yanlış tahmin ederseniz sonraki ipucuna kadar donarsınız!'
+  },
+  'يانسون': { en: 'Yansoon (Wordle)', tr: 'Anason (Kelime)' },
+  'كلمة السر في 6 محاولات': { en: 'Secret Word in 6 Tries', tr: '6 Denemede Gizli Kelime' },
+  'لعبة الكلمات والحروف! خمّن الكلمة السرية في 6 محاولات — الأخضر في مكانه، الأصفر موجود في الكلمة، والرمادي مش موجود.': {
+    en: 'Word guessing showdown! Find the secret word in 6 tries — Green is right spot, Yellow is in word, Gray is absent.',
+    tr: 'Kelime tahmin oyunu! Gizli kelimeyi 6 denemede bulun — Yeşil doğru yer, Sarı kelimede var, Gri yok.'
+  },
+  'عنّاب': { en: 'Annab (Buzzer)', tr: 'Hünnap (Buton)' },
+  'الأسرع على الباز': { en: 'Fastest on the Buzzer', tr: 'Butona En Hızlı Basan' },
+  'سؤال و4 اختيارات وزرار باز لكل فريق! اللي يدوس الأول يجاوب، ولو غلط إجابته تتشطب والفرصة تروح للفريق التاني.': {
+    en: '1 question, 4 choices & a buzzer! First team to buzz answers; if wrong, that option is crossed out and others can steal.',
+    tr: '1 soru, 4 seçenek ve buton! İlk basan cevaplar; yanlışsa seçenek elenir ve hak diğer takıma geçer.'
+  },
+  'لبن تمر هندي': { en: 'Tamr Hindi (Who Am I)', tr: 'Demirhindi (Kimim Ben)' },
+  'مين على راسك': { en: 'Heads Up & Chess Clock', tr: 'Ben Kimim & Satranç Saati' },
+  'شخصية سرية وساعة شطرنج بتعد. اسأل أه أو لأ، واعرف الشخصية قبل ما وقتك يخلص.': {
+    en: 'Secret character with a ticking chess clock! Ask Yes/No questions and guess who it is before your time runs out.',
+    tr: 'Gizli karakter ve işleyen satranç saati! Evet/Hayır soruları sorun ve süreniz bitmeden karakteri tahmin edin.'
+  },
+
+  // إعداد اللعبة
+  'إعداد السهرة': { en: 'Game Night Setup', tr: 'Oyun Gecesi Kurulumu' },
+  'اختار اللعبة، حدد نظام اللعب (فرق من 2 لـ 4 فرق · أو وضع فردي لحد 10 لاعبين)، وتقدر كمان تلعب معاهم والـ AI يحكم!': {
+    en: 'Pick a game, choose play mode (2–4 Teams or Solo up to 10 players), and even play along while AI referees!',
+    tr: 'Oyunu seçin, oyun modunu belirleyin (2–4 Takım veya 10 kişiye kadar Bireysel) ve AI hakemliğinde siz de oynayın!'
+  },
+  'اختار اللعبة': { en: 'Choose a Game', tr: 'Oyunu Seç' },
+  'نظام اللعب (فردي ولا فرق) ودورك': { en: 'Play Mode (Solo or Teams) & Your Role', tr: 'Oyun Modu (Bireysel / Takım) ve Rolün' },
+  'نظام اللعب': { en: 'Play Mode', tr: 'Oyun Modu' },
+  '(اختار بين اللعب في فرق أو اللعب الفردي لحد 10 أشخاص)': {
+    en: '(Choose between Team mode or Solo mode up to 10 players)',
+    tr: '(Takım oyunu veya 10 kişiye kadar bireysel mod arasında seçin)'
+  },
+  'نظام الفرق (2 لـ 4 فرق)': { en: 'Teams Mode (2 to 4 Teams)', tr: 'Takım Modu (2 - 4 Takım)' },
+  'وضع فردي — كل واحد لوحده (لحد 10 لاعبين)': {
+    en: 'Solo Mode — Free-for-All (Up to 10 Players)',
+    tr: 'Bireysel Mod — Herkes Tek (10 Oyuncuya Kadar)'
+  },
+  'وضع اللعب الفردي (لحد 10 أشخاص)': {
+    en: 'Solo Free-for-All Mode (Up to 10 Players)',
+    tr: 'Bireysel Oyun Modu (10 Kişiye Kadar)'
+  },
+  'كل لاعب بيدخل الغرفة بيلعب لوحده باسمه وشخصيته بدون تقسيم فرق (من 2 لحد 10 لاعبين).': {
+    en: 'Every player competes individually with their own name and character without team splits (2 to 10 players).',
+    tr: 'Odaya giren her oyuncu takım olmadan kendi adı ve karakteriyle bireysel yarışır (2 ila 10 oyuncu).'
+  },
+  'عدد الفرق': { en: 'Number of Teams', tr: 'Takım Sayısı' },
+  '(تقدر تزود لحد 4 فرق أو تقلل لفريقين)': {
+    en: '(You can set between 2 and 4 teams)',
+    tr: '(2 ile 4 takım arasında ayarlayabilirsiniz)'
+  },
+  'فريقين (2)': { en: '2 Teams', tr: '2 Takım' },
+  '3 فرق': { en: '3 Teams', tr: '3 Takım' },
+  '4 فرق': { en: '4 Teams', tr: '4 Takım' },
+  'زود فريق': { en: 'Add Team', tr: 'Takım Ekle' },
+  'شيل فريق': { en: 'Remove Team', tr: 'Takım Çıkar' },
+  'وضع الحكم (إنت):': { en: 'Host Mode (You):', tr: 'Hakem Modu (Sen):' },
+  'أنا الحكم (أنظم بنفسي)': { en: 'I am the Host (Referee Myself)', tr: 'Hakem Benim (Kendim Yönetirim)' },
+  'العب معاهم والـ AI يحكم': { en: 'Play Along & Let AI Referee', tr: 'Birlikte Oyna, AI Hakemlik Yapsın' },
+  'هتنضم وتلعب مع أنهي فريق؟': { en: 'Which team will you join?', tr: 'Hangi takıma katılıp oynayacaksın?' },
+  'الأسئلة ومستوى الصعوبة': { en: 'Questions & Difficulty Level', tr: 'Sorular ve Zorluk Seviyesi' },
+  'مستوى صعوبة الأسئلة': { en: 'Question Difficulty', tr: 'Soru Zorluk Seviyesi' },
+  '(متاح في الأربع ألعاب)': { en: '(Available across all games)', tr: '(Tüm oyunlarda geçerli)' },
+  'سهل': { en: 'Easy', tr: 'Kolay' },
+  'متوسط': { en: 'Medium', tr: 'Orta' },
+  'صعب': { en: 'Hard', tr: 'Zor' },
+  'أسئلة خفيفة ومشهورة لبداية السهرة': {
+    en: 'Light & popular questions to warm up the night',
+    tr: 'Geceye ısınmak için çerezlik ve popüler sorular'
+  },
+  'توازن مثالي بين السهل والتحدي': {
+    en: 'Ideal balance between fun and challenge',
+    tr: 'Eğlence ve rekabet arasında ideal denge'
+  },
+  'أسئلة عميقة وتفاصيل للمحترفين بس': {
+    en: 'Deep cuts and tricky details for pros only',
+    tr: 'Sadece ustalar için derin ve zorlayıcı sorular'
+  },
+  'بنك الأسئلة': { en: 'Question Bank', tr: 'Soru Bankası' },
+  'أسئلتك الخاصة (كاستم)': { en: 'Custom Questions', tr: 'Özel Soruların (Custom)' },
+  'اختار اللعبة الأول.': { en: 'Select a game first.', tr: 'Önce bir oyun seçin.' },
+  'مساعد الأسئلة الذكي (AI)': { en: 'Smart AI Question Assistant', tr: 'Akıllı AI Soru Asistanı' },
+  'كل سؤال بيتسأل مرة واحدة بس — عمره ما هيتكرر في أي سهرة جاية.': {
+    en: 'Every question is asked only once — it will never repeat in future sessions.',
+    tr: 'Her soru yalnızca bir kez sorulur — sonraki oyunlarda asla tekrar etmez.'
+  },
+  'الوقت وشاشة الحكم': { en: 'Timers & Host Screen', tr: 'Süreler ve Hakem Ekranı' },
+  'وضع التلفزيون (إخفاء الإجابات من شاشة الحكم)': {
+    en: 'TV Mode (Hide Secret Answers on Host Screen)',
+    tr: 'TV Modu (Hakem Ekranında Cevapları Gizle)'
+  },
+  'شغال — الإجابات السرية هتكون مخفية من شاشة الحكم وتقدر تظهرها بزرار في أي وقت': {
+    en: 'ON — Secret answers stay hidden on the host screen until you toggle them',
+    tr: 'AÇIK — Gizli cevaplar hakem ekranında gizlenir, istediğiniz an butonla açabilirsiniz'
+  },
+  'مقفول — الإجابات الصح بتظهر للحكم من أول الجولة': {
+    en: 'OFF — Correct answers are visible to the host from the start of the round',
+    tr: 'KAPALI — Doğru cevaplar turun başından itibaren hakeme görünür'
+  },
+  'الوقت بيتقفل أول ما اللعبة تبدأ — وتقدر تغيّر إخفاء الإجابات في أي وقت من شاشة الحكم.': {
+    en: 'Timers lock once the game starts — you can toggle answer hiding anytime from the host screen.',
+    tr: 'Oyun başladığında süreler kilitlenir — cevap gizlemeyi hakem ekranından istediğiniz an değiştirebilirsiniz.'
+  },
+  'اعمل الغرفة وابعت الدعوة': { en: 'Create Room & Send Invite', tr: 'Odayı Kur ve Davet Gönder' },
+
+  // اللوبي واللعب
+  'ادعي الشلة': { en: 'Invite the Crew', tr: 'Ekibi Davet Et' },
+  'امسحوا الكود بكاميرا الموبايل أو انسخوا الرابط للدخول للغرفة': {
+    en: 'Scan the QR code with your phone camera or copy the room link to join',
+    tr: 'Odaya katılmak için telefon kamerasıyla QR kodu okutun veya bağlantıyı kopyalayın'
+  },
+  'نسخ': { en: 'Copy', tr: 'Kopyala' },
+  'اللعبة': { en: 'Game', tr: 'Oyun' },
+  'مستوى الصعوبة': { en: 'Difficulty', tr: 'Zorluk' },
+  'وضع الأدمن': { en: 'Host Mode', tr: 'Yönetici Modu' },
+  'حكم بشري': { en: 'Human Referee', tr: 'İnsan Hakem' },
+  'الأسئلة': { en: 'Questions', tr: 'Sorular' },
+  'العدد': { en: 'Count', tr: 'Sayı' },
+  'الوقت': { en: 'Timers', tr: 'Süre' },
+  'اللاعبين': { en: 'Players', tr: 'Oyuncular' },
+  'وضع التلفزيون': { en: 'TV Mode', tr: 'TV Modu' },
+  'إخفاء الإجابات': { en: 'Answers Hidden', tr: 'Cevaplar Gizli' },
+  'إظهار للحكم': { en: 'Visible to Host', tr: 'Hakeme Görünür' },
+  'كوكتيل': { en: 'Mix / All', tr: 'Karışık' },
+  'رجوع للإعداد': { en: 'Back to Setup', tr: 'Kuruluma Dön' },
+  'رجوع لغرفة الانتظار': { en: 'Back to Lobby', tr: 'Bekleme Odasına Dön' },
+  'غيّر شكل شخصيتي': { en: 'Change My Character', tr: 'Karakterimi Değiştir' },
+  'لوحة الحكم': { en: 'Host Panel', tr: 'Hakem Paneli' },
+  'تحكم الأدمن (AI حكم)': { en: 'Admin Controls (AI Referee)', tr: 'Yönetici Paneli (AI Hakem)' },
+  'إيقاف مؤقت': { en: 'Pause Timer', tr: 'Duraklat' },
+  'كمّل اللعب': { en: 'Resume Game', tr: 'Oyuna Devam Et' },
+  'تخطي للجولة الجاية': { en: 'Skip to Next Round', tr: 'Sonraki Tura Geç' },
+  'النتيجة النهائية': { en: 'Final Results', tr: 'Final Sonuçları' },
+  'السؤال الجاي': { en: 'Next Question', tr: 'Sonraki Soru' },
+  'الجولة الجاية': { en: 'Next Round', tr: 'Sonraki Tur' },
+  'الكلمة الجاية': { en: 'Next Word', tr: 'Sonraki Kelime' },
+  'الصفحة الرئيسية': { en: 'Home Page', tr: 'Ana Sayfa' },
+  'الغرفة اتقفلت': { en: 'Room Closed', tr: 'Oda Kapatıldı' },
+  'الحكم قفل الغرفة أو الكود مش صحيح.': {
+    en: 'The host closed the room or the room code is invalid.',
+    tr: 'Hakem odayı kapattı veya oda kodu geçersiz.'
+  },
+  'الحكم طلّعك من الغرفة': { en: 'You were removed from the room', tr: 'Hakem seni odadan çıkardı' },
+  'بنحضّر القهوة': { en: 'Brewing the coffee', tr: 'Kahveler hazırlanıyor' },
+  'تعادل!': { en: "It's a Tie!", tr: 'Berabere!' },
+  'اقفل الغرفة وابدأ من جديد': { en: 'Close Room & Start Fresh', tr: 'Odayı Kapat ve Yeniden Başla' }
+};
+
+// عبارات جزئية ومصطلحات شائعة تترجم تلقائياً داخل النصوص المركبة
+const I18N_TOKENS = [
+  ['في لعبة كرك: الطبيعي 6 إجابات (5 مضللة + 1 صح)، ولو عدد اللاعبين 6 أو أكتر (6، 7، 8، 9، 10 لاعبين) عدد الإجابات المضللة بيزيد تلقائياً على حسب عددهم عشان كذبة كل لاعب تنزل مع الإجابة الصح!',
+    'In Karak: default is 6 options (5 bluffs + 1 truth), and with 6–10 players the options scale automatically so every player’s bluff is included!',
+    'Karak oyununda: normalde 6 seçenek (5 blöf + 1 doğru) vardır; 6–10 oyuncuda herkesin blöfü dahil olacak şekilde seçenekler otomatik artar!'],
+  ['هتدخل كلاعب فردي ضمن الـ 10 لاعبين، والـ AI هيمسك التحكيم والنقاط بالكامل!',
+    'You will join as a solo player among the 10 players while AI handles all judging and scoring!',
+    '10 oyuncu arasında bireysel oyuncu olarak katılacaksınız ve tüm hakemliği AI üstlenecek!'],
+  ['كل تحكم الحكم هيتحول للـ AI تلقائياً (تصحيح، نقاط، ونقل للجولة الجاية) وهتظهرلك شاشة لاعب عادي في فريقك عشان ماتتحرقلكش الإجابات!',
+    'All refereeing switches to AI automatically (grading, points & advancing rounds) and you get a normal player screen so answers aren’t spoiled!',
+    'Tüm hakemlik otomatik olarak AI kontrolüne geçer (puanlama ve tur geçişi) ve cevapların görünmemesi için normal oyuncu ekranı açılır!'],
+  ['بعد ما اللاعبين يدخلوا، إنت اللي بتختار قائد كل فريق وتقدر كمان تنضم لأي فريق من جوه غرفة الانتظار.',
+    'Once players join, you assign team captains and can also join any team right from the lobby.',
+    'Oyuncular katıldıktan sonra takım kaptanlarını seçebilir ve bekleme odasından istediğiniz takıma katılabilirsiniz.'],
+  ['في الوضع الفردي كل لاعب بيبعت إجابته بنفسه، وتقدر تنضم للعب معاهم في أي وقت من غرفة الانتظار.',
+    'In Solo mode every player submits their own answer, and you can join in anytime from the lobby.',
+    'Bireysel modda her oyuncu cevabını kendisi gönderir; bekleme odasından istediğiniz an katılabilirsiniz.'],
+  ['شغال — إجابات مضللة ذكية من نفس نوع الإجابة ونفس الكتالوج بالظبط (عربي 100%)',
+    'ON — Smart AI bluffs matching the exact answer type and category',
+    'AÇIK — Aynı kategori ve cevap türünde akıllı AI blöfleri'],
+  ['شغال — إجابات مضللة من نفس نوع الإجابة ونفس الكتالوج بالظبط',
+    'ON — Smart AI bluffs matching the exact answer type and category',
+    'AÇIK — Aynı kategori ve cevap türünde akıllı AI blöfleri'],
+  ['مقفول — الأسئلة من البنك بس', 'OFF — Verified question bank only', 'KAPALI — Sadece soru bankası'],
+  ['وقت كتابة الإجابة المزيفة', 'Fake Answer Writing Time', 'Blöf Yazma Süresi'],
+  ['وقت الاختيار', 'Voting Time', 'Oylama Süresi'],
+  ['وقت كل تلميح', 'Time per Hint', 'İpucu Başına Süre'],
+  ['وقت الباز والإجابة', 'Buzzer & Answer Time', 'Buton ve Cevap Süresi'],
+  ['رصيد ساعة الشطرنج لكل فريق', 'Chess Clock per Team', 'Takım Başına Satranç Saati'],
+  ['طول الكلمة', 'Word Length', 'Kelime Uzunluğu'],
+  ['وقت المحاولة', 'Attempt Timer', 'Deneme Süresi'],
+  ['بدون تايمر (هادي)', 'No Timer (Relaxed)', 'Süresiz (Rahat)'],
+  ['بدون تايمر', 'No Timer', 'Süresiz'],
+  ['ارجع لغرفتك', 'Return to your room', 'Odana geri dön'],
+  ['تغيير اللعبة والأسئلة والإعدادات', 'Change Game, Questions & Settings', 'Oyunu, Soruları ve Ayarları Değiştir'],
+  ['(من غير ما تخرج اللاعبين)', '(without kicking players out)', '(oyuncuları çıkarmadan)'],
+  ['نوع اللعبة الحالية', 'Current Game', 'Mevcut Oyun'],
+  ['الأسئلة ومستوى الصعوبة والكتالوج', 'Questions, Difficulty & Categories', 'Sorular, Zorluk ve Kategoriler'],
+  ['إعدادات الوقت وشاشة الحكم', 'Timers & Host Screen Settings', 'Süre ve Hakem Ekranı Ayarları'],
+  ['أدوات التجربة السريعة', 'Quick Test Tools', 'Hızlı Test Araçları'],
+  ['ضيف لاعب تجريبي', 'Add Test Player', 'Test Oyuncusu Ekle'],
+  ['ضيف لاعب فردي تجريبي', 'Add Solo Test Player', 'Bireysel Test Oyuncusu Ekle'],
+  ['مستني لاعبين...', 'Waiting for players...', 'Oyuncular bekleniyor...'],
+  ['مستنيين الحكم', 'Waiting for host', 'Hakem bekleniyor'],
+  ['الإجابة الصح', 'Correct Answer', 'Doğru Cevap'],
+  ['كذبة الحكم', 'Host Bluff', 'Hakem Blöfü'],
+  ['كذبة الـ AI', 'AI Bluff', 'AI Blöfü'],
+  ['الـ AI بيحكم', 'AI Referee', 'AI Hakem'],
+  ['حكم AI', 'AI Referee', 'AI Hakem'],
+  ['القائد', 'Captain', 'Kaptan'],
+  ['فريقك', 'Your Team', 'Takımın'],
+  ['دوس الباز!', 'HIT THE BUZZER!', 'BUTONA BAS!'],
+  ['الباز مفتوح لكل الفرق!', 'Buzzer is open for all teams!', 'Buton tüm takımlara açık!'],
+  ['تخمين', 'Guess', 'Tahmin Et'],
+  ['مسح', 'Delete', 'Sil'],
+  ['حروف', 'letters', 'harf'],
+  ['دقيقة', 'min', 'dk'],
+  ['ثانية', 'sec', 'sn'],
+  ['نقطة', 'pts', 'puan'],
+  ['سؤال جاهز', 'questions ready', 'hazır soru'],
+  ['شخصية جاهزة', 'characters ready', 'hazır karakter'],
+  ['الكتالوج الشامل', 'Categories Catalog', 'Kategori Kataloğu'],
+  ['قسم — لو ماختارتش حاجة هيبقى كوكتيل', 'categories — leave empty for a full mix', 'kategori — seçmezseniz karışık gelir'],
+  ['عدد الأسئلة', 'Number of Questions', 'Soru Sayısı'],
+  ['عدد الجولات', 'Number of Rounds', 'Tur Sayısı'],
+  ['الفريق الأول', 'Team A', '1. Takım'],
+  ['الفريق التاني', 'Team B', '2. Takım'],
+  ['الفريق التالت', 'Team C', '3. Takım'],
+  ['الفريق الرابع', 'Team D', '4. Takım'],
+  ['شلة الكرك', 'Karak Crew', 'Karak Ekibi'],
+  ['ملوك السحلب', 'Sahlab Kings', 'Sahlep Kralları'],
+  ['فرسان العنّاب', 'Annab Knights', 'Hünnap Şövalyeleri'],
+  ['باشاوات التمر', 'Tamr Pashas', 'Demirhindi Paşaları'],
+  ['تاريخ وحضارات', 'History & Civilizations', 'Tarih ve Medeniyetler'],
+  ['جغرافيا ودول', 'Geography & Countries', 'Coğrafya ve Ülkeler'],
+  ['علوم وفضاء', 'Science & Space', 'Bilim ve Uzay'],
+  ['أفلام ومسلسلات', 'Movies & Series', 'Film ve Diziler'],
+  ['كورة ورياضة', 'Football & Sports', 'Futbol ve Spor'],
+  ['أغاني ومزيكا', 'Music & Songs', 'Müzik ve Şarkılar'],
+  ['أكل ومشروبات', 'Food & Drinks', 'Yemek ve İçecekler'],
+  ['حيوانات وطبيعة', 'Animals & Nature', 'Hayvanlar ve Doğa'],
+  ['غرائب وعجائب', 'Weird & Wonderful', 'Garip Bilgiler'],
+  ['مصر والوطن العربي', 'Egypt & Arab World', 'Mısır ve Arap Dünyası'],
+  ['تكنولوجيا وألعاب', 'Tech & Gaming', 'Teknoloji ve Oyunlar'],
+  ['مشاهير وشخصيات', 'Celebrities & Figures', 'Ünlüler ve Karakterler'],
+  ['أمثال وكلام شعبي', 'Proverbs & Slang', 'Atasözleri ve Deyimler'],
+  ['كرتون وأنمي', 'Cartoons & Anime', 'Çizgi Film ve Anime'],
+  ['أشياء في كل بيت', 'Everyday Objects', 'Ev Eşyaları'],
+  ['مهن وحرف', 'Jobs & Crafts', 'Meslekler'],
+  ['اختراعات واكتشافات', 'Inventions & Discoveries', 'İcatlar ve Keşifler'],
+  ['كتب وأدب', 'Books & Literature', 'Kitap ve Edebiyat'],
+  ['أساطير وحكايات', 'Myths & Legends', 'Efsaneler ve Hikayeler'],
+  ['براندات وشركات', 'Brands & Companies', 'Markalar ve Şirketler'],
+  ['الأملح', 'The Witty', 'En Esprili'],
+  ['الأجدع', 'The Bold', 'En Cesur'],
+  ['الأروق', 'The Chill', 'En Rahat'],
+  ['الأسطى', 'The Boss', 'Usta'],
+  ['المعلّم', 'The Maestro', 'Muallim'],
+  ['الكبير', 'The Chief', 'Reis'],
+  ['الفنان', 'The Artist', 'Sanatçı'],
+  ['الرايق', 'The Cool', 'Keyifli']
+];
+
+function trText(raw) {
+  const lang = S.lang || 'ar';
+  if (lang === 'ar' || !raw) return raw;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return raw;
+  if (I18N_EXACT[trimmed] && I18N_EXACT[trimmed][lang]) {
+    return String(raw).replace(trimmed, I18N_EXACT[trimmed][lang]);
+  }
+  let out = String(raw);
+  const idx = lang === 'tr' ? 2 : 1;
+  for (let i = 0; i < I18N_TOKENS.length; i++) {
+    const [ar, en, tr] = I18N_TOKENS[i];
+    const target = idx === 2 ? tr : en;
+    if (out.includes(ar)) out = out.split(ar).join(target);
+  }
+  return out;
+}
+
+function translateDom(root) {
+  const lang = S.lang || 'ar';
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  if (lang === 'ar' || !root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  for (const node of nodes) {
+    if (node.parentElement && node.parentElement.closest('.lang-switch')) continue;
+    const val = node.nodeValue;
+    if (val && /[\u0600-\u06FF]/.test(val)) {
+      node.nodeValue = trText(val);
+    }
+  }
+  root.querySelectorAll('[placeholder],[title],[aria-label]').forEach((el) => {
+    ['placeholder', 'title', 'aria-label'].forEach((attr) => {
+      const v = el.getAttribute(attr);
+      if (v && /[\u0600-\u06FF]/.test(v)) el.setAttribute(attr, trText(v));
+    });
+  });
+}
+
+function setLang(lang) {
+  S.lang = ['ar', 'en', 'tr'].includes(lang) ? lang : 'ar';
+  LS.set('lang', S.lang);
+  document.documentElement.lang = S.lang;
+  document.documentElement.dir = S.lang === 'ar' ? 'rtl' : 'ltr';
+  document.title = S.lang === 'en'
+    ? 'Ala El-Ahwa — Multiplayer Cafe Party Games'
+    : S.lang === 'tr'
+      ? 'Ala El-Ahwa — Çok Oyunculu Kahvehane Parti Oyunları'
+      : 'على القهوة — ألعاب السهرة الجماعية (كرك · سحلب · يانسون · عنّاب · لبن تمر هندي)';
+  render();
+}
+
+function langSwitch(compact = false) {
+  const cur = S.lang || 'ar';
+  const langs = [
+    ['ar', 'العربية'],
+    ['en', 'English'],
+    ['tr', 'Türkçe']
+  ];
+  return `<div class="lang-switch ${compact ? 'lang-switch-sm' : ''}" role="group" aria-label="Language / اللغة">
+    ${langs.map(([code, label]) => `<button type="button" class="lang-btn ${cur === code ? 'on' : ''}" onclick="setLang('${code}')" aria-pressed="${cur === code}">${label}</button>`).join('')}
+  </div>`;
+}
+
+// ------------------------------------------------------------------
 // التوست
 // ------------------------------------------------------------------
 function toast(msg, kind = '') {
   const box = $('#toasts');
   const el = document.createElement('div');
   el.className = 'toast ' + kind;
-  el.innerHTML = `${kind === 'err' ? ic('x') : ic('bulb')}<span>${esc(msg)}</span>`;
+  el.innerHTML = `${kind === 'err' ? ic('x') : ic('bulb')}<span>${esc(trText(msg))}</span>`;
   box.appendChild(el);
   setTimeout(() => el.classList.add('out'), 2800);
   setTimeout(() => el.remove(), 3300);
@@ -445,9 +841,11 @@ function secretBar(label, valueHtml) {
 }
 
 function logo(size = 'lg') {
+  const l1 = S.lang === 'en' ? 'Ala' : S.lang === 'tr' ? 'Kahve' : 'على';
+  const l2 = S.lang === 'en' ? 'El-Ahwa' : S.lang === 'tr' ? 'Keyfi' : 'القهوة';
   return `<div class="logo logo-${size}">
     <div class="logo-board"><span class="logo-tape"></span>
-      <span class="logo-line1">على</span><span class="logo-line2">القهوة</span>
+      <span class="logo-line1">${l1}</span><span class="logo-line2">${l2}</span>
       ${sticker('cup', size === 'lg' ? 66 : 30, 'logo-cup')}
     </div>
   </div>`;
@@ -611,6 +1009,7 @@ function topbar(extra = '') {
     </div>
     <div class="topbar-mid">${extra}</div>
     <div class="topbar-end">
+      ${langSwitch(true)}
       ${showMyAv ? `<button type="button" class="my-avatar-btn" onclick="openAvatarEditor()" title="اضغط لتغيير شكل شخصيتك أو اسمك">
         ${avatar(myAvProf, 'xs')}
         <span class="my-avatar-txt"><b>${esc(myAvProf.name || 'شخصيتي')}</b><small>${ic('pencil')} غيّر شكلك</small></span>
@@ -736,6 +1135,7 @@ function render() {
   }
   app.className = changed ? 'enter' : '';
   app.innerHTML = html;
+  translateDom(app);
   S.lastKey = key;
 
   if (focusId) {
@@ -789,6 +1189,7 @@ const mmss = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s %
 // ==================================================================
 function viewHome() {
   return `<section class="wrap narrow home">
+    <div class="home-lang-bar">${langSwitch(false)}</div>
     ${logo('lg')}
     <p class="home-sub">ألعاب السهرة على القهوة — فرق، حكم، وأسئلة عمرها ما بتتكرر</p>
     <div class="home-art" aria-hidden="true">
