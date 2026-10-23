@@ -64,6 +64,14 @@ const POINTS = {
   annab: { first: 10, steal: 5 },
   yansoon: [20, 16, 12, 8, 5, 2]
 };
+function sahlabPointsFor(totalHints = 5) {
+  const n = Math.max(1, Math.min(5, Number(totalHints) || 5));
+  if (n === 1) return [10];
+  if (n === 2) return [10, 5];
+  if (n === 3) return [10, 6, 3];
+  if (n === 4) return [10, 8, 5, 2];
+  return [10, 8, 6, 4, 2];
+}
 const DEFAULT_SETTINGS = {
   playMode: 'teams', // 'teams' | 'solo'
   difficulty: 'medium', // 'easy' | 'medium' | 'hard'
@@ -73,8 +81,10 @@ const DEFAULT_SETTINGS = {
   writeSec: 60,
   voteSec: 30,
   hintSec: 30,
+  sahlabHints: 5,
   chessSec: 180,
   buzzSec: 20,
+  annabLockOpts: false,
   yansoonSec: 0,
   wordLen: 5,
   hideSecret: false,
@@ -83,7 +93,7 @@ const DEFAULT_SETTINGS = {
   adminPlays: false,
   adminTeam: 'A'
 };
-const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], chessSec: [60, 600], buzzSec: [10, 60], yansoonSec: [0, 180], wordLen: [3, 8], teamCount: [2, 4] };
+const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], sahlabHints: [1, 5], chessSec: [60, 600], buzzSec: [10, 60], yansoonSec: [0, 180], wordLen: [3, 8], teamCount: [2, 4] };
 
 // ============================================================
 // درع الحماية الشامل ضد الثغرات (Injection Shield)
@@ -161,6 +171,33 @@ function persistSavedPacks() {
 }
 loadSavedPacks();
 
+const ACCOUNTS_FILE = path.join(BASE_DIR, 'data', 'accounts.json');
+let ACCOUNTS = [];
+function loadAccounts() {
+  try {
+    const dir = path.dirname(ACCOUNTS_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (fs.existsSync(ACCOUNTS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8'));
+      if (Array.isArray(parsed)) ACCOUNTS = parsed;
+    }
+  } catch (e) { ACCOUNTS = []; }
+}
+function persistAccounts() {
+  try {
+    const dir = path.dirname(ACCOUNTS_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(ACCOUNTS));
+  } catch (e) {}
+}
+loadAccounts();
+
+function normUserKey(u) {
+  return clean(u, 32).toLowerCase().replace(/\s+/g, '');
+}
+function hashPassword(password, salt) {
+  return crypto.scryptSync(String(password || ''), String(salt || ''), 32).toString('hex');
+}
 function hashSecret(secret) {
   return crypto.createHash('sha256').update(String(secret || '')).digest('hex');
 }
@@ -668,8 +705,10 @@ function sanitizeSettings(game, s = {}) {
   out.writeSec = clamp(s.writeSec ?? out.writeSec, LIMITS.writeSec);
   out.voteSec = clamp(s.voteSec ?? out.voteSec, LIMITS.voteSec);
   out.hintSec = clamp(s.hintSec ?? out.hintSec, LIMITS.hintSec);
+  out.sahlabHints = clamp(s.sahlabHints ?? out.sahlabHints, LIMITS.sahlabHints);
   out.chessSec = clamp(s.chessSec ?? out.chessSec, LIMITS.chessSec);
   out.buzzSec = clamp(s.buzzSec ?? out.buzzSec, LIMITS.buzzSec);
+  out.annabLockOpts = !!s.annabLockOpts;
   out.yansoonSec = clamp(s.yansoonSec ?? out.yansoonSec, LIMITS.yansoonSec);
   out.wordLen = clamp(s.wordLen ?? out.wordLen, LIMITS.wordLen);
   out.hideSecret = !!s.hideSecret;
@@ -703,7 +742,8 @@ function sanitizeCustom(list, game = 'karak') {
       if (!x || typeof x !== 'object') return null;
       const q = clean(x.q, 220);
       const truth = clean(x.truth || x.answer || x.name, 80);
-      const rawHints = Array.isArray(x.hints) ? x.hints.slice(0, 5).map((h) => clean(h, 220)) : [];
+      const hintCount = x.hintCount ? clamp(x.hintCount, [1, 5]) : 5;
+      const rawHints = Array.isArray(x.hints) ? x.hints.slice(0, hintCount).map((h) => clean(h, 220)) : [];
       const nonEmptyHints = rawHints.filter(Boolean);
       const hints = nonEmptyHints.length ? nonEmptyHints : (q ? [q] : []);
       const bluffs = Array.isArray(x.bluffs) ? x.bluffs.map((b) => clean(b, 60)).filter(Boolean).slice(0, 3) : [];
@@ -712,7 +752,7 @@ function sanitizeCustom(list, game = 'karak') {
         if (totalPhotoBytes + photo.length > 3 * 1024 * 1024) photo = '';
         else totalPhotoBytes += photo.length;
       }
-      return { q, truth, hints, bluffs, photo };
+      return { q, truth, hints, hintCount, bluffs, photo };
     })
     .filter((x) => {
       if (!x || !x.truth) return false;
@@ -796,8 +836,9 @@ async function startGame(room) {
         return { id: 'custom_' + i, custom: true, q: c.q, truth: c.truth, bluffs: Array.isArray(c.bluffs) ? c.bluffs.filter(Boolean) : [] };
       }
       if (room.game === 'sahlab') {
-        const hints = Array.isArray(c.hints) && c.hints.filter(Boolean).length ? c.hints.filter(Boolean).slice(0, 5) : [c.q || 'خمّن الإجابة'];
-        return { id: 'custom_' + i, custom: true, answer: c.truth, aliases: [], imageQuery: '', customPhoto: c.photo || null, hints };
+        const maxH = c.hintCount ? clamp(c.hintCount, [1, 5]) : 5;
+        const hints = Array.isArray(c.hints) && c.hints.filter(Boolean).length ? c.hints.filter(Boolean).slice(0, maxH) : [c.q || 'خمّن الإجابة'];
+        return { id: 'custom_' + i, custom: true, answer: c.truth, aliases: [], imageQuery: '', customPhoto: c.photo || null, hints, hintCount: hints.length };
       }
       if (room.game === 'yansoon') {
         const w = clean(c.truth || c.word, 20).replace(/[\u064B-\u0652\u0640\s]/g, '').trim();
@@ -1030,10 +1071,27 @@ async function startSahlabRound(room) {
       new Promise((r) => setTimeout(() => r(null), 350))
     ]);
   }
+  const cfgHints = clamp(room.settings.sahlabHints ?? 5, LIMITS.sahlabHints);
+  const rawHints = Array.isArray(item.hints) && item.hints.length ? item.hints : ['خمّن الإجابة'];
+  let activeHints;
+  if (item.custom) {
+    const cap = item.hintCount ? clamp(item.hintCount, [1, 5]) : cfgHints;
+    activeHints = rawHints.slice(0, Math.min(cap, cfgHints));
+  } else if (cfgHints === 3 && rawHints.length >= 5) {
+    activeHints = [rawHints[0], rawHints[2], rawHints[4]];
+  } else if (cfgHints === 4 && rawHints.length >= 5) {
+    activeHints = [rawHints[0], rawHints[1], rawHints[3], rawHints[4]];
+  } else {
+    activeHints = rawHints.slice(0, cfgHints);
+  }
+  if (!activeHints.length) activeHints = [rawHints[0] || 'خمّن الإجابة'];
+  const values = sahlabPointsFor(activeHints.length);
+
   room.sh = {
     answer: item.answer,
     aliases: item.aliases || [],
-    hints: item.hints,
+    hints: activeHints,
+    values,
     hintIdx: 0,
     frozen: Object.fromEntries(ids.map((id) => [id, false])),
     pending: Object.fromEntries(ids.map((id) => [id, null])),
@@ -1091,7 +1149,8 @@ function sahlabSolve(room, teamId) {
   const ids = teamIds(room);
   if (sh.autoHintTimer) { clearTimeout(sh.autoHintTimer); sh.autoHintTimer = null; }
   sh.winner = teamId;
-  const pts = teamId ? POINTS.sahlab[Math.min(sh.hintIdx, POINTS.sahlab.length - 1)] : 0;
+  const vals = Array.isArray(sh.values) && sh.values.length ? sh.values : sahlabPointsFor(sh.hints.length);
+  const pts = teamId ? vals[Math.min(sh.hintIdx, vals.length - 1)] : 0;
   if (teamId) addScore(room, teamId, pts);
   sh.pending = Object.fromEntries(ids.map((id) => [id, null]));
   sh.suggestions = Object.fromEntries(ids.map((id) => [id, {}]));
@@ -1693,11 +1752,13 @@ function viewFor(room, pid) {
   if (room.game === 'sahlab' && room.sh) {
     const sh = room.sh;
     const solved = room.phase === 'solved';
+    const shVals = Array.isArray(sh.values) && sh.values.length ? sh.values : sahlabPointsFor(sh.hints.length);
     v.sh = {
       hints: sh.hints.slice(0, sh.hintIdx + 1),
       totalHints: sh.hints.length,
+      values: shVals,
       hintIdx: sh.hintIdx,
-      value: POINTS.sahlab[Math.min(sh.hintIdx, POINTS.sahlab.length - 1)],
+      value: shVals[Math.min(sh.hintIdx, shVals.length - 1)],
       frozen: sh.frozen,
       pending: isJudgeView ? sh.pending : Object.fromEntries(ids.map((id) => [id, !!sh.pending[id]])),
       myPending: myTeam ? sh.pending[myTeam] : null,
@@ -1755,6 +1816,7 @@ function viewFor(room, pid) {
       picks: an.picks,
       winner: an.winner,
       wonPts: an.wonPts || 0,
+      lockOpts: !!room.settings.annabLockOpts,
       suggestions: isJudgeView ? an.suggestions : myTeam ? (an.suggestions && an.suggestions[myTeam]) || {} : {}
     };
     if (isJudgeView || solved) {
@@ -2046,6 +2108,7 @@ async function handleAction(b) {
     const an = room.an;
     if (!p.team || !ids.includes(p.team)) ERR('اختار فريق الأول');
     if (action === 'an_suggest') {
+      if (room.settings.annabLockOpts) ERR('اختيار الإجابات مقفول عند الفرق — قولوا الإجابة للحكم وهو يختارها من شاشته!');
       const o = an.options.find((x) => x.id === b.opt);
       if (!o || an.eliminated.includes(o.id)) ERR('الاختيار ده مش متاح');
       if (!an.suggestions) an.suggestions = {};
@@ -2065,6 +2128,7 @@ async function handleAction(b) {
       return { room };
     }
     if (action === 'an_pick') {
+      if (room.settings.annabLockOpts) ERR('اختيار الإجابات مقفول عند الفرق — قولوا الإجابة للحكم وهو يختارها من شاشته!');
       if (!isCaptain(room, p.id)) ERR('قائد الفريق بس هو اللي بيختار الإجابة');
       if (an.subPhase === 'buzz' || !an.buzzedTeam) ERR('دوس زرار الباز الأول!');
       if (p.team !== an.buzzedTeam) ERR('مش دورك في الإجابة دلوقتي');
@@ -2392,6 +2456,36 @@ async function handleAction(b) {
     }
 
     // عنّاب
+    case 'an_toggle_lock': {
+      room.settings.annabLockOpts = b.lock !== undefined ? !!b.lock : !room.settings.annabLockOpts;
+      event(room, 'an_lock_toggled', { locked: room.settings.annabLockOpts });
+      break;
+    }
+    case 'an_admin_buzz': {
+      if (!room.an || room.phase !== 'play') ERR('مش وقته');
+      const t = validTeamId(room, b.team || ids.find((id) => !(room.an.triedTeams || []).includes(id)) || ids[0]);
+      room.an.buzzedTeam = t;
+      room.an.attempt = (room.an.triedTeams || []).length + 1;
+      room.an.subPhase = room.an.attempt > 1 ? 'steal' : 'answer';
+      setDeadline(room, room.settings.buzzSec);
+      event(room, 'buzz', { team: t });
+      break;
+    }
+    case 'an_admin_pick': {
+      if (!room.an || room.phase !== 'play') ERR('مش وقته');
+      const an = room.an;
+      const opt = an.options.find((x) => x.id === b.opt);
+      if (!opt || an.eliminated.includes(opt.id)) ERR('الاختيار ده مش متاح');
+      let targetTeam = an.buzzedTeam;
+      if (!targetTeam || an.subPhase === 'buzz') {
+        targetTeam = validTeamId(room, b.team || ids.find((id) => !(an.triedTeams || []).includes(id)) || ids[0]);
+        an.buzzedTeam = targetTeam;
+        an.attempt = (an.triedTeams || []).length + 1;
+        an.subPhase = an.attempt > 1 ? 'steal' : 'answer';
+      }
+      annabHandlePick(room, targetTeam, opt);
+      break;
+    }
     case 'an_reset_buzz': {
       if (!room.an) ERR('مش وقته');
       room.phase = 'play';
@@ -2541,6 +2635,17 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000).unref();
 
+function sanitizeCustomByGame(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    karak: sanitizeCustom(src.karak, 'karak'),
+    sahlab: sanitizeCustom(src.sahlab, 'sahlab'),
+    tamr: sanitizeCustom(src.tamr, 'tamr'),
+    annab: sanitizeCustom(src.annab, 'annab'),
+    yansoon: sanitizeCustom(src.yansoon, 'yansoon')
+  };
+}
+
 const server = http.createServer(async (req, res) => {
   applySecurityHeaders(res);
   if (!['GET', 'POST', 'HEAD'].includes(req.method || '')) {
@@ -2569,6 +2674,130 @@ const server = http.createServer(async (req, res) => {
   if (p.includes('\0')) {
     res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('Bad Request');
+  }
+
+  if (p === '/api/account' && req.method === 'POST') {
+    const b = await readBody(req);
+    const act = cleanId(b.action, 20);
+    const publicPack = (pk) => ({ id: pk.id, name: pk.name, game: pk.game, count: pk.count, items: pk.items, updatedAt: pk.updatedAt });
+    const ownsPack = (pk, pid, secHash) => Boolean(pid && secHash && pk.ownerPid === pid && safeEqualSecret(pk.ownerHash, secHash));
+    const buildPublicAccount = (acc) => {
+      const secHash = acc.secret ? hashSecret(acc.secret) : '';
+      const packs = SAVED_PACKS.filter((pk) => ownsPack(pk, acc.pid, secHash)).map(publicPack);
+      return {
+        username: acc.username,
+        pid: acc.pid,
+        secret: acc.secret,
+        profile: acc.profile || null,
+        customByGame: acc.customByGame || { karak: [], sahlab: [], tamr: [], annab: [], yansoon: [] },
+        packs,
+        updatedAt: acc.updatedAt
+      };
+    };
+
+    if (act === 'register') {
+      const username = clean(b.username, 28);
+      const userKey = normUserKey(username);
+      const pass = String(b.password || '').trim();
+      if (!userKey || username.length < 2) return json(res, 200, { ok: false, error: 'اكتب اسم حساب واضح (حرفين على الأقل)' });
+      if (pass.length < 3) return json(res, 200, { ok: false, error: 'اكتب كلمة سر من 3 حروف أو أرقام على الأقل' });
+      if (ACCOUNTS.some((a) => a.userKey === userKey)) {
+        return json(res, 200, { ok: false, error: 'اسم الحساب ده موجود بالفعل — اختار اسم تاني أو اعمل تسجيل دخول!' });
+      }
+      const pid = cleanId(b.pid, 40) || ('p_' + rid(6));
+      const secret = cleanId(b.secret, 40) || rid(12);
+      const salt = rid(8);
+      const passHash = hashPassword(pass, salt);
+      const prof = b.profile && typeof b.profile === 'object'
+        ? { name: clean(b.profile.name || username, 20), outfit: cleanId(b.profile.outfit, 30) || 'karak_cup', face: cleanId(b.profile.face, 30) || 'mustache_boss', hat: cleanId(b.profile.hat, 30) || 'fez_tarboush' }
+        : { name: clean(username, 20), outfit: 'karak_cup', face: 'mustache_boss', hat: 'fez_tarboush' };
+      const customByGame = sanitizeCustomByGame(b.customByGame);
+      const acc = {
+        username,
+        userKey,
+        salt,
+        passHash,
+        pid,
+        secret,
+        profile: prof,
+        customByGame,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      ACCOUNTS.unshift(acc);
+      if (ACCOUNTS.length > 500) ACCOUNTS = ACCOUNTS.slice(0, 500);
+      persistAccounts();
+      return json(res, 200, { ok: true, account: buildPublicAccount(acc) });
+    }
+
+    if (act === 'login') {
+      const username = clean(b.username, 28);
+      const userKey = normUserKey(username);
+      const pass = String(b.password || '').trim();
+      const acc = ACCOUNTS.find((a) => a.userKey === userKey);
+      if (!acc) return json(res, 200, { ok: false, error: 'الحساب ده مش موجود — اتأكد من الاسم أو اعمل إنشاء حساب جديد' });
+      const checkHash = hashPassword(pass, acc.salt);
+      if (!safeEqualSecret(acc.passHash, checkHash)) {
+        return json(res, 200, { ok: false, error: 'كلمة السر غلط — جرب تاني' });
+      }
+      // لو المستخدم كان كاتب أسئلة خاصة على المتصفح قبل ما يسجل دخول وحسابه فاضي في اللعبة دي، ندمجهم عشان مايضيعوش
+      if (b.customByGame && typeof b.customByGame === 'object') {
+        const incoming = sanitizeCustomByGame(b.customByGame);
+        if (!acc.customByGame) acc.customByGame = { karak: [], sahlab: [], tamr: [], annab: [], yansoon: [] };
+        for (const g of ['karak', 'sahlab', 'tamr', 'annab', 'yansoon']) {
+          if ((!acc.customByGame[g] || !acc.customByGame[g].length) && incoming[g] && incoming[g].length) {
+            acc.customByGame[g] = incoming[g];
+          }
+        }
+      }
+      // نقل أي باقات محفوظة محلياً بالهوية المؤقتة لحساب المستخدم
+      const oldPid = cleanId(b.pid, 40);
+      const oldSec = cleanId(b.secret, 40);
+      if (oldPid && oldSec && oldPid !== acc.pid) {
+        const oldHash = hashSecret(oldSec);
+        const newHash = hashSecret(acc.secret);
+        let moved = false;
+        SAVED_PACKS.forEach((pk) => {
+          if (ownsPack(pk, oldPid, oldHash)) {
+            pk.ownerPid = acc.pid;
+            pk.ownerHash = newHash;
+            moved = true;
+          }
+        });
+        if (moved) persistSavedPacks();
+      }
+      acc.updatedAt = Date.now();
+      persistAccounts();
+      return json(res, 200, { ok: true, account: buildPublicAccount(acc) });
+    }
+
+    if (act === 'sync' || act === 'me') {
+      const userKey = normUserKey(b.username);
+      const pid = cleanId(b.pid, 40);
+      const secret = cleanId(b.secret, 40);
+      const acc = ACCOUNTS.find((a) => (userKey && a.userKey === userKey) || (pid && a.pid === pid));
+      if (!acc || !pid || !secret || acc.pid !== pid || !safeEqualSecret(acc.secret, secret)) {
+        return json(res, 200, { ok: false, error: 'جلسة الحساب غير صالحة' });
+      }
+      if (act === 'sync') {
+        if (b.customByGame && typeof b.customByGame === 'object') {
+          acc.customByGame = sanitizeCustomByGame(b.customByGame);
+        }
+        if (b.profile && typeof b.profile === 'object') {
+          acc.profile = {
+            name: clean(b.profile.name, 20) || (acc.profile && acc.profile.name) || acc.username,
+            outfit: cleanId(b.profile.outfit, 30) || (acc.profile && acc.profile.outfit) || 'karak_cup',
+            face: cleanId(b.profile.face, 30) || (acc.profile && acc.profile.face) || 'mustache_boss',
+            hat: cleanId(b.profile.hat, 30) || (acc.profile && acc.profile.hat) || 'fez_tarboush'
+          };
+        }
+        acc.updatedAt = Date.now();
+        persistAccounts();
+      }
+      return json(res, 200, { ok: true, account: buildPublicAccount(acc) });
+    }
+
+    return json(res, 400, { ok: false, error: 'أكشن حساب غير معروف' });
   }
 
   if (p === '/api/custom-packs') {

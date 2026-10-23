@@ -16,6 +16,8 @@ const IC = {
   x: '<path d="M18 6L6 18M6 6l12 12"/>',
   next: '<path d="M19 12H5M11 18l-6-6 6-6"/>',
   lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  unlock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   dice: '<rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.3"/><circle cx="15.5" cy="15.5" r="1.3"/><circle cx="15.5" cy="8.5" r="1.3"/><circle cx="8.5" cy="15.5" r="1.3"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>',
@@ -78,7 +80,7 @@ const DIFF_DESCS = {
 
 const GAMES = {
   karak: { name: 'كرك', img: '/assets/ui/karak.png?v=30', tag: 'لعبة الخداع', desc: 'سؤال غريب بفراغ، كل فريق يكتب إجابة مزيفة تخدع التاني وبعدين الكل يدور على الإجابة الصح وسط 6 إجابات.' },
-  sahlab: { name: 'سحلب', img: '/assets/ui/sahlab.png?v=30', tag: 'سلم التلميحات', desc: 'صورة مموهة و5 تلميحات بتسهل واحدة ورا التانية. خمّن بدري تاخد نقط أكتر، وكل غلطة بتجمد فريقك.' },
+  sahlab: { name: 'سحلب', img: '/assets/ui/sahlab.png?v=30', tag: 'سلم التلميحات', desc: 'صورة مموهة وتلميحات (3 أو 4 أو 5 براحتك) بتسهل واحدة ورا التانية. خمّن بدري تاخد نقط أكتر، وكل غلطة بتجمد فريقك.' },
   tamr: { name: 'لبن تمر هندي', img: '/assets/ui/tamr.png?v=30', tag: 'ساعة الشطرنج', desc: 'الشخصية السرية — كل فريق عنده شخصية سرية لازم يخمنها بأسئلة أه/لأ، وساعة شطرنج بتعد على الفريق اللي عليه الدور.' },
   annab: { name: 'عنّاب', img: '/assets/ui/annab.png?v=30', tag: 'زرار الباز · 4 اختيارات', desc: '20 سؤال بـ 4 اختيارات وزرار باز لقائد كل فريق! اللي يدوس الأول يجاوب، ولو غلط بتتشطب إجابته والفرصة تروح للفريق التاني يختار من الـ 3 الباقيين.' },
   yansoon: { name: 'يانسون', img: '/assets/ui/yansoon.png?v=30', tag: 'لعبة الكلمات (Wordle)', desc: 'خمّن الكلمة السرية (من 3 لـ 8 حروف ومن غير «الـ») في 6 محاولات — كل حرف بيتلوّن أخضر أو أصفر أو رمادي، والفرق بتتبادل الدور.' }
@@ -143,7 +145,7 @@ const LS = {
 };
 function randId(n = 12) { const a = new Uint8Array(n); crypto.getRandomValues(a); return [...a].map((b) => b.toString(16).padStart(2, '0')).join(''); }
 
-const ident = LS.get('ident', null) || { pid: 'p_' + randId(6), secret: randId(12) };
+let ident = LS.get('ident', null) || { pid: 'p_' + randId(6), secret: randId(12) };
 LS.set('ident', ident);
 
 const savedSetup = LS.get('setup', null) || {};
@@ -152,13 +154,17 @@ const savedCustomByGame = LS.get('customByGame', null) || {
   karak: Array.isArray(legacyCustom) ? legacyCustom : [],
   sahlab: [],
   tamr: [],
-  annab: []
+  annab: [],
+  yansoon: []
 };
 const S = {
   screen: 'home',
   mode: null, // create | join
   code: null,
   profile: LS.get('profile', null) || { name: '', outfit: 'karak_cup', face: 'mustache_boss', hat: 'fez_tarboush' },
+  account: LS.get('account', null), // { username, token, pid, secret }
+  accountModal: false,
+  accTab: 'login', // login | register
   avTab: 'outfit',
   setup: {
     game: null,
@@ -173,8 +179,10 @@ const S = {
     writeSec: 60,
     voteSec: 30,
     hintSec: 30,
+    sahlabHints: 5,
     chessSec: 180,
     buzzSec: 20,
+    annabLockOpts: false,
     yansoonSec: 0,
     wordLen: 5,
     useCustom: false,
@@ -182,7 +190,7 @@ const S = {
     ...savedSetup
   },
   customByGame: savedCustomByGame,
-  savedPacks: LS.get('savedPacks', []),
+  savedPacks: LS.get('savedCustomPacks', LS.get('savedPacks', [])),
   custom: [],
   customInRoom: false,
   editingAvatar: false,
@@ -203,6 +211,8 @@ const S = {
   lang: ['ar', 'en', 'tr'].includes(LS.get('lang', 'ar')) ? LS.get('lang', 'ar') : 'ar'
 };
 if (!S.setup.buzzSec) S.setup.buzzSec = 20;
+if (!S.setup.sahlabHints || S.setup.sahlabHints < 1 || S.setup.sahlabHints > 5) S.setup.sahlabHints = 5;
+S.setup.annabLockOpts = Boolean(S.setup.annabLockOpts);
 if (S.setup.playMode !== 'solo') S.setup.playMode = 'teams';
 if (!['easy', 'medium', 'hard'].includes(S.setup.difficulty)) S.setup.difficulty = 'medium';
 if (!S.setup.teamCount || S.setup.teamCount < 2 || S.setup.teamCount > 4) S.setup.teamCount = 2;
@@ -211,9 +221,16 @@ while (S.setup.teamNames.length < 4) S.setup.teamNames.push(DEFAULT_TEAM_NAMES[S
 S.setup.hideSecret = Boolean(S.setup.hideSecret);
 S.setup.adminPlays = Boolean(S.setup.adminPlays);
 if (!ALL_TEAM_IDS.slice(0, S.setup.teamCount).includes(S.setup.adminTeam)) S.setup.adminTeam = 'A';
+if (S.account && S.account.pid && S.account.secret) {
+  ident = { pid: S.account.pid, secret: S.account.secret };
+  LS.set('ident', ident);
+}
 
 function defaultCustomItem(game) {
-  if (game === 'sahlab') return { truth: '', hints: ['', '', '', '', ''], photo: '' };
+  if (game === 'sahlab') {
+    const defCnt = Math.max(1, Math.min(5, Number(S.setup.sahlabHints) || 5));
+    return { truth: '', hints: ['', '', '', '', ''], hintCount: defCnt, photo: '' };
+  }
   if (game === 'tamr') return { truth: '', photo: '' };
   if (game === 'annab') return { q: '', truth: '', bluffs: ['', '', ''] };
   return { q: '', truth: '' };
@@ -222,9 +239,11 @@ function normalizeCustomItem(it, game) {
   const x = it && typeof it === 'object' ? it : {};
   if (game === 'sahlab') {
     const rawH = Array.isArray(x.hints) ? x.hints : (x.q ? [x.q] : []);
+    const hCount = Math.max(1, Math.min(5, Number(x.hintCount) || 5));
     return {
       truth: String(x.truth || x.answer || ''),
       hints: [0, 1, 2, 3, 4].map((i) => String(rawH[i] ?? '')),
+      hintCount: hCount,
       photo: String(x.photo || '')
     };
   }
@@ -248,7 +267,10 @@ function isCustomValid(it, game) {
   if (!it || !String(it.truth || '').trim()) return false;
   if (game === 'tamr') return true;
   if (game === 'yansoon') return it.truth.trim().length >= 3 && it.truth.trim().length <= 8;
-  if (game === 'sahlab') return Array.isArray(it.hints) && it.hints.some((h) => String(h || '').trim());
+  if (game === 'sahlab') {
+    const hc = Math.max(1, Math.min(5, Number(it.hintCount) || 5));
+    return Array.isArray(it.hints) && it.hints.slice(0, hc).some((h) => String(h || '').trim());
+  }
   return Boolean(String(it.q || '').trim());
 }
 function curCustomGame() {
@@ -271,6 +293,7 @@ const NON_BLOCKING_ACTIONS = new Set([
   'adjust_score', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
   'update_lobby', 'rename_team', 'kr_suggest', 'kr_vote_suggest', 'sh_suggest', 'tm_suggest',
   'toggle_secret', 'an_buzz', 'an_pick', 'an_suggest', 'an_reset_buzz', 'an_pass_turn', 'an_reveal',
+  'an_admin_pick', 'an_admin_buzz', 'an_toggle_lock',
   'yn_suggest', 'yn_guess', 'yn_reveal', 'yn_pass', 'yn_hint',
   'set_team_count', 'set_play_mode', 'add_test_player', 'admin_join_team', 'admin_become_judge',
   'update_profile', 'unpick_team', 'leave_room'
@@ -393,6 +416,7 @@ function onEvent(v) {
     an_both_wrong: () => `كل المحاولات غلط! اتكشفت الإجابة الصح`,
     an_timeout_steal: () => `وقت ${tn(e.wrongTeam)} خلص! الفرصة راحت لـ ${tn(e.nextTeam)}`,
     an_reset: () => `اتفتح الباز من الأول لكل الفرق!`,
+    an_lock_toggled: () => e.lockOpts ? 'الحكم قفل اختيار الإجابات عند الفرق — الاختيار من شاشة الحكم بس!' : 'الحكم فتح اختيار الإجابات للفرق!',
     yn_solved: () => `${tn(e.winner)} كشف الكلمة «${e.word}» (+${e.pts} نقطة)!`,
     yn_revealed: () => `اتكشفت الكلمة: «${e.word}»`,
     yn_pass: () => `الدور اتنقل لـ ${tn(e.nextTurn)}`,
@@ -1010,6 +1034,10 @@ function topbar(extra = '') {
     <div class="topbar-mid">${extra}</div>
     <div class="topbar-end">
       ${langSwitch(true)}
+      <button type="button" class="account-chip-btn ${S.account ? 'logged' : ''}" onclick="openAccountModal()" title="${S.account ? `حسابك: ${esc(S.account.username)} — أسئلتك الخاصة محفوظة` : 'إنشاء حساب أو تسجيل دخول لحفظ أسئلتك الخاصة'}">
+        ${ic('user')}
+        <span>${S.account ? esc(S.account.username) : 'حسابي'}</span>
+      </button>
       ${showMyAv ? `<button type="button" class="my-avatar-btn" onclick="openAvatarEditor()" title="اضغط لتغيير شكل شخصيتك أو اسمك">
         ${avatar(myAvProf, 'xs')}
         <span class="my-avatar-txt"><b>${esc(myAvProf.name || 'شخصيتي')}</b><small>${ic('pencil')} غيّر شكلك</small></span>
@@ -1121,6 +1149,7 @@ function render() {
     }
     if (isHost()) html += adminDrawer();
   } else if (v.status === 'finished') html = viewFinal() + (isHost() ? adminDrawer() : '');
+  if (S.accountModal) html += viewAccountModal();
 
   const changed = key !== S.lastKey;
   if (changed && !_handlingPopState) {
@@ -1185,17 +1214,255 @@ setInterval(tick, 250);
 const mmss = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 // ==================================================================
-// 1) الصفحة الرئيسية
+// 1) الصفحة الرئيسية + نظام الحسابات وحفظ الأسئلة الخاصة
 // ==================================================================
+function totalSavedCustomQuestionsCount() {
+  let total = 0;
+  for (const g of ['karak', 'sahlab', 'tamr', 'annab', 'yansoon']) {
+    total += validCustomList(g).length;
+  }
+  return total;
+}
+
+function openAccountModal(defaultTab) {
+  if (defaultTab) S.accTab = defaultTab;
+  S.accountModal = true;
+  render();
+}
+function closeAccountModal() {
+  S.accountModal = false;
+  render();
+}
+
+function openMyCustomFromAccount(gameKey) {
+  const g = gameKey && GAMES[gameKey] ? gameKey : (S.setup.game || 'karak');
+  S.setup.game = g;
+  S.setup.useCustom = true;
+  LS.set('setup', S.setup);
+  if (!customList(g).length) presetCustom(g === 'tamr' ? 6 : 5, true, g);
+  S.accountModal = false;
+  S.customInRoom = false;
+  S.mode = 'create';
+  S.screen = 'custom';
+  fetchSavedPacksFromServer().then(() => render());
+  render();
+}
+
+function applyAccountPayload(acc) {
+  if (!acc || !acc.username) return;
+  S.account = {
+    username: acc.username,
+    pid: acc.pid,
+    secret: acc.secret
+  };
+  LS.set('account', S.account);
+  if (acc.pid && acc.secret) {
+    ident = { pid: acc.pid, secret: acc.secret };
+    LS.set('ident', ident);
+  }
+  if (acc.profile && typeof acc.profile === 'object') {
+    S.profile = {
+      name: acc.profile.name || S.profile.name || acc.username,
+      outfit: acc.profile.outfit || S.profile.outfit || 'karak_cup',
+      face: acc.profile.face || S.profile.face || 'mustache_boss',
+      hat: acc.profile.hat || S.profile.hat || 'fez_tarboush'
+    };
+    LS.set('profile', S.profile);
+  } else if (!S.profile.name) {
+    S.profile.name = acc.username;
+    LS.set('profile', S.profile);
+  }
+  if (acc.customByGame && typeof acc.customByGame === 'object') {
+    for (const g of ['karak', 'sahlab', 'tamr', 'annab', 'yansoon']) {
+      const serverItems = Array.isArray(acc.customByGame[g]) ? acc.customByGame[g].map((it) => normalizeCustomItem(it, g)) : [];
+      if (serverItems.length) {
+        S.customByGame[g] = serverItems;
+      }
+    }
+    LS.set('customByGame', S.customByGame);
+    LS.set('custom', S.customByGame.karak || []);
+  }
+  const serverPacks = Array.isArray(acc.packs) ? acc.packs : Array.isArray(acc.savedPacks) ? acc.savedPacks : null;
+  if (serverPacks) {
+    const byId = new Map();
+    (S.savedPacks || []).forEach((p) => { if (p && p.id) byId.set(p.id, p); });
+    serverPacks.forEach((p) => { if (p && p.id) byId.set(p.id, p); });
+    S.savedPacks = Array.from(byId.values()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    LS.set('savedCustomPacks', S.savedPacks);
+  }
+}
+
+let _syncAccountTimer = null;
+function syncAccountToServer(immediate = false) {
+  if (!S.account || !S.account.pid || !S.account.secret) return;
+  const run = async () => {
+    try {
+      const cleanCustomByGame = {};
+      for (const g of ['karak', 'sahlab', 'tamr', 'annab', 'yansoon']) {
+        cleanCustomByGame[g] = validCustomList(g).map((it) => normalizeCustomItem(it, g));
+      }
+      await fetch('/api/account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync',
+          username: S.account.username,
+          pid: S.account.pid,
+          secret: S.account.secret,
+          profile: S.profile,
+          customByGame: cleanCustomByGame
+        })
+      });
+    } catch (e) {}
+  };
+  if (immediate) {
+    if (_syncAccountTimer) clearTimeout(_syncAccountTimer);
+    return run();
+  }
+  if (_syncAccountTimer) clearTimeout(_syncAccountTimer);
+  _syncAccountTimer = setTimeout(run, 600);
+}
+
+async function submitAccountAuth(mode) {
+  const act = mode || S.accTab || 'login';
+  const uEl = document.getElementById('accUsername');
+  const pEl = document.getElementById('accPassword');
+  const username = (uEl ? uEl.value : S.draft.accUser || '').trim();
+  const password = String(pEl ? pEl.value : S.draft.accPass || '');
+  if (!username || username.length < 2) return toast('اكتب اسم الحساب الأول (حرفين على الأقل)', 'err');
+  if (!password || password.length < 3) return toast('اكتب كلمة سر (3 حروف أو أرقام على الأقل)', 'err');
+  const cleanCustomByGame = {};
+  for (const g of ['karak', 'sahlab', 'tamr', 'annab', 'yansoon']) {
+    cleanCustomByGame[g] = validCustomList(g).map((it) => normalizeCustomItem(it, g));
+  }
+  try {
+    const r = await fetch('/api/account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: act === 'register' ? 'register' : 'login',
+        username,
+        password,
+        pid: ident.pid,
+        secret: ident.secret,
+        profile: S.profile,
+        customByGame: cleanCustomByGame
+      })
+    }).then((x) => x.json());
+    if (!r || !r.ok) return toast((r && r.error) || 'حصلت مشكلة في تسجيل الحساب', 'err');
+    applyAccountPayload(r.account);
+    S.draft.accUser = '';
+    S.draft.accPass = '';
+    toast(act === 'register' ? `أهلاً بيك يا ${r.account.username}! اتعمل حسابك واتحفظت أسئلتك الخاصة فيه` : `أهلاً بيك يا ${r.account.username}! اتحمّلت كل أسئلتك الخاصة المحفوظة`);
+    render();
+  } catch (e) {
+    toast('تعذر الاتصال بالسيرفر — جرب تاني', 'err');
+  }
+}
+
+function logoutAccount() {
+  S.account = null;
+  LS.set('account', null);
+  ident = { pid: 'p_' + randId(6), secret: randId(12) };
+  LS.set('ident', ident);
+  toast('تم تسجيل الخروج من الحساب');
+  render();
+}
+
+function viewAccountModal() {
+  const acc = S.account;
+  const totalQ = totalSavedCustomQuestionsCount();
+  const totalPacks = (S.savedPacks || []).length;
+  return `<div class="drawer-backdrop account-backdrop" onclick="closeAccountModal()"></div>
+  <div class="account-modal card tape" role="dialog" aria-modal="true" aria-label="حسابك وأسئلتك الخاصة">
+    <div class="account-modal-head">
+      <h2 class="h2">${ic('user')} ${acc ? `حسابك: ${esc(acc.username)}` : 'حسابك على القهوة'}</h2>
+      <button type="button" class="icon-btn" onclick="closeAccountModal()" aria-label="إغلاق">${ic('x')}</button>
+    </div>
+    ${acc ? `
+      <div class="account-logged-box">
+        <div class="account-badge-row">
+          ${avatar(S.profile, 'md')}
+          <div>
+            <b>${esc(acc.username)}</b>
+            <span class="sub" style="display:block">${ic('check')} متسجل دخول ومحفوظ في إعدادات الموقع — أسئلتك الخاصة بتتحفظ تلقائياً في حسابك!</span>
+          </div>
+        </div>
+        <div class="account-stats-grid">
+          <div class="acc-stat"><b>${totalQ}</b><span>سؤال خاص جاهز في حسابك</span></div>
+          <div class="acc-stat"><b>${totalPacks}</b><span>باكج محفوظ في مكتبتك</span></div>
+        </div>
+        <div class="field">
+          <span>افتح صفحة الأسئلة الخاصة بتاعتك على طول:</span>
+          <div class="account-games-quick">
+            ${Object.entries(GAMES).map(([gk, G]) => {
+              const cnt = validCustomList(gk).length;
+              const pkCnt = (S.savedPacks || []).filter((p) => p && p.game === gk).length;
+              return `<button type="button" class="acc-game-btn" onclick="openMyCustomFromAccount('${gk}')">
+                <img src="${G.img}" alt=""/>
+                <div><b>${G.name}</b><small>${cnt} سؤال · ${pkCnt} باكج</small></div>
+              </button>`;
+            }).join('')}
+          </div>
+        </div>
+        <div class="row wrap-row" style="justify-content:space-between;margin-top:8px">
+          <button type="button" class="btn primary" onclick="openMyCustomFromAccount(S.setup.game || 'karak')">${ic('folder')} افتح صفحة الأسئلة الخاصة بتاعتي</button>
+          <button type="button" class="btn danger sm" onclick="logoutAccount()">${ic('kick')} تسجيل خروج</button>
+        </div>
+      </div>
+    ` : `
+      <p class="sub">اعمل حساب أو ادخل بحسابك اللي عارفه عشان يتحفظ في الموقع وتلاقي كل <b>أسئلتك الخاصة</b> جاهزة دايماً في أي وقت ومن أي جهاز!</p>
+      <div class="seg" style="margin:8px 0">
+        <button type="button" class="${S.accTab !== 'register' ? 'on' : ''}" onclick="S.accTab='login';render()">${ic('enter')} تسجيل دخول لحسابي</button>
+        <button type="button" class="${S.accTab === 'register' ? 'on' : ''}" onclick="S.accTab='register';render()">${ic('plus')} إنشاء حساب جديد</button>
+      </div>
+      <div class="account-form">
+        <label class="field"><span>اسم الحساب (Username)</span>
+          <input id="accUsername" class="input big" maxlength="24" placeholder="اكتب اسم حسابك (مثال: ahmed_99)" value="${esc(S.draft.accUser || '')}" oninput="S.draft.accUser=this.value" onkeydown="if(event.key==='Enter')submitAccountAuth()"/>
+        </label>
+        <label class="field"><span>كلمة السر (Password)</span>
+          <input id="accPassword" type="password" class="input big" maxlength="64" placeholder="اكتب كلمة السر..." value="${esc(S.draft.accPass || '')}" oninput="S.draft.accPass=this.value" onkeydown="if(event.key==='Enter')submitAccountAuth()"/>
+        </label>
+        <button type="button" class="btn primary block lg" onclick="submitAccountAuth()">
+          ${S.accTab === 'register' ? `${ic('check')} إنشاء الحساب وحفظ أسئلتي الخاصة` : `${ic('enter')} دخول وتحميل أسئلتي الخاصة`}
+        </button>
+      </div>
+    `}
+  </div>`;
+}
+
 function viewHome() {
+  const totalQ = totalSavedCustomQuestionsCount();
+  const totalPacks = (S.savedPacks || []).length;
   return `<section class="wrap narrow home">
-    <div class="home-lang-bar">${langSwitch(false)}</div>
+    <div class="home-lang-bar">
+      ${langSwitch(false)}
+      <button type="button" class="account-chip-btn ${S.account ? 'logged' : ''}" onclick="openAccountModal()">
+        ${ic('user')}
+        <span>${S.account ? `حسابي: ${esc(S.account.username)}` : 'إنشاء حساب / دخول'}</span>
+      </button>
+    </div>
     ${logo('lg')}
     <p class="home-sub">ألعاب السهرة على القهوة — فرق، حكم، وأسئلة عمرها ما بتتكرر</p>
     <div class="home-art" aria-hidden="true">
       <img src="/assets/ui/karak.png?v=30" alt=""/><img src="/assets/ui/sahlab.png?v=30" alt=""/><img src="/assets/ui/yansoon.png?v=30" alt=""/><img src="/assets/ui/annab.png?v=30" alt=""/><img src="/assets/ui/tamr.png?v=30" alt=""/>
     </div>
     <div class="card tape home-card">
+      <div class="home-account-banner ${S.account ? 'is-logged' : ''}">
+        <div class="hab-info">
+          <b>${ic('user')} ${S.account ? `أهلاً يا ${esc(S.account.username)} — حسابك متسجل` : 'اعمل حساب أو ادخل بحسابك'}</b>
+          <span>${S.account ? `أسئلتك الخاصة محفوظة في حسابك (${totalQ} سؤال · ${totalPacks} باكج محفوظ)` : 'احفظ أسئلتك الخاصة في حسابك عشان تفتحها وتستعملها في أي وقت براحتك!'}</span>
+        </div>
+        <div class="hab-actions">
+          ${S.account ? `
+            <button type="button" class="btn olive sm" onclick="openMyCustomFromAccount(S.setup.game || 'karak')">${ic('folder')} أسئلتي الخاصة</button>
+            <button type="button" class="btn ghost sm" onclick="openAccountModal()">${ic('sliders')} الحساب</button>
+          ` : `
+            <button type="button" class="btn olive sm" onclick="openAccountModal('login')">${ic('enter')} دخول</button>
+            <button type="button" class="btn primary sm" onclick="openAccountModal('register')">${ic('plus')} إنشاء حساب</button>
+          `}
+        </div>
+      </div>
       <button type="button" class="home-my-avatar" onclick="openAvatarEditor()" title="اضغط على شخصيتك لتغيير شكلها أو اسمك">
         ${avatar(S.profile, 'md')}
         <div class="home-my-avatar-info">
@@ -1430,7 +1697,7 @@ function viewSetup() {
 
       <div class="card">
         <h2 class="h2"><span class="num">4</span> الوقت وشاشة الحكم</h2>
-        ${!g ? '<p class="note">اختار اللعبة الأول.</p>' : g === 'karak' ? rangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5) + rangeField('voteSec', 'وقت الاختيار', 15, 120, 5) : g === 'sahlab' ? rangeField('hintSec', 'وقت كل تلميح', 15, 120, 5) : g === 'annab' ? rangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5) : g === 'yansoon' ? rangeFieldWordLen() + rangeFieldYansoonSec() : rangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15)}
+        ${!g ? '<p class="note">اختار اللعبة الأول.</p>' : g === 'karak' ? rangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5) + rangeField('voteSec', 'وقت الاختيار', 15, 120, 5) : g === 'sahlab' ? rangeField('hintSec', 'وقت كل تلميح', 15, 120, 5) + sahlabHintsField(s.sahlabHints || 5, false) : g === 'annab' ? rangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5) + annabLockToggleBtn(Boolean(s.annabLockOpts), false) : g === 'yansoon' ? rangeFieldWordLen() + rangeFieldYansoonSec() : rangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15)}
         <button class="ai-toggle tv-toggle ${s.hideSecret ? 'on' : ''}" onclick="S.setup.hideSecret=!S.setup.hideSecret;LS.set('setup',S.setup);render()" aria-pressed="${Boolean(s.hideSecret)}">
           <span class="tv-orb" aria-hidden="true">${ic(s.hideSecret ? 'eyeOff' : 'tv')}</span>
           <span class="ai-txt"><b>وضع التلفزيون (إخفاء الإجابات من شاشة الحكم)</b><small>${s.hideSecret ? 'شغال — الإجابات السرية هتكون مخفية من شاشة الحكم وتقدر تظهرها بزرار في أي وقت' : 'مقفول — الإجابات الصح بتظهر للحكم من أول الجولة'}</small></span>
@@ -1477,6 +1744,35 @@ function rangeField(key, label, min, max, step) {
   const val = S.setup[key];
   return `<label class="field"><span>${label}: <b id="lbl_${key}">${fmtSec(val)}</b></span>
     <input type="range" class="range" min="${min}" max="${max}" step="${step}" value="${val}" oninput="S.setup.${key}=+this.value;document.getElementById('lbl_${key}').textContent=fmtSec(+this.value)"/></label>`;
+}
+function sahlabHintsField(curVal, inLobby = false) {
+  const val = Math.max(1, Math.min(5, Number(curVal) || 5));
+  const opts = [3, 4, 5];
+  return `<div class="field">
+    <span>عدد التلميحات في كل سؤال <small>(3 أو 4 أو 5 تلميحات براحتك)</small></span>
+    <div class="seg sahlab-hints-seg">
+      ${opts.map((n) => `<button type="button" class="${val === n ? 'on' : ''}" onclick="${inLobby ? `lobbySetSetting('sahlabHints',${n})` : `setSetupSahlabHints(${n})`}">${ic('bulb')} ${n} تلميحات</button>`).join('')}
+    </div>
+  </div>`;
+}
+function setSetupSahlabHints(n) {
+  const val = Math.max(1, Math.min(5, Number(n) || 5));
+  S.setup.sahlabHints = val;
+  LS.set('setup', S.setup);
+  render();
+}
+function annabLockToggleBtn(isLocked, inLobby = false) {
+  const onClick = inLobby
+    ? `lobbySetSetting('annabLockOpts', ${!isLocked})`
+    : `S.setup.annabLockOpts=!S.setup.annabLockOpts;LS.set('setup',S.setup);render()`;
+  return `<button type="button" class="ai-toggle lock-opts-toggle ${isLocked ? 'on' : ''}" onclick="${onClick}" aria-pressed="${Boolean(isLocked)}">
+    <span class="tv-orb" aria-hidden="true">${ic(isLocked ? 'lock' : 'unlock')}</span>
+    <span class="ai-txt">
+      <b>قفل اختيار الإجابات عند الفرق (الاختيار للحكم بس)</b>
+      <small>${isLocked ? 'شغال — الفرق بتشوف السؤال والـ 4 اختيارات وتدوس الباز بس، والحكم هو اللي بيختار الإجابة من شاشته' : 'مقفول — الفريق اللي يدوس الباز بيختار الإجابة من موبايله عادي'}</small>
+    </span>
+    <span class="switch" aria-hidden="true"><span></span></span>
+  </button>`;
 }
 function rangeFieldWordLen() {
   const val = S.setup.wordLen || 5;
@@ -1541,6 +1837,49 @@ function updateCustomMeta(idx) {
     const bEl = document.getElementById('annabBluffBadge_' + idx);
     if (bEl) bEl.textContent = annabBluffStatusText(list[idx]);
   }
+}
+
+function setSahlabCustomHintCount(idx, count) {
+  const n = Math.max(1, Math.min(5, Number(count) || 5));
+  const list = customList('sahlab');
+  if (!list[idx]) return;
+  list[idx].hintCount = n;
+  saveCustom();
+  render();
+}
+function setAllSahlabCustomHintCount(count) {
+  const n = Math.max(1, Math.min(5, Number(count) || 5));
+  S.setup.sahlabHints = n;
+  LS.set('setup', S.setup);
+  const list = customList('sahlab');
+  list.forEach((it) => { it.hintCount = n; });
+  saveCustom();
+  render();
+}
+function sahlabHintMetaForCount(count) {
+  const n = Math.max(1, Math.min(5, Number(count) || 5));
+  if (n === 3) {
+    return [
+      ['التلميح الأول', '10 نقاط — الأصعب'],
+      ['التلميح الثاني', '6 نقاط — متوسط'],
+      ['التلميح الثالث', '3 نقاط — الأسهل']
+    ];
+  }
+  if (n === 4) {
+    return [
+      ['التلميح الأول', '10 نقاط — الأصعب'],
+      ['التلميح الثاني', '8 نقاط'],
+      ['التلميح الثالث', '5 نقاط'],
+      ['التلميح الرابع', 'نقطتين — الأسهل']
+    ];
+  }
+  return [
+    ['التلميح الأول', '10 نقاط — الأصعب'],
+    ['التلميح الثاني', '8 نقاط'],
+    ['التلميح الثالث', '6 نقاط'],
+    ['التلميح الرابع', '4 نقاط'],
+    ['التلميح الخامس', 'نقطتين — الأسهل']
+  ];
 }
 
 function switchCustomGame(k) {
@@ -1654,8 +1993,8 @@ function viewCustom() {
     },
     sahlab: {
       title: 'أسئلتك الخاصة — لعبة سحلب',
-      desc: 'كل سؤال ليه <b>الإجابة الصح</b> و<b>5 تلميحات تدريجية</b> (التلميح الأول لحد التلميح الخامس) + <b>ميزة رفع صورة (اختياري)</b>. لو مارفعتش صورة، هيبقى مكتوب الإجابة بس في نص الشاشة من غير أي صورة من النت.',
-      addLbl: 'أضف سؤال جديد (بـ 5 تلميحات)'
+      desc: 'كل سؤال ليه <b>الإجابة الصح</b> وتقدر تختار <b>عدد التلميحات (3 أو 4 أو 5 تلميحات براحتك)</b> + <b>ميزة رفع صورة (اختياري)</b>. لو مارفعتش صورة، هيبقى مكتوب الإجابة بس في نص الشاشة من غير أي صورة من النت.',
+      addLbl: 'أضف سؤال جديد'
     },
     tamr: {
       title: 'أسئلتك الخاصة — لعبة لبن تمر هندي',
@@ -1673,14 +2012,6 @@ function viewCustom() {
       addLbl: 'أضف كلمة جديدة'
     }
   }[g];
-
-  const hintMeta = [
-    ['التلميح الأول', '100 نقطة — الأصعب'],
-    ['التلميح الثاني', '80 نقطة'],
-    ['التلميح الثالث', '60 نقطة'],
-    ['التلميح الرابع', '40 نقطة'],
-    ['التلميح الخامس', '20 نقطة — الأسهل']
-  ];
 
   const cardsHtml = list.map((c, i) => {
     if (g === 'karak') {
@@ -1701,19 +2032,26 @@ function viewCustom() {
     }
 
     if (g === 'sahlab') {
+      const hCount = Math.max(1, Math.min(5, Number(c.hintCount) || 5));
+      const hMeta = sahlabHintMetaForCount(hCount);
       return `<div class="card q-row custom-card custom-sahlab" data-custom-card="${i}">
         <div class="q-card-head">
-          <span class="q-badge">السؤال ${i + 1} <small>(سؤال واحد و5 تلميحات)</small></span>
-          <button type="button" class="icon-btn danger" aria-label="حذف السؤال" title="حذف السؤال" onclick="removeCustomItem(${i})">${ic('trash')}</button>
+          <span class="q-badge">السؤال ${i + 1} <small>(${hCount} تلميحات)</small></span>
+          <div class="row wrap-row">
+            <div class="seg sahlab-q-hint-seg" title="اختار عدد التلميحات للسؤال ده">
+              ${[3, 4, 5].map((n) => `<button type="button" class="${hCount === n ? 'on' : ''}" onclick="setSahlabCustomHintCount(${i},${n})">${n} تلميحات</button>`).join('')}
+            </div>
+            <button type="button" class="icon-btn danger" aria-label="حذف السؤال" title="حذف السؤال" onclick="removeCustomItem(${i})">${ic('trash')}</button>
+          </div>
         </div>
         <div class="q-fields">
           <label class="field"><span>الإجابة الصح <small>(الاسم اللي هيظهر في نص الشاشة)</small></span>
             <input id="ca${i}" class="input big" maxlength="80" value="${esc(c.truth)}" oninput="customList('sahlab')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="اكتب الإجابة هنا (مثال: برج إيفل، الكشري، محمد صلاح...)"/>
           </label>
           <div class="sahlab-hints-box">
-            <span class="field-lbl">${ic('bulb')} التلميحات الخمسة للسؤال رقم ${i + 1}</span>
+            <span class="field-lbl">${ic('bulb')} التلميحات (${hCount} تلميحات) للسؤال رقم ${i + 1}</span>
             <div class="sahlab-hints-grid">
-              ${hintMeta.map(([hName, hPts], hIdx) => `
+              ${hMeta.map(([hName, hPts], hIdx) => `
                 <label class="field hint-field">
                   <span><b>${hIdx + 1}. ${hName}</b> <small>(${hPts})</small></span>
                   <input id="ch_${i}_${hIdx}" class="input" maxlength="220" value="${esc((c.hints && c.hints[hIdx]) || '')}" oninput="customList('sahlab')[${i}].hints[${hIdx}]=this.value;updateCustomMeta(${i})" placeholder="اكتب ${hName}..."/>
@@ -1796,9 +2134,12 @@ function viewCustom() {
     <div class="saved-packs-head">
       <div>
         <h2 class="h2">${ic('folder')} مكتبة أسئلتك المحفوظة <small>(${GAMES[g].name})</small></h2>
-        <p class="sub">كتبت أسئلة كتير وعايز تستعملها بعدين؟ احفظها هنا باسم وهتفضل موجودة دايماً في أي سهرة جاية.</p>
+        <p class="sub">كتبت أسئلة كتير وعايز تستعملها بعدين؟ احفظها هنا باسم وهتفضل موجودة دايماً في أي سهرة جاية${S.account ? ` وفي حسابك <b>(${esc(S.account.username)})</b>` : ''}.</p>
       </div>
       <div class="row wrap-row">
+        <button type="button" class="btn ${S.account ? 'olive' : 'primary'} sm" onclick="openAccountModal()">
+          ${ic('user')} ${S.account ? `محفوظ في حساب: ${esc(S.account.username)}` : 'سجّل حسابك لحفظ أسئلتك دايماً'}
+        </button>
         <input type="file" id="importPackFile" accept=".json,application/json" style="display:none" onchange="importSavedPackFile(this)"/>
         <button type="button" class="btn ghost sm" onclick="document.getElementById('importPackFile').click()">${ic('upload')} استيراد ملف</button>
       </div>
@@ -1840,6 +2181,14 @@ function viewCustom() {
       </div>
       <h1 class="h1">${ic('pencil')} ${gameMeta.title}</h1>
       <p class="sub">${gameMeta.desc}</p>
+      ${g === 'sahlab' ? `
+        <div class="sahlab-global-hints-bar">
+          <span>${ic('bulb')} عدد التلميحات لكل الأسئلة:</span>
+          <div class="seg sahlab-hints-seg">
+            ${[3, 4, 5].map((n) => `<button type="button" class="${(S.setup.sahlabHints || 5) === n ? 'on' : ''}" onclick="setAllSahlabCustomHintCount(${n})">خليهم كلهم ${n} تلميحات</button>`).join('')}
+          </div>
+        </div>
+      ` : ''}
       <div class="row wrap-row">
         <button type="button" class="btn ghost sm" onclick="presetCustom(5)">${isTamr ? '5 شخصيات' : '5 أسئلة'}</button>
         <button type="button" class="btn ghost sm" onclick="presetCustom(10)">${isTamr ? '10 شخصيات' : '10 أسئلة'}</button>
@@ -1900,6 +2249,7 @@ async function saveCustomPackNow() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'save', pid: ident.pid, secret: ident.secret, id: entry.id, name: entry.name, game: entry.game, items: entry.items })
     });
+    syncAccountToServer(true);
   } catch (e) {}
   toast(`اتحفظ «${packName}» (${valid.length} ${g === 'tamr' ? 'شخصية' : 'سؤال'}) للاستعمال في أي وقت!`);
   render();
@@ -1933,6 +2283,7 @@ async function deleteSavedPack(packId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete', pid: ident.pid, secret: ident.secret, id: packId })
     });
+    syncAccountToServer(true);
   } catch (e) {}
   toast(`اتحذف باكج «${pk.name}»`);
   render();
@@ -1979,6 +2330,7 @@ function importSavedPackFile(inputEl) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'save', pid: ident.pid, secret: ident.secret, id: entry.id, name: entry.name, game: entry.game, items: entry.items })
         });
+        syncAccountToServer(true);
       } catch (e) {}
       toast(`اتحفظ واستورد «${name}» (${items.length}) بنجاح!`);
       render();
@@ -2007,6 +2359,7 @@ function openCustomInLobby() {
 }
 async function finishCustom() {
   saveCustom();
+  syncAccountToServer(true);
   const g = curCustomGame();
   const custom = validCustomList(g);
   if (S.customInRoom && S.view) {
@@ -2037,6 +2390,7 @@ function presetCustom(n, silent, gameArg) {
 function saveCustom() {
   LS.set('customByGame', S.customByGame);
   LS.set('custom', S.customByGame.karak || []);
+  syncAccountToServer(false);
 }
 
 // ==================================================================
@@ -2149,7 +2503,7 @@ function viewLobbyAdmin() {
   const soloNeedMore = isSolo && v.teams.length < 2;
   const cannotStart = isSolo ? soloNeedMore : empty.length > 0;
   const tc = v.teams.length;
-  const timers = v.game === 'karak' ? `كتابة ${s.writeSec}ث · اختيار ${s.voteSec}ث` : v.game === 'sahlab' ? `كل تلميح ${s.hintSec}ث` : v.game === 'annab' ? `الباز والإجابة ${s.buzzSec || 20}ث` : v.game === 'yansoon' ? `كلمة ${s.wordLen || 5} حروف · ${s.yansoonSec ? `محاولة ${s.yansoonSec}ث` : 'بدون تايمر'}` : `ساعة ${mmss(s.chessSec)} لكل ${isSolo ? 'لاعب' : 'فريق'}`;
+  const timers = v.game === 'karak' ? `كتابة ${s.writeSec}ث · اختيار ${s.voteSec}ث` : v.game === 'sahlab' ? `كل تلميح ${s.hintSec}ث · ${s.sahlabHints || 5} تلميحات` : v.game === 'annab' ? `الباز والإجابة ${s.buzzSec || 20}ث${s.annabLockOpts ? ' · اختيار للحكم بس' : ''}` : v.game === 'yansoon' ? `كلمة ${s.wordLen || 5} حروف · ${s.yansoonSec ? `محاولة ${s.yansoonSec}ث` : 'بدون تايمر'}` : `ساعة ${mmss(s.chessSec)} لكل ${isSolo ? 'لاعب' : 'فريق'}`;
   const catNames = s.useCustom ? `كاستم (${customReady} ${g === 'tamr' ? 'شخصية' : 'سؤال'})` : s.categories.length ? s.categories.map((c) => (cats.find((x) => x[0] === c) || [c, c])[1]).join('، ') : 'كوكتيل';
   return `${topbar(stepper(['الشخصية', 'إعداد اللعبة', 'غرفة الانتظار', 'اللعب'], 2))}
   <section class="wrap wide lobby">
@@ -2321,9 +2675,9 @@ function viewLobbyAdmin() {
               ${g === 'karak'
                 ? lobbyRangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5, s.writeSec) + lobbyRangeField('voteSec', 'وقت الاختيار', 15, 120, 5, s.voteSec)
                 : g === 'sahlab'
-                  ? lobbyRangeField('hintSec', 'وقت كل تلميح', 15, 120, 5, s.hintSec)
+                  ? lobbyRangeField('hintSec', 'وقت كل تلميح', 15, 120, 5, s.hintSec) + sahlabHintsField(s.sahlabHints || 5, true)
                   : g === 'annab'
-                    ? lobbyRangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5, s.buzzSec || 20)
+                    ? lobbyRangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5, s.buzzSec || 20) + annabLockToggleBtn(Boolean(s.annabLockOpts), true)
                     : g === 'yansoon'
                       ? lobbyRangeWordLen(s.wordLen || 5) + lobbyRangeYansoonSec(s.yansoonSec || 0)
                       : lobbyRangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15, s.chessSec)}
@@ -2605,13 +2959,15 @@ function viewSahlab() {
   const solved = v.phase === 'solved';
   const hideSecret = Boolean(v.settings && v.settings.hideSecret);
   const diff = (v.settings && v.settings.difficulty) || 'medium';
-  const blurSteps = diff === 'easy' ? [11, 8, 5, 3, 1] : diff === 'hard' ? [22, 16, 11, 7, 3] : [16, 12, 8, 5, 2];
-  const blur = solved ? 0 : blurSteps[Math.min(sh.hintIdx, 4)];
+  const blurSteps5 = diff === 'easy' ? [11, 8, 5, 3, 1] : diff === 'hard' ? [22, 16, 11, 7, 3] : [16, 12, 8, 5, 2];
+  const totalH = Math.max(1, sh.totalHints || 5);
+  const scaledIdx = totalH <= 1 ? 0 : Math.min(4, Math.round((sh.hintIdx / (totalH - 1)) * 4));
+  const blur = solved ? 0 : blurSteps5[scaledIdx];
   const t = myTeam();
-  const values = v.points.sahlab;
+  const values = sh.values || v.points.sahlab;
   const nameOf = (pid) => (v.players.find((p) => p.id === pid) || {}).name || '';
   const ladder = `<ol class="ladder">
-    ${Array.from({ length: sh.totalHints }).map((_, i) => {
+    ${Array.from({ length: totalH }).map((_, i) => {
       const open = i <= sh.hintIdx || solved;
       const txt = open ? (sh.hints[i] || (sh.allHints && sh.allHints[i])) : admin && !hideSecret && sh.allHints ? sh.allHints[i] : null;
       return `<li class="rung ${open ? 'open' : 'locked'} ${i === sh.hintIdx && !solved ? 'current' : ''}">
@@ -2622,7 +2978,7 @@ function viewSahlab() {
   </ol>`;
   const hasPhoto = Boolean(sh.photo);
   const photo = hasPhoto
-    ? `<div class="photo-frame"><div class="photo" style="filter:blur(${blur}px)"><img src="${esc(sh.photo)}" alt="" onerror="const f=this.closest('.photo-frame');if(f)f.remove();const g=document.querySelector('.sahlab-grid');if(g)g.classList.add('no-photo');"/></div><span class="photo-tag">${solved ? 'اتكشفت الصورة' : `وضوح الصورة ${sh.hintIdx + 1}/5`}</span></div>`
+    ? `<div class="photo-frame"><div class="photo" style="filter:blur(${blur}px)"><img src="${esc(sh.photo)}" alt="" onerror="const f=this.closest('.photo-frame');if(f)f.remove();const g=document.querySelector('.sahlab-grid');if(g)g.classList.add('no-photo');"/></div><span class="photo-tag">${solved ? 'اتكشفت الصورة' : `وضوح الصورة ${sh.hintIdx + 1}/${totalH}`}</span></div>`
     : '';
   const noPhotoCenterBox = !hasPhoto && admin && !solved
     ? `<div class="card sahlab-name-center ${hideSecret ? 'is-hidden' : ''}">
@@ -2798,6 +3154,7 @@ function viewAnnab() {
   const cap = me().captain;
   const solved = v.phase === 'solved';
   const hideSecret = Boolean(v.settings && v.settings.hideSecret);
+  const lockOpts = Boolean((v.settings && v.settings.annabLockOpts) || an.lockOpts);
   const elim = an.eliminated || [];
   const picks = an.picks || [];
   const remOptsCount = Math.max(1, 4 - elim.length);
@@ -2806,12 +3163,12 @@ function viewAnnab() {
   let banner = '';
   if (!solved) {
     if (an.subPhase === 'buzz') {
-      banner = `<div class="card annab-banner buzz-open">${ic('bell')}<div><b>الباز مفتوح لكل الفرق!</b><p class="sub">قائد الفريق اللي يدوس على زرار الباز الأول هو اللي يجاوب.</p></div></div>`;
+      banner = `<div class="card annab-banner buzz-open">${ic('bell')}<div><b>الباز مفتوح لكل الفرق!</b><p class="sub">${lockOpts ? 'قائد الفريق يدوس الباز الأول ويقول الإجابة للحكم (الحكم هو اللي بيختار من شاشته).' : 'قائد الفريق اللي يدوس على زرار الباز الأول هو اللي يجاوب.'}</p></div></div>`;
     } else if (an.subPhase === 'answer') {
-      banner = `<div class="card annab-banner team-${an.buzzedTeam}">${ic('bolt')}<div><b>${esc(teamOf(an.buzzedTeam).name)} داس الباز الأول!</b><p class="sub">الباز اتقفل على باقي الفرق — قائد ${esc(teamOf(an.buzzedTeam).name)} بيختار من الـ 4 اختيارات دلوقتي.</p></div></div>`;
+      banner = `<div class="card annab-banner team-${an.buzzedTeam}">${ic('bolt')}<div><b>${esc(teamOf(an.buzzedTeam).name)} داس الباز الأول!</b><p class="sub">${lockOpts ? (admin ? `اختار من الـ 4 اختيارات تحت الإجابة اللي قالها ${esc(teamOf(an.buzzedTeam).name)}!` : `قولوا إجابتكم للحكم دلوقتي — الحكم هو اللي هيختارها من شاشته!`) : `الباز اتقفل على باقي الفرق — قائد ${esc(teamOf(an.buzzedTeam).name)} بيختار من الـ 4 اختيارات دلوقتي.`}</p></div></div>`;
     } else if (an.subPhase === 'steal') {
       const wrongT = an.firstWrongTeam || (an.buzzedTeam === 'A' ? 'B' : 'A');
-      banner = `<div class="card annab-banner steal-banner team-${an.buzzedTeam}">${ic('x')}<div><b>الإجابة غلط من ${esc(teamOf(wrongT).name)}!</b><p class="sub">الإجابة الصح لسه ماتكشفتش — الفرصة دلوقتي لـ <b>${esc(teamOf(an.buzzedTeam).name)}</b> يختار من الـ ${remOptsCount} اختيارات الباقيين!</p></div></div>`;
+      banner = `<div class="card annab-banner steal-banner team-${an.buzzedTeam}">${ic('x')}<div><b>الإجابة غلط من ${esc(teamOf(wrongT).name)}!</b><p class="sub">${lockOpts ? (admin ? `الفرصة دلوقتي لـ <b>${esc(teamOf(an.buzzedTeam).name)}</b> — دوس على الإجابة اللي هيقولوها من الـ ${remOptsCount} الباقيين!` : `الفرصة دلوقتي لـ <b>${esc(teamOf(an.buzzedTeam).name)}</b> يقولوا إجابتهم للحكم من الـ ${remOptsCount} اختيارات الباقيين!`) : `الإجابة الصح لسه ماتكشفتش — الفرصة دلوقتي لـ <b>${esc(teamOf(an.buzzedTeam).name)}</b> يختار من الـ ${remOptsCount} اختيارات الباقيين!`}</p></div></div>`;
     }
   } else {
     const w = an.winner ? teamOf(an.winner) : null;
@@ -2822,10 +3179,11 @@ function viewAnnab() {
   }
 
   // شبكة الاختيارات الأربعة
-  const canCaptainPick = !admin && !solved && cap && (an.subPhase === 'answer' || an.subPhase === 'steal') && an.buzzedTeam === t;
-  const canSuggest = !admin && !solved && !cap;
+  const canCaptainPick = !admin && !solved && !lockOpts && cap && (an.subPhase === 'answer' || an.subPhase === 'steal') && an.buzzedTeam === t;
+  const canSuggest = !admin && !solved && !lockOpts && !cap;
+  const canAdminPick = admin && !solved;
   const letters = ['أ', 'ب', 'ج', 'د'];
-  const optsHtml = `<div class="opts annab-opts ${admin ? 'admin-opts' : ''}">
+  const optsHtml = `<div class="opts annab-opts ${admin ? 'admin-opts admin-clickable-opts' : ''} ${!admin && lockOpts ? 'player-locked-opts' : ''}">
     ${an.options.map((o, idx) => {
       const isElim = elim.includes(o.id);
       const isTruth = o.id === an.correctId;
@@ -2839,7 +3197,7 @@ function viewAnnab() {
       if (admin) {
         const counts = v.teams.map((tm) => Object.values((an.suggestions && an.suggestions[tm.id]) || {}).filter((x) => x === o.id).length);
         sugHtml = counts.map((n, i) => (n ? `<span class="tchip ghost team-${v.teams[i].id}">${n} اقتراح</span>` : '')).join('');
-      } else {
+      } else if (!lockOpts) {
         const vs = an.suggestions || {};
         const sugBy = Object.entries(vs).filter(([, id]) => id === o.id).map(([pid]) => v.players.find((p) => p.id === pid)).filter(Boolean);
         sugHtml = sugBy.length ? `<span class="sug-avs">${sugBy.map((p) => avatar(p, 'xxs')).join('')}</span>` : '';
@@ -2851,11 +3209,13 @@ function viewAnnab() {
         showTruthSolved ? 'revealed truth correct' : '',
         solved && !isTruth && !isElim ? 'revealed fake' : '',
         showTruthAdmin ? 'truth-hint' : '',
+        canAdminPick && !isElim ? 'admin-pickable' : '',
         isSel ? 'sel' : ''
       ].filter(Boolean).join(' ');
 
-      const disabled = admin || solved || isElim || (!canCaptainPick && !canSuggest);
-      return `<button class="${cls}" data-opt-id="${o.id}" ${disabled ? 'disabled' : ''} onclick="anClickOpt('${o.id}')">
+      const disabled = solved || isElim || (admin ? false : (!canCaptainPick && !canSuggest));
+      const clickHandler = admin ? `anAdminPickOpt('${o.id}')` : `anClickOpt('${o.id}')`;
+      return `<button type="button" class="${cls}" data-opt-id="${o.id}" ${disabled ? 'disabled' : ''} onclick="${clickHandler}">
         <div class="opt-head">
           <span class="opt-letter">${letters[idx] || idx + 1}</span>
           <span class="opt-text">${esc(o.text)}</span>
@@ -2864,6 +3224,7 @@ function viewAnnab() {
           ${isElim ? `<span class="opt-src src-wrong">${ic('x')} إجابة غلط${pickedBy ? ` (${esc(teamOf(pickedBy.team).name)})` : ''}</span>` : ''}
           ${showTruthSolved || showTruthAdmin ? `<span class="opt-src src-truth">${ic('check')} الإجابة الصح</span>` : ''}
           ${!isElim && pickedBy && pickedBy.correct ? `<span class="tchip team-${pickedBy.team}">${ic('check')} ${esc(teamOf(pickedBy.team).name)}</span>` : ''}
+          ${canAdminPick && !isElim ? `<span class="admin-pick-badge">${ic('check')} ${an.buzzedTeam ? `اختار لـ ${esc(teamOf(an.buzzedTeam).name)}` : 'دوس لاختيارها'}</span>` : ''}
           ${sugHtml}
         </div>
       </button>`;
@@ -2873,6 +3234,19 @@ function viewAnnab() {
   // منطقة تفاعل اللاعب أو الحكم
   let controls = '';
   if (admin) {
+    const adminJudgeNotice = !solved ? `<div class="card annab-judge-pick-bar ${lockOpts ? 'locked-on' : ''}">
+      <div class="ajp-info">
+        <b>${ic(lockOpts ? 'lock' : 'whistle')} ${lockOpts ? 'وضع اختيار الحكم شغال (الاختيارات مقفولة عند الفرق)' : 'تقدر تختار إجابة الفريق من شاشتك مباشرة'}</b>
+        <span class="sub">${an.buzzedTeam ? `الفريق اللي عليه الدور: <b>${esc(teamOf(an.buzzedTeam).name)}</b> — دوس على أي اختيار من الـ 4 فوق عشان تسجله ليهم!` : 'أول ما فريق يدوس الباز (أو تختار فريق تحت) دوس على الإجابة اللي قالوها من الـ 4 اختيارات فوق.'}</span>
+      </div>
+      <div class="row wrap-row">
+        ${an.subPhase === 'buzz' ? v.teams.map((tm) => `<button type="button" class="btn sm olive team-pill-${tm.id}" onclick="api('an_admin_buzz',{team:'${tm.id}'})">${ic('bell')} باز لـ ${esc(tm.name)}</button>`).join('') : ''}
+        <button type="button" class="btn sm ${lockOpts ? 'primary' : 'ghost'}" onclick="api('an_toggle_lock')">
+          ${ic(lockOpts ? 'lock' : 'unlock')} ${lockOpts ? 'مقفول عند الفرق (دوس لفتحه)' : 'اقفل الاختيار عند الفرق'}
+        </button>
+      </div>
+    </div>` : '';
+
     const scorePanel = `<div class="card judge-score-panel">
       <h3 class="h3">${ic('trophy')} تحكم الحكم في النقاط <small>(زود أو نقص لأي فريق براحتك)</small></h3>
       <div class="judge-score-grid teams-count-${v.teams.length}">
@@ -2891,7 +3265,7 @@ function viewAnnab() {
       <button class="btn primary sm" onclick="api('an_reveal')">${ic('bolt')} اكشف الإجابة الصح دلوقتي</button>
     </div>` : `<div class="next-bar"><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' السؤال الجاي'}</button></div>`;
 
-    controls = `${scorePanel}${roundTools}`;
+    controls = `${adminJudgeNotice}${scorePanel}${roundTools}`;
   } else if (!solved) {
     if (an.subPhase === 'buzz') {
       if (cap) {
@@ -2900,16 +3274,24 @@ function viewAnnab() {
             <span class="buzzer-dome">
               ${ic('bell')}
               <span class="buzzer-title">دوس الباز!</span>
-              <span class="buzzer-sub">إنت قائد ${esc(teamOf(t).name)} — اللي يدوس الأول يجاوب</span>
+              <span class="buzzer-sub">${lockOpts ? `إنت قائد ${esc(teamOf(t).name)} — دوس الباز وقول الإجابة للحكم!` : `إنت قائد ${esc(teamOf(t).name)} — اللي يدوس الأول يجاوب`}</span>
             </span>
           </button>
         </div>`;
       } else {
         const capPlayer = v.players.find((p) => p.id === teamOf(t).captainId);
-        controls = `<div class="card buzz-wait-card">${ic('crown')}<div><b>زرار الباز عند قائد فريقك ${capPlayer ? `(${esc(capPlayer.name)})` : ''} بس!</b><p class="sub">دوس على أي اختيار من الـ 4 عشان تقترحه على القائد.</p></div></div>`;
+        controls = `<div class="card buzz-wait-card">${ic('crown')}<div><b>زرار الباز عند قائد فريقك ${capPlayer ? `(${esc(capPlayer.name)})` : ''} بس!</b><p class="sub">${lockOpts ? 'شوفوا السؤال والاختيارات، وأول ما القائد يدوس الباز قولوا الإجابة للحكم.' : 'دوس على أي اختيار من الـ 4 عشان تقترحه على القائد.'}</p></div></div>`;
       }
     } else if (an.buzzedTeam === t) {
-      if (cap) {
+      if (lockOpts) {
+        controls = `<div class="card annab-locked-callout team-${t}">
+          ${ic('whistle')}
+          <div>
+            <b>فريقكم داس الباز! قولوا الإجابة للحكم دلوقتي</b>
+            <p class="sub">اختيار الإجابات مقفول من الموبايل — بصوا على الـ 4 اختيارات فوق وقولوا للحكم الإجابة اللي اخترتوها وهو هيدوس عليها من شاشته!</p>
+          </div>
+        </div>`;
+      } else if (cap) {
         const selOpt = an.options.find((x) => x.id === S.pickOpt && !elim.includes(x.id));
         controls = `<div class="annab-confirm-bar">
           <button id="anConfirmBtn" class="btn primary lg block" ${selOpt ? '' : 'disabled'} onclick="anConfirmPick()">
@@ -2920,7 +3302,7 @@ function viewAnnab() {
         controls = `<div class="card write-card center"><p class="sub" style="margin:0">${ic('bulb')} <b>فريقكم اللي بيجاوب دلوقتي!</b> دوس على الاختيار اللي شايفه صح فوق عشان تقترحه على القائد.</p></div>`;
       }
     } else {
-      controls = `<div class="card frozen-card">${ic('lock')}<div><b>${an.subPhase === 'steal' ? `فرصة التكملة عند ${esc(teamOf(an.buzzedTeam).name)}` : `الباز اتقفل — ${esc(teamOf(an.buzzedTeam).name)} داس الأول!`}</b><p class="sub">${an.subPhase === 'steal' ? `بيختاروا دلوقتي من الـ ${remOptsCount} اختيارات الباقيين.` : `لو جاوبوا غلط، إجابتهم هتتشطب والفرصة هتتنقل للفريق اللي بعده!`}</p></div></div>`;
+      controls = `<div class="card frozen-card">${ic('lock')}<div><b>${an.subPhase === 'steal' ? `فرصة التكملة عند ${esc(teamOf(an.buzzedTeam).name)}` : `الباز اتقفل — ${esc(teamOf(an.buzzedTeam).name)} داس الأول!`}</b><p class="sub">${lockOpts ? `${esc(teamOf(an.buzzedTeam).name)} بيقولوا إجابتهم للحكم دلوقتي.` : an.subPhase === 'steal' ? `بيختاروا دلوقتي من الـ ${remOptsCount} اختيارات الباقيين.` : `لو جاوبوا غلط، إجابتهم هتتشطب والفرصة هتتنقل للفريق اللي بعده!`}</p></div></div>`;
     }
   } else {
     controls = isHost()
@@ -2936,10 +3318,20 @@ function viewAnnab() {
   </section>`;
 }
 
+function anAdminPickOpt(optId) {
+  const v = S.view;
+  if (!v || !v.an || !isAdmin()) return;
+  const an = v.an;
+  if ((an.eliminated || []).includes(optId)) return;
+  api('an_admin_pick', { opt: optId, team: an.buzzedTeam || (v.teams[0] && v.teams[0].id) || 'A' });
+}
+
 function anClickOpt(optId) {
   const v = S.view;
   if (!v || !v.an) return;
   const an = v.an;
+  const lockOpts = Boolean((v.settings && v.settings.annabLockOpts) || an.lockOpts);
+  if (lockOpts) return;
   if ((an.eliminated || []).includes(optId)) return;
   if (me().captain && (an.subPhase === 'answer' || an.subPhase === 'steal') && an.buzzedTeam === myTeam()) {
     S.pickOpt = optId;
@@ -3419,6 +3811,18 @@ function confetti() {
 // ==================================================================
 (async function boot() {
   fetchSavedPacksFromServer();
+  if (S.account && S.account.pid && S.account.secret) {
+    fetch('/api/account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'me', username: S.account.username, pid: S.account.pid, secret: S.account.secret }),
+    }).then((r) => r.json()).then((res) => {
+      if (res && res.ok && res.account) {
+        applyAccountPayload(res.account);
+        render();
+      }
+    }).catch(() => {});
+  }
   const m = location.pathname.match(/^\/room\/([A-Za-z0-9-]+)/);
   const session = LS.get('session', null);
   if (m) {
@@ -3444,3 +3848,4 @@ function confetti() {
   }
   render();
 })();
+
