@@ -2757,4 +2757,132 @@ button.opt:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px
   }
 }
 
+/* ==================================================================
+   v34) حفظ السكور بورد بره الجيم وفي اللوبي والحساب
+   ================================================================== */
+.saved-sb-card {
+  margin: 14px 0;
+  border: 2.5px dashed rgba(180, 83, 9, 0.55);
+  background: linear-gradient(135deg, #FFFDF8, #FEF6E4);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.saved-sb-card.has-points {
+  border-style: solid;
+  border-color: #B45309;
+  background: linear-gradient(135deg, #FFFBEB, #FDE68A);
+  box-shadow: 0 4px 0 rgba(146, 64, 14, 0.25);
+}
+
+.saved-sb-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.saved-sb-pills {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.saved-sb-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 2px solid var(--line);
+}
+
+.saved-sb-pill.first {
+  border-color: #B45309;
+  background: #FFFDF5;
+}
+
+.saved-sb-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(180, 83, 9, 0.14);
+  color: #78350F;
+  font-size: .78rem;
+  font-weight: 900;
+}
+
+.saved-sb-name {
+  flex: 1;
+  font-size: .92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-sb-score {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #78350F;
+}
+
+.saved-sb-score small {
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.saved-sb-keep-row,
+.sb-keep-toggle-bar {
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.5px dashed rgba(120, 53, 15, 0.35);
+}
+
+.saved-sb-keep-lbl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: .84rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.saved-sb-keep-lbl input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #B45309;
+  cursor: pointer;
+}
+
+.lobby-team-score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+  border: 1.5px solid #B45309;
+  color: #78350F;
+  font-size: .82rem;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lobby-sb-bar {
+  background: linear-gradient(135deg, #FFFBEB, #FEF3C7);
+  border-color: #B45309;
+}
+
+
 

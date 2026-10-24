@@ -882,7 +882,12 @@ async function startGame(room) {
     setImmediate(() => warmQueueImages(items, 0).catch(() => {}));
   }
   room.totalRounds = room.game === 'tamr' ? Math.max(1, Math.floor(items.length / tCount)) : items.length;
-  room.teams.forEach((t) => (t.score = 0));
+  if (room._resetScoresNext) {
+    room.teams.forEach((t) => (t.score = 0));
+    room._resetScoresNext = false;
+  } else {
+    room.teams.forEach((t) => { t.score = Number(t.score) || 0; });
+  }
   room.status = 'playing';
   room.round = -1;
   await nextRound(room);
@@ -1904,6 +1909,13 @@ async function handleAction(b) {
     if (game === 'tamr' && settings.useCustom && custom.length < 2) ERR('تمر هندي محتاج شخصيتين على الأقل في الكاستم');
     if ((game === 'karak' || game === 'annab' || game === 'sahlab' || game === 'yansoon') && settings.useCustom && custom.length < 1) ERR('محتاج سؤال واحد على الأقل');
     const room = createRoom({ pid: reqPid, secret: reqSecret, profile }, game, settings, custom);
+    if (b.initialScores && typeof b.initialScores === 'object') {
+      room.teams.forEach((t, idx) => {
+        const raw = b.initialScores[t.id] !== undefined ? b.initialScores[t.id] : b.initialScores[idx];
+        const n = Number(raw);
+        if (Number.isFinite(n)) t.score = Math.max(-9999, Math.min(99999, Math.round(n)));
+      });
+    }
     startAiPrefetch(room);
     return { room };
   }
@@ -2363,16 +2375,25 @@ async function handleAction(b) {
       event(room, 'score_mode_changed', { manualScore: room.settings.manualScore });
       break;
     }
+    case 'reset_scores': {
+      room.teams.forEach((t) => { t.score = 0; });
+      event(room, 'scores_reset', {});
+      break;
+    }
     case 'end_to_lobby': {
       clearRoomTimers(room);
       room.status = 'lobby';
       room.phase = null;
-      room.kr = room.sh = room.tm = room.an = null;
+      room.kr = room.sh = room.tm = room.an = room.yn = null;
       room.round = -1;
       setDeadline(room, 0);
       room.paused = false;
       if (isSoloMode(room)) syncSoloTeams(room);
-      room.teams.forEach((t) => (t.score = 0));
+      if (b.resetScores) {
+        room.teams.forEach((t) => (t.score = 0));
+      } else {
+        room.teams.forEach((t) => { t.score = Number(t.score) || 0; });
+      }
       startAiPrefetch(room);
       event(room, 'lobby', {});
       break;
@@ -2671,6 +2692,27 @@ function sanitizeCustomByGame(raw) {
   };
 }
 
+function sanitizeSavedScoreboard(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const rawTeams = Array.isArray(raw.teams) ? raw.teams.slice(0, 10) : [];
+  if (!rawTeams.length) return null;
+  const teams = rawTeams.map((t, idx) => ({
+    id: cleanId((t && t.id) || ALL_TEAM_IDS[idx] || ('T' + (idx + 1)), 12),
+    name: clean((t && t.name) || DEFAULT_TEAM_NAMES[idx] || ('فريق ' + (idx + 1)), 28),
+    score: Math.max(-9999, Math.min(99999, Math.round(Number(t && t.score) || 0))),
+    members: Array.isArray(t && t.members) ? t.members.slice(0, 20).map((m) => clean(m, 20)).filter(Boolean) : []
+  }));
+  return {
+    updatedAt: Number(raw.updatedAt) || Date.now(),
+    game: ['karak', 'sahlab', 'tamr', 'annab', 'yansoon'].includes(raw.game) ? raw.game : 'karak',
+    code: cleanId(raw.code, 12) || '',
+    playMode: raw.playMode === 'solo' ? 'solo' : 'teams',
+    manualScore: Boolean(raw.manualScore),
+    keepOnCreate: raw.keepOnCreate !== false,
+    teams
+  };
+}
+
 const server = http.createServer(async (req, res) => {
   applySecurityHeaders(res);
   if (!['GET', 'POST', 'HEAD'].includes(req.method || '')) {
@@ -2715,6 +2757,7 @@ const server = http.createServer(async (req, res) => {
         secret: acc.secret,
         profile: acc.profile || null,
         customByGame: acc.customByGame || { karak: [], sahlab: [], tamr: [], annab: [], yansoon: [] },
+        savedScoreboard: acc.savedScoreboard || null,
         packs,
         updatedAt: acc.updatedAt
       };
@@ -2737,6 +2780,7 @@ const server = http.createServer(async (req, res) => {
         ? { name: clean(b.profile.name || username, 20), outfit: cleanId(b.profile.outfit, 30) || 'karak_cup', face: cleanId(b.profile.face, 30) || 'mustache_boss', hat: cleanId(b.profile.hat, 30) || 'fez_tarboush' }
         : { name: clean(username, 20), outfit: 'karak_cup', face: 'mustache_boss', hat: 'fez_tarboush' };
       const customByGame = sanitizeCustomByGame(b.customByGame);
+      const savedScoreboard = sanitizeSavedScoreboard(b.savedScoreboard);
       const acc = {
         username,
         userKey,
@@ -2746,6 +2790,7 @@ const server = http.createServer(async (req, res) => {
         secret,
         profile: prof,
         customByGame,
+        savedScoreboard,
         createdAt: Date.now(),
         updatedAt: Date.now()
       };
@@ -2774,6 +2819,9 @@ const server = http.createServer(async (req, res) => {
             acc.customByGame[g] = incoming[g];
           }
         }
+      }
+      if (!acc.savedScoreboard && b.savedScoreboard) {
+        acc.savedScoreboard = sanitizeSavedScoreboard(b.savedScoreboard);
       }
       // نقل أي باقات محفوظة محلياً بالهوية المؤقتة لحساب المستخدم
       const oldPid = cleanId(b.pid, 40);
@@ -2807,6 +2855,9 @@ const server = http.createServer(async (req, res) => {
       if (act === 'sync') {
         if (b.customByGame && typeof b.customByGame === 'object') {
           acc.customByGame = sanitizeCustomByGame(b.customByGame);
+        }
+        if (b.savedScoreboard !== undefined) {
+          acc.savedScoreboard = sanitizeSavedScoreboard(b.savedScoreboard);
         }
         if (b.profile && typeof b.profile === 'object') {
           acc.profile = {

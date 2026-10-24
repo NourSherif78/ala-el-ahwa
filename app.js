@@ -192,6 +192,7 @@ const S = {
   },
   customByGame: savedCustomByGame,
   savedPacks: LS.get('savedCustomPacks', LS.get('savedPacks', [])),
+  savedScoreboard: LS.get('savedScoreboard', null),
   custom: [],
   customInRoom: false,
   editingAvatar: false,
@@ -227,6 +228,56 @@ if (!ALL_TEAM_IDS.slice(0, S.setup.teamCount).includes(S.setup.adminTeam)) S.set
 if (S.account && S.account.pid && S.account.secret) {
   ident = { pid: S.account.pid, secret: S.account.secret };
   LS.set('ident', ident);
+}
+
+function getSavedScoreboard() {
+  if (S.savedScoreboard && Array.isArray(S.savedScoreboard.teams) && S.savedScoreboard.teams.length) {
+    return S.savedScoreboard;
+  }
+  const tc = Math.max(2, Math.min(4, Number(S.setup.teamCount) || 2));
+  const names = Array.isArray(S.setup.teamNames) ? S.setup.teamNames : DEFAULT_TEAM_NAMES;
+  S.savedScoreboard = {
+    updatedAt: Date.now(),
+    game: S.setup.game || 'karak',
+    code: '',
+    playMode: S.setup.playMode === 'solo' ? 'solo' : 'teams',
+    manualScore: Boolean(S.setup.manualScore),
+    keepOnCreate: true,
+    teams: ALL_TEAM_IDS.slice(0, tc).map((id, idx) => ({
+      id,
+      name: names[idx] || DEFAULT_TEAM_NAMES[idx] || ('فريق ' + (idx + 1)),
+      score: 0,
+      members: []
+    }))
+  };
+  return S.savedScoreboard;
+}
+
+function saveScoreboardSnapshot(v = S.view, force = false) {
+  if (!v || !Array.isArray(v.teams) || !v.teams.length) return;
+  const hasPoints = v.teams.some((t) => (Number(t.score) || 0) !== 0);
+  const sameRoom = S.savedScoreboard && S.savedScoreboard.code && S.savedScoreboard.code === v.code;
+  if (!force && !hasPoints && v.status === 'lobby' && !sameRoom && S.savedScoreboard && S.savedScoreboard.teams && S.savedScoreboard.teams.some((t) => t.score !== 0)) {
+    // ما نمسحش سكور بورد محفوظ فيه نقط لو لسه داخلين لوبي جديد بنقط صفر
+    return;
+  }
+  const keepOnCreate = S.savedScoreboard && S.savedScoreboard.keepOnCreate !== undefined ? Boolean(S.savedScoreboard.keepOnCreate) : true;
+  S.savedScoreboard = {
+    updatedAt: Date.now(),
+    game: v.game || S.setup.game || 'karak',
+    code: v.code || '',
+    playMode: v.playMode || (v.settings && v.settings.playMode) || 'teams',
+    manualScore: Boolean(v.settings && v.settings.manualScore),
+    keepOnCreate,
+    teams: v.teams.map((t) => ({
+      id: t.id,
+      name: t.name,
+      score: Number(t.score) || 0,
+      members: (v.players || []).filter((p) => p.team === t.id).map((p) => p.name)
+    }))
+  };
+  LS.set('savedScoreboard', S.savedScoreboard);
+  syncAccountToServer(false);
 }
 
 function defaultCustomItem(game) {
@@ -293,7 +344,7 @@ function validCustomList(game = curCustomGame()) {
 }
 
 const NON_BLOCKING_ACTIONS = new Set([
-  'adjust_score', 'set_score', 'toggle_score_mode', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
+  'adjust_score', 'set_score', 'toggle_score_mode', 'reset_scores', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
   'update_lobby', 'rename_team', 'kr_suggest', 'kr_vote_suggest', 'sh_suggest', 'tm_suggest',
   'toggle_secret', 'an_buzz', 'an_pick', 'an_suggest', 'an_reset_buzz', 'an_pass_turn', 'an_reveal',
   'an_admin_pick', 'an_admin_buzz', 'an_toggle_lock',
@@ -311,6 +362,7 @@ function applyView(v) {
   S.offset = (v.now || Date.now()) - Date.now();
   onEvent(v);
   S.view = v;
+  saveScoreboardSnapshot(v);
   if (v.status === 'closed') { closedRoom(); return; }
   render();
 }
@@ -367,6 +419,7 @@ function connect(code) {
 }
 
 function closedRoom() {
+  if (S.view) saveScoreboardSnapshot(S.view, true);
   if (S.es) S.es.close();
   if (S.pollTimer) clearInterval(S.pollTimer);
   S.es = null;
@@ -409,6 +462,7 @@ function onEvent(v) {
     rejected: () => `الحكم رفض إجابة ${tn(e.team)} — اكتبوا واحدة تانية`,
     penalty: () => `عقوبة تضليل: -15 ثانية من ${tn(e.team)}`,
     adjust: () => `تعديل نقاط ${tn(e.team)} (${e.delta > 0 ? '+' : ''}${e.delta})`,
+    scores_reset: () => 'اتصفّرت نقاط كل الفرق لبداية جديدة!',
     hint: () => 'اتفتح تلميح جديد — التجميد اتفك!',
     turn: () => `الدور على ${tn(e.team)}`,
     game_changed: () => `اتغيرت اللعبة لـ ${GAMES[e.game] ? GAMES[e.game].name : e.game}`,
@@ -930,6 +984,7 @@ function canGoBack() {
 }
 
 function disconnectRoom() {
+  if (S.view) saveScoreboardSnapshot(S.view, true);
   if (S.es) S.es.close();
   if (S.pollTimer) clearInterval(S.pollTimer);
   S.es = null;
@@ -949,6 +1004,7 @@ async function goBack() {
   if (S.customInRoom) { S.customInRoom = false; render(); return; }
   if (S.view) {
     const v = S.view;
+    saveScoreboardSnapshot(v, true);
     if (v.status === 'playing') return;
     if (v.status === 'finished') {
       if (isHost()) { await returnToLobby(); return; }
@@ -1033,11 +1089,126 @@ function toggleScoreboard(force) {
   render();
 }
 
+function offlineAdjustScore(teamId, delta) {
+  const sb = getSavedScoreboard();
+  const tm = sb.teams.find((t) => t.id === teamId);
+  if (!tm) return;
+  const d = Math.round(Number(delta) || 0);
+  tm.score = Math.max(-999, Math.min(9999, (Number(tm.score) || 0) + d));
+  sb.updatedAt = Date.now();
+  S.bumps[teamId] = { d, at: Date.now() };
+  LS.set('savedScoreboard', sb);
+  syncAccountToServer(false);
+  render();
+}
+
+function offlineSetScore(teamId, score) {
+  const sb = getSavedScoreboard();
+  const tm = sb.teams.find((t) => t.id === teamId);
+  if (!tm) return;
+  const prev = Number(tm.score) || 0;
+  const next = Math.max(-999, Math.min(9999, Math.round(Number(score) || 0)));
+  tm.score = next;
+  sb.updatedAt = Date.now();
+  if (next !== prev) S.bumps[teamId] = { d: next - prev, at: Date.now() };
+  LS.set('savedScoreboard', sb);
+  syncAccountToServer(false);
+  render();
+}
+
+function offlineRenameTeam(teamId, name) {
+  const sb = getSavedScoreboard();
+  const idx = sb.teams.findIndex((t) => t.id === teamId);
+  if (idx < 0) return;
+  const clean = String(name || '').trim().slice(0, 24);
+  if (!clean) return;
+  sb.teams[idx].name = clean;
+  if (Array.isArray(S.setup.teamNames) && idx < 4) {
+    S.setup.teamNames[idx] = clean;
+    LS.set('setup', S.setup);
+  }
+  sb.updatedAt = Date.now();
+  LS.set('savedScoreboard', sb);
+  syncAccountToServer(false);
+  render();
+}
+
+function resetSavedScoreboard() {
+  if (S.view && isHost()) {
+    api('reset_scores');
+    return;
+  }
+  const sb = getSavedScoreboard();
+  sb.teams.forEach((t) => { t.score = 0; });
+  sb.updatedAt = Date.now();
+  LS.set('savedScoreboard', sb);
+  syncAccountToServer(false);
+  toast('تم تصفير السكور بورد المحفوظ');
+  render();
+}
+
+function toggleKeepScoreboardOnCreate() {
+  const sb = getSavedScoreboard();
+  sb.keepOnCreate = sb.keepOnCreate === false ? true : false;
+  LS.set('savedScoreboard', sb);
+  syncAccountToServer(false);
+  render();
+}
+
+function savedScoreboardCard(inSetup = false) {
+  const sb = getSavedScoreboard();
+  if (!sb || !Array.isArray(sb.teams) || !sb.teams.length) return '';
+  const sorted = sb.teams.slice().sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+  const hasPoints = sb.teams.some((t) => (Number(t.score) || 0) !== 0);
+  const keepOnCreate = sb.keepOnCreate !== false;
+  const gameName = sb.game && GAMES[sb.game] ? GAMES[sb.game].name : '';
+  return `<div class="card saved-sb-card ${hasPoints ? 'has-points' : ''}">
+    <div class="saved-sb-head">
+      <div>
+        <h3 class="h3">${ic('trophy')} السكور بورد المحفوظ بره الجيم ${gameName ? `<small>(آخر لعبة: ${esc(gameName)}${sb.code ? ` · غرفة ${esc(sb.code)}` : ''})</small>` : ''}</h3>
+        <span class="sub">${hasPoints ? 'النقاط دي اتحفظت تلقائياً بعد ما خلصت أو خرجت من الجيم — تقدر تعدّلها أو تكمّل بيها في أي غرفة جديدة!' : 'السكور بورد جاهز بره الجيم — تقدر تفتحه وتعدّل النقاط في أي وقت.'}</span>
+      </div>
+      <div class="row wrap-row">
+        <button type="button" class="btn sm olive" onclick="toggleScoreboard(true)">${ic('trophy')} افتح وعدّل السكور بورد</button>
+        ${hasPoints ? `<button type="button" class="btn sm danger" onclick="resetSavedScoreboard()">${ic('trash')} تصفير النقاط</button>` : ''}
+      </div>
+    </div>
+    <div class="saved-sb-pills">
+      ${sorted.map((t, i) => `
+        <div class="saved-sb-pill team-${t.id} ${i === 0 && hasPoints ? 'first' : ''}">
+          <span class="saved-sb-rank">${i === 0 && hasPoints ? ic('crown') : '#' + (i + 1)}</span>
+          <b class="saved-sb-name">${esc(t.name)}</b>
+          <span class="saved-sb-score" data-team-score="${t.id}">${Number(t.score) || 0} <small>نقطة</small></span>
+        </div>
+      `).join('')}
+    </div>
+    ${inSetup && hasPoints ? `
+      <div class="saved-sb-keep-row">
+        <label class="saved-sb-keep-lbl">
+          <input type="checkbox" ${keepOnCreate ? 'checked' : ''} onchange="toggleKeepScoreboardOnCreate()"/>
+          <span>كمّل بنفس النقاط المحفوظة دي لما تعمل الغرفة الجديدة (لو شلت العلامة هيبدأ من صفر)</span>
+        </label>
+      </div>
+    ` : ''}
+  </div>`;
+}
+
 function applyCustomScore(teamId, mode = 'add') {
   const inp = document.getElementById('sbCustom_' + teamId) || document.getElementById('inlineCustom_' + teamId);
   const raw = inp ? inp.value : S.draft['sb_' + teamId];
   const val = Number(raw);
   if (!Number.isFinite(val)) return toast('اكتب رقم صحيح الأول', 'err');
+  if (!S.view) {
+    if (mode === 'set') {
+      offlineSetScore(teamId, Math.round(val));
+    } else {
+      if (Math.round(val) === 0) return toast('اكتب عدد النقاط اللي عايز تزودها أو تنقصها', 'err');
+      offlineAdjustScore(teamId, Math.round(val));
+    }
+    delete S.draft['sb_' + teamId];
+    if (inp) inp.value = '';
+    return;
+  }
   if (mode === 'set') {
     api('set_score', { team: teamId, score: Math.round(val) }).then((r) => {
       if (r.ok) {
@@ -1062,7 +1233,7 @@ function topbar(extra = '') {
   const showBack = canGoBack();
   const showMyAv = canEditAvatar() && key !== 'avatar' && key !== 'editAvatar';
   const myAvProf = (v && (isAdmin() ? v.admin : v.players.find((p) => p.id === me().id))) || S.profile;
-  const showSbBtn = Boolean(v && v.teams && v.teams.length && (v.status === 'playing' || v.status === 'finished'));
+  const showSbBtn = true;
   return `<header class="topbar">
     <div class="topbar-start">
       ${showBack ? `<button type="button" class="btn ghost sm back-btn" onclick="goBack()" title="رجوع للصفحة السابقة">${ic('chevR')} <span>رجوع</span></button>` : ''}
@@ -1071,11 +1242,11 @@ function topbar(extra = '') {
     <div class="topbar-mid">${extra}</div>
     <div class="topbar-end">
       ${langSwitch(true)}
-      ${showSbBtn ? `<button type="button" class="scoreboard-top-btn ${S.scoreboardOpen ? 'on' : ''}" onclick="toggleScoreboard()" title="افتح لوحة النقاط (Scoreboard)">
+      ${showSbBtn ? `<button type="button" class="scoreboard-top-btn ${S.scoreboardOpen ? 'on' : ''}" onclick="toggleScoreboard()" title="افتح لوحة النقاط المحفوظة (Scoreboard)">
         ${ic('trophy')}
         <span>Scoreboard</span>
       </button>` : ''}
-      <button type="button" class="account-chip-btn ${S.account ? 'logged' : ''}" onclick="openAccountModal()" title="${S.account ? `حسابك: ${esc(S.account.username)} — أسئلتك الخاصة محفوظة` : 'إنشاء حساب أو تسجيل دخول لحفظ أسئلتك الخاصة'}">
+      <button type="button" class="account-chip-btn ${S.account ? 'logged' : ''}" onclick="openAccountModal()" title="${S.account ? `حسابك: ${esc(S.account.username)} — أسئلتك الخاصة والسكور بورد محفوظين` : 'إنشاء حساب أو تسجيل دخول لحفظ أسئلتك الخاصة والسكور بورد'}">
         ${ic('user')}
         <span>${S.account ? esc(S.account.username) : 'حسابي'}</span>
       </button>
@@ -1185,10 +1356,14 @@ function judgeScorePanel(titleOverride = '') {
 
 function scoreboardSideWidget() {
   const v = S.view;
-  if (!v || !v.teams || !v.teams.length || (v.status !== 'playing' && v.status !== 'finished')) return '';
-  const host = isHost();
-  const isManual = Boolean(v.settings && v.settings.manualScore);
-  const sorted = v.teams.slice().sort((a, b) => b.score - a.score);
+  const inRoom = Boolean(v && v.teams && v.teams.length);
+  const sb = inRoom ? null : getSavedScoreboard();
+  const teamsList = inRoom ? v.teams : (sb && sb.teams ? sb.teams : []);
+  if (!teamsList.length) return '';
+
+  const canEdit = inRoom ? isHost() : true;
+  const isManual = inRoom ? Boolean(v.settings && v.settings.manualScore) : Boolean(S.setup && S.setup.manualScore);
+  const sorted = teamsList.slice().sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
   const rankMap = {};
   sorted.forEach((t, idx) => {
     if (idx > 0 && t.score === sorted[idx - 1].score) {
@@ -1198,13 +1373,17 @@ function scoreboardSideWidget() {
     }
   });
 
+  const subTitle = inRoom
+    ? `${GAMES[v.game] ? GAMES[v.game].name : ''} · ${v.status === 'lobby' ? 'غرفة الانتظار (محفوظ)' : v.status === 'finished' ? 'النتيجة النهائية (محفوظ)' : `الجولة ${Math.max(1, v.round + 1)} من ${v.totalRounds}`}`
+    : `السكور بورد المحفوظ بره الجيم${sb && sb.game && GAMES[sb.game] ? ` · آخر لعبة: ${GAMES[sb.game].name}` : ''}${sb && sb.code ? ` (${sb.code})` : ''}`;
+
   // الزرار الجانبي العائم في جنب الشاشة + اللوحة الجانبية للـ Scoreboard
   return `
-  <button type="button" class="sb-side-tab ${S.scoreboardOpen ? 'open' : ''} ${isManual ? 'manual-glow' : ''}" onclick="toggleScoreboard()" aria-expanded="${S.scoreboardOpen}" title="افتح أو اقفل لوحة النقاط (Scoreboard)">
+  <button type="button" class="sb-side-tab ${S.scoreboardOpen ? 'open' : ''} ${isManual ? 'manual-glow' : ''}" onclick="toggleScoreboard()" aria-expanded="${S.scoreboardOpen}" title="افتح أو اقفل لوحة النقاط المحفوظة (Scoreboard)">
     <span class="sb-tab-icon">${ic('trophy')}</span>
     <span class="sb-tab-lbl">Scoreboard</span>
     <span class="sb-tab-mini-scores">
-      ${sorted.slice(0, 4).map((t) => `<b class="sb-mini-pill team-${t.id}">${t.score}</b>`).join('')}
+      ${sorted.slice(0, 4).map((t) => `<b class="sb-mini-pill team-${t.id}">${Number(t.score) || 0}</b>`).join('')}
     </span>
   </button>
   ${S.scoreboardOpen ? `
@@ -1213,53 +1392,73 @@ function scoreboardSideWidget() {
       <div class="sb-panel-head">
         <div>
           <h2 class="h2">${ic('trophy')} Scoreboard · لوحة النقاط</h2>
-          <span class="sub">${GAMES[v.game] ? GAMES[v.game].name : ''} · الجولة ${Math.max(1, v.round + 1)} من ${v.totalRounds}</span>
+          <span class="sub">${esc(subTitle)}</span>
         </div>
         <button type="button" class="icon-btn" aria-label="إغلاق" onclick="toggleScoreboard(false)">${ic('x')}</button>
       </div>
 
       <div class="sb-mode-banner ${isManual ? 'is-manual' : 'is-auto'}">
         <div class="sb-mode-info">
-          <b>${ic(isManual ? 'whistle' : 'bolt')} ${isManual ? 'نظام النقط: الحكم يحط النقط بنفسه' : 'نظام النقط: اللعبة تحط النقط تلقائي'}</b>
-          <span>${isManual ? 'اللعبة مابتحطش نقط أوتوماتيك — الحكم هو اللي بيدي النقط لكل فريق من هنا.' : 'النقط بتتحسب وتزيد تلقائياً مع كل إجابة صح (والحكم يقدر يعدّلها برضه).'}</span>
+          <b>${ic('check')} ${inRoom ? (isManual ? 'نظام النقط: الحكم يحط النقط بنفسه (محفوظ تلقائياً)' : 'نظام النقط: اللعبة تحط النقط تلقائي (محفوظ تلقائياً)') : 'السكور بورد محفوظ بره الجيم وفي حسابك تلقائياً'}</b>
+          <span>${inRoom
+            ? 'النقط بتتحفظ تلقائياً لما ترجع للوبي أو تغير اللعبة أو تخرج بره الجيم خالص.'
+            : 'تقدر تعدّل النقط أو أسماء الفرق هنا بره الجيم، ولما تعمل غرفة جديدة هتبدأ بنفس النقاط المحفوظة دي (أو صفرها لو حابب).'}</span>
         </div>
-        ${host ? `
-          <button type="button" class="btn sm ${isManual ? 'primary' : 'olive'}" onclick="api('toggle_score_mode')">
-            ${isManual ? 'حوّل لتلقائي' : 'حوّل ليدوي (الحكم بس)'}
-          </button>
-        ` : ''}
+        <div class="row wrap-row">
+          ${inRoom && canEdit ? `
+            <button type="button" class="btn sm ${isManual ? 'primary' : 'olive'}" onclick="api('toggle_score_mode')">
+              ${isManual ? 'حوّل لتلقائي' : 'حوّل ليدوي (الحكم بس)'}
+            </button>
+          ` : ''}
+          ${canEdit ? `
+            <button type="button" class="btn sm danger" onclick="resetSavedScoreboard()" title="تصفير كل النقاط لـ 0">
+              ${ic('trash')} تصفير الكل
+            </button>
+          ` : ''}
+        </div>
       </div>
+
+      ${!inRoom && sb ? `
+        <div class="sb-keep-toggle-bar">
+          <label class="saved-sb-keep-lbl">
+            <input type="checkbox" ${sb.keepOnCreate !== false ? 'checked' : ''} onchange="toggleKeepScoreboardOnCreate()"/>
+            <span>كمّل بنفس النقاط المحفوظة دي لما أعمل غرفة جديدة</span>
+          </label>
+        </div>
+      ` : ''}
 
       <div class="sb-teams-list">
         ${sorted.map((t) => {
           const rnk = rankMap[t.id] || 1;
-          const cap = v.players.find((p) => p.id === t.captainId);
-          const members = playersOf(t.id);
+          const cap = inRoom ? v.players.find((p) => p.id === t.captainId) : null;
+          const members = inRoom ? playersOf(t.id).map((m) => m.name) : (Array.isArray(t.members) ? t.members : []);
           const bump = S.bumps[t.id] && Date.now() - S.bumps[t.id].at < 2500 ? S.bumps[t.id].d : null;
+          const adjustCall = (d) => inRoom ? `api('adjust_score',{team:'${t.id}',delta:${d}})` : `offlineAdjustScore('${t.id}',${d})`;
+          const zeroCall = inRoom ? `api('set_score',{team:'${t.id}',score:0})` : `offlineSetScore('${t.id}',0)`;
           return `<div class="sb-team-card team-${t.id} ${rnk === 1 ? 'rank-1' : ''}">
             <div class="sb-team-top">
               <span class="sb-rank-badge ${rnk === 1 ? 'gold' : ''}">${rnk === 1 ? ic('crown') : '#' + rnk}</span>
-              ${avatar(cap, 'sm')}
+              ${inRoom ? avatar(cap, 'sm') : ''}
               <div class="sb-team-meta">
-                <b>${esc(t.name)}${myTeam() === t.id ? ' <small>(فريقك)</small>' : ''}</b>
-                <small>${members.length ? members.map((m) => esc(m.name)).join('، ') : 'بدون لاعبين'}</small>
+                <b>${esc(t.name)}${inRoom && myTeam() === t.id ? ' <small>(فريقك)</small>' : ''}</b>
+                <small>${members.length ? members.map((m) => esc(m)).join('، ') : (inRoom ? 'بدون لاعبين' : 'محفوظ بره الجيم')}</small>
               </div>
               <div class="sb-score-box">
-                <span class="sb-score-num" data-team-score="${t.id}">${t.score}</span>
+                <span class="sb-score-num" data-team-score="${t.id}">${Number(t.score) || 0}</span>
                 <small>نقطة</small>
                 ${bump ? `<span class="bump ${bump > 0 ? 'up' : 'down'}">${bump > 0 ? '+' : ''}${bump}</span>` : ''}
               </div>
             </div>
-            ${host ? `
+            ${canEdit ? `
               <div class="sb-host-controls">
                 <div class="sb-quick-btns">
-                  ${[20, 10, 5, 2, 1, -1, -5, -10].map((d) => `<button type="button" class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${t.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}
+                  ${[20, 10, 5, 2, 1, -1, -5, -10].map((d) => `<button type="button" class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="${adjustCall(d)}">${d > 0 ? '+' : ''}${d}</button>`).join('')}
                 </div>
                 <div class="sb-custom-row">
                   <input id="sbCustom_${t.id}" type="number" class="input sm" placeholder="اكتب نقط لـ ${esc(t.name)}..." value="${esc(S.draft['sb_' + t.id] ?? '')}" oninput="S.draft['sb_${t.id}']=this.value" onkeydown="if(event.key==='Enter')applyCustomScore('${t.id}','add')"/>
                   <button type="button" class="btn sm olive" onclick="applyCustomScore('${t.id}','add')">+ زوّد</button>
                   <button type="button" class="btn sm ghost" onclick="applyCustomScore('${t.id}','set')" title="خلي إجمالي النقط بالرقم المكتوب">= المجموع</button>
-                  <button type="button" class="btn sm danger" onclick="api('set_score',{team:'${t.id}',score:0})" title="تصفير نقاط ${esc(t.name)}">0</button>
+                  <button type="button" class="btn sm danger" onclick="${zeroCall}" title="تصفير نقاط ${esc(t.name)}">0</button>
                 </div>
               </div>
             ` : ''}
@@ -1298,13 +1497,13 @@ function render() {
   let html = '';
   const v = S.view;
   if (S.editingAvatar) {
-    html = viewAvatar();
+    html = viewAvatar() + scoreboardSideWidget();
   } else if (S.customInRoom) {
-    html = viewCustom();
+    html = viewCustom() + scoreboardSideWidget();
   } else if (!v) {
-    html = ({ home: viewHome, avatar: viewAvatar, setup: viewSetup, custom: viewCustom, closed: viewClosed, loading: viewLoading })[S.screen]();
-  } else if (key === 'kicked') html = viewKicked();
-  else if (v.status === 'lobby') html = isAdmin() ? viewLobbyAdmin() : myTeam() ? viewLobbyPlayer() : viewTeamPick();
+    html = ({ home: viewHome, avatar: viewAvatar, setup: viewSetup, custom: viewCustom, closed: viewClosed, loading: viewLoading })[S.screen]() + (S.screen !== 'loading' ? scoreboardSideWidget() : '');
+  } else if (key === 'kicked') html = viewKicked() + scoreboardSideWidget();
+  else if (v.status === 'lobby') html = (isAdmin() ? viewLobbyAdmin() : myTeam() ? viewLobbyPlayer() : viewTeamPick()) + scoreboardSideWidget();
   else if (v.status === 'playing') {
     try {
       if (!isAdmin() && !myTeam()) html = viewTeamPick();
@@ -1457,6 +1656,16 @@ function applyAccountPayload(acc) {
     S.savedPacks = Array.from(byId.values()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     LS.set('savedCustomPacks', S.savedPacks);
   }
+  if (acc.savedScoreboard && Array.isArray(acc.savedScoreboard.teams) && acc.savedScoreboard.teams.length) {
+    const localTime = (S.savedScoreboard && Number(S.savedScoreboard.updatedAt)) || 0;
+    const srvTime = Number(acc.savedScoreboard.updatedAt) || 0;
+    const localHasPts = S.savedScoreboard && Array.isArray(S.savedScoreboard.teams) && S.savedScoreboard.teams.some((t) => (Number(t.score) || 0) !== 0);
+    const srvHasPts = acc.savedScoreboard.teams.some((t) => (Number(t.score) || 0) !== 0);
+    if (!S.savedScoreboard || (srvHasPts && !localHasPts) || srvTime >= localTime) {
+      S.savedScoreboard = acc.savedScoreboard;
+      LS.set('savedScoreboard', S.savedScoreboard);
+    }
+  }
 }
 
 let _syncAccountTimer = null;
@@ -1477,7 +1686,8 @@ function syncAccountToServer(immediate = false) {
           pid: S.account.pid,
           secret: S.account.secret,
           profile: S.profile,
-          customByGame: cleanCustomByGame
+          customByGame: cleanCustomByGame,
+          savedScoreboard: S.savedScoreboard
         })
       });
     } catch (e) {}
@@ -1513,14 +1723,15 @@ async function submitAccountAuth(mode) {
         pid: ident.pid,
         secret: ident.secret,
         profile: S.profile,
-        customByGame: cleanCustomByGame
+        customByGame: cleanCustomByGame,
+        savedScoreboard: S.savedScoreboard
       })
     }).then((x) => x.json());
     if (!r || !r.ok) return toast((r && r.error) || 'حصلت مشكلة في تسجيل الحساب', 'err');
     applyAccountPayload(r.account);
     S.draft.accUser = '';
     S.draft.accPass = '';
-    toast(act === 'register' ? `أهلاً بيك يا ${r.account.username}! اتعمل حسابك واتحفظت أسئلتك الخاصة فيه` : `أهلاً بيك يا ${r.account.username}! اتحمّلت كل أسئلتك الخاصة المحفوظة`);
+    toast(act === 'register' ? `أهلاً بيك يا ${r.account.username}! اتعمل حسابك واتحفظت أسئلتك الخاصة والسكور بورد فيه` : `أهلاً بيك يا ${r.account.username}! اتحمّلت كل أسئلتك الخاصة والسكور بورد المحفوظ`);
     render();
   } catch (e) {
     toast('تعذر الاتصال بالسيرفر — جرب تاني', 'err');
@@ -1552,7 +1763,7 @@ function viewAccountModal() {
           ${avatar(S.profile, 'md')}
           <div>
             <b>${esc(acc.username)}</b>
-            <span class="sub" style="display:block">${ic('check')} متسجل دخول ومحفوظ في إعدادات الموقع — أسئلتك الخاصة بتتحفظ تلقائياً في حسابك!</span>
+            <span class="sub" style="display:block">${ic('check')} متسجل دخول ومحفوظ في إعدادات الموقع — أسئلتك الخاصة والسكور بورد بيتحفظوا تلقائياً في حسابك!</span>
           </div>
         </div>
         <div class="account-stats-grid">
@@ -1578,7 +1789,7 @@ function viewAccountModal() {
         </div>
       </div>
     ` : `
-      <p class="sub">اعمل حساب أو ادخل بحسابك اللي عارفه عشان يتحفظ في الموقع وتلاقي كل <b>أسئلتك الخاصة</b> جاهزة دايماً في أي وقت ومن أي جهاز!</p>
+      <p class="sub">اعمل حساب أو ادخل بحسابك اللي عارفه عشان يتحفظ في الموقع وتلاقي كل <b>أسئلتك الخاصة والسكور بورد</b> جاهزين دايماً في أي وقت ومن أي جهاز!</p>
       <div class="seg" style="margin:8px 0">
         <button type="button" class="${S.accTab !== 'register' ? 'on' : ''}" onclick="S.accTab='login';render()">${ic('enter')} تسجيل دخول لحسابي</button>
         <button type="button" class="${S.accTab === 'register' ? 'on' : ''}" onclick="S.accTab='register';render()">${ic('plus')} إنشاء حساب جديد</button>
@@ -1604,10 +1815,16 @@ function viewHome() {
   return `<section class="wrap narrow home">
     <div class="home-lang-bar">
       ${langSwitch(false)}
-      <button type="button" class="account-chip-btn ${S.account ? 'logged' : ''}" onclick="openAccountModal()">
-        ${ic('user')}
-        <span>${S.account ? `حسابي: ${esc(S.account.username)}` : 'إنشاء حساب / دخول'}</span>
-      </button>
+      <div class="row wrap-row">
+        <button type="button" class="scoreboard-top-btn ${S.scoreboardOpen ? 'on' : ''}" onclick="toggleScoreboard()" title="افتح السكور بورد المحفوظ">
+          ${ic('trophy')}
+          <span>Scoreboard</span>
+        </button>
+        <button type="button" class="account-chip-btn ${S.account ? 'logged' : ''}" onclick="openAccountModal()">
+          ${ic('user')}
+          <span>${S.account ? `حسابي: ${esc(S.account.username)}` : 'إنشاء حساب / دخول'}</span>
+        </button>
+      </div>
     </div>
     ${logo('lg')}
     <p class="home-sub">ألعاب السهرة على القهوة — فرق، حكم، وأسئلة عمرها ما بتتكرر</p>
@@ -1618,7 +1835,7 @@ function viewHome() {
       <div class="home-account-banner ${S.account ? 'is-logged' : ''}">
         <div class="hab-info">
           <b>${ic('user')} ${S.account ? `أهلاً يا ${esc(S.account.username)} — حسابك متسجل` : 'اعمل حساب أو ادخل بحسابك'}</b>
-          <span>${S.account ? `أسئلتك الخاصة محفوظة في حسابك (${totalQ} سؤال · ${totalPacks} باكج محفوظ)` : 'احفظ أسئلتك الخاصة في حسابك عشان تفتحها وتستعملها في أي وقت براحتك!'}</span>
+          <span>${S.account ? `أسئلتك الخاصة والسكور بورد محفوظين في حسابك (${totalQ} سؤال · ${totalPacks} باكج محفوظ)` : 'احفظ أسئلتك الخاصة والسكور بورد في حسابك عشان تفتحهم وتستعملهم في أي وقت براحتك!'}</span>
         </div>
         <div class="hab-actions">
           ${S.account ? `
@@ -1647,6 +1864,7 @@ function viewHome() {
       </label>
       ${S.resumable ? `<button class="btn ghost block" onclick="resume()">${ic('home')} ارجع لغرفتك ${esc(S.resumable.code)}</button>` : ''}
     </div>
+    ${savedScoreboardCard(false)}
     <div class="home-how">
       ${['اعمل شخصيتك', 'الحكم يعمل الغرفة (2 لـ 4 فرق) أو يلعب معاهم', 'امسح الـ QR وادخل من موبايلك', 'العبوا والنقط بتتحسب لوحدها'].map((t, i) => `<div class="how"><b>${i + 1}</b><span>${t}</span></div>`).join('')}
     </div>
@@ -1750,6 +1968,8 @@ function viewSetup() {
       <p class="sub">اختار اللعبة، حدد نظام اللعب (فرق من 2 لـ 4 فرق · أو وضع فردي لحد 10 لاعبين)، وتقدر كمان تلعب معاهم والـ AI يحكم!</p>
     </div>
 
+    ${savedScoreboardCard(true)}
+
     <div class="card">
       <h2 class="h2"><span class="num">1</span> اختار اللعبة</h2>
       <div class="games">
@@ -1795,7 +2015,7 @@ function viewSetup() {
           </div>
           ${activeTeamIds.map((tid, i) => `
             <label class="field team-name-field team-${tid}"><span>${TEAM_LABELS[tid]}</span>
-              <input id="tn${i}" class="input" maxlength="24" value="${esc(s.teamNames[i] || DEFAULT_TEAM_NAMES[i])}" oninput="S.setup.teamNames[${i}]=this.value"/>
+              <input id="tn${i}" class="input" maxlength="24" value="${esc(s.teamNames[i] || DEFAULT_TEAM_NAMES[i])}" oninput="S.setup.teamNames[${i}]=this.value;offlineRenameTeam('${tid}',this.value)"/>
             </label>`).join('')}
         `}
         <div class="admin-play-box ${s.adminPlays ? 'on' : ''}">
@@ -1897,6 +2117,18 @@ function setSetupTeamCount(n) {
   while (S.setup.teamNames.length < 4) S.setup.teamNames.push(DEFAULT_TEAM_NAMES[S.setup.teamNames.length] || 'فريق');
   const active = ALL_TEAM_IDS.slice(0, count);
   if (!active.includes(S.setup.adminTeam)) S.setup.adminTeam = 'A';
+  const sb = getSavedScoreboard();
+  if (sb && Array.isArray(sb.teams)) {
+    const map = {};
+    sb.teams.forEach((t) => { map[t.id] = t; });
+    sb.teams = active.map((id, idx) => ({
+      id,
+      name: (map[id] && map[id].name) || S.setup.teamNames[idx] || DEFAULT_TEAM_NAMES[idx],
+      score: map[id] ? Number(map[id].score) || 0 : 0,
+      members: map[id] && Array.isArray(map[id].members) ? map[id].members : []
+    }));
+    LS.set('savedScoreboard', sb);
+  }
   LS.set('setup', S.setup);
   render();
 }
@@ -1994,7 +2226,16 @@ async function createRoom() {
   if (s.useCustom && !custom.length) return toast('اكتب أسئلة الكاستم الأول', 'err');
   if (s.useCustom && s.game === 'tamr' && custom.length < 2) return toast('تمر هندي محتاج شخصيتين على الأقل في الكاستم', 'err');
   LS.set('setup', s);
-  const r = await api('create_room', { game: s.game, settings: s, customPack: custom, profile: S.profile });
+  const sb = getSavedScoreboard();
+  const initialScores = {};
+  if (sb && sb.keepOnCreate !== false && Array.isArray(sb.teams)) {
+    sb.teams.forEach((t) => {
+      if (t && t.id && Number.isFinite(Number(t.score))) {
+        initialScores[t.id] = Number(t.score);
+      }
+    });
+  }
+  const r = await api('create_room', { game: s.game, settings: s, customPack: custom, profile: S.profile, initialScores });
   if (r.ok) {
     LS.set('session', { code: r.code, role: 'admin' });
     history.replaceState(null, '', '/');
@@ -2800,10 +3041,23 @@ function viewLobbyAdmin() {
               <div class="card team-col team-${t.id}">
                 <div class="team-head">
                   <input id="rn${t.id}" class="input team-title" maxlength="24" value="${esc(S.draft['rn' + t.id] ?? t.name)}" oninput="S.draft['rn${t.id}']=this.value" onchange="api('rename_team',{team:'${t.id}',name:this.value});delete S.draft['rn${t.id}']" aria-label="اسم الفريق"/>
+                  <span class="lobby-team-score-badge" data-team-score="${t.id}" onclick="toggleScoreboard(true)" title="نقاط الفريق المحفوظة — دوس لفتح الـ Scoreboard">${ic('trophy')} <b>${Number(t.score) || 0}</b> نقطة</span>
                   <span class="count">${playersOf(t.id).length}/${(v.caps || {}).team || 20} ${ic('users')}</span>
                 </div>
                 <ul class="members">${playersOf(t.id).map((p) => memberRow(p, true)).join('') || `<li class="empty">${sticker(idx % 2 === 0 ? 'latte' : 'pink', 46)}<span>مستني لاعبين...</span></li>`}</ul>
               </div>`).join('')}
+          </div>
+          <div class="card lobby-sb-bar">
+            <div class="row wrap-row" style="justify-content:space-between">
+              <div>
+                <b>${ic('trophy')} السكور بورد محفوظ (${v.teams.map((t) => `${esc(t.name)}: ${Number(t.score) || 0}`).join(' · ')})</b>
+                <span class="sub" style="display:block">النقاط بتفضل محفوظة لما تغيّر اللعبة أو ترجع للوبي أو تخرج بره الجيم — وتقدر تعدّلها أو تصفرها براحتك.</span>
+              </div>
+              <div class="row wrap-row">
+                <button type="button" class="btn sm olive" onclick="toggleScoreboard(true)">${ic('trophy')} افتح الـ Scoreboard</button>
+                ${v.teams.some((t) => (Number(t.score) || 0) !== 0) ? `<button type="button" class="btn sm danger" onclick="api('reset_scores')">${ic('trash')} تصفير النقاط</button>` : ''}
+              </div>
+            </div>
           </div>
           ${unassigned.length ? `<div class="card unassigned"><h3 class="h3">لسه بيختاروا فريق (${unassigned.length})</h3><ul class="members">${unassigned.map((p) => memberRow(p, true)).join('')}</ul></div>` : ''}
         `}
@@ -2922,7 +3176,7 @@ function viewTeamPick() {
     <div class="pick-2 teams-grid teams-count-${v.teams.length}">
       ${v.teams.map((t) => `
         <button class="card team-pick-card team-${t.id}" onclick="api('pick_team',{team:'${t.id}'})">
-          <b class="tp-name">${esc(t.name)}</b>
+          <b class="tp-name">${esc(t.name)} <small>(${Number(t.score) || 0} نقطة)</small></b>
           <div class="tp-avatars">${playersOf(t.id).slice(0, 6).map((p) => avatar(p, 'sm')).join('') || '<span class="sub">لسه فاضي — كن أول واحد</span>'}</div>
           <span class="tp-count">${playersOf(t.id).length} / ${(v.caps || {}).team || 20} لاعب</span>
           <span class="btn primary sm">${playersOf(t.id).length >= ((v.caps || {}).team || 20) ? 'الفريق كامل' : `انضم ${ic('next')}`}</span>
@@ -2944,12 +3198,12 @@ function viewLobbyPlayer() {
   <section class="wrap narrow lobby-player">
     <div class="card tape team-col team-${t.id}">
       <p class="sub">${isSolo ? 'وضع اللعب الفردي — كل لاعب لوحده' : 'إنت في'}</p>
-      <h1 class="h1">${esc(t.name)}</h1>
+      <h1 class="h1">${esc(t.name)} <small>(${Number(t.score) || 0} نقطة)</small></h1>
       ${isSolo ? `<p class="captain-banner">${ic('crown')} إنت بتلعب بشكل فردي ضد باقي اللاعبين (${v.teams.length} / 10 لاعبين)</p>` : me().captain ? `<p class="captain-banner">${ic('crown')} إنت قائد الفريق — إنت اللي هتبعت الإجابات</p>` : ''}
       <ul class="members">${playersOf(t.id).map((p) => memberRow(p, false)).join('')}</ul>
     </div>
     ${others.length ? `<div class="mini-teams-list">
-      ${others.map((other) => `<div class="card mini-team team-${other.id}"><b>${esc(other.name)}</b><div class="tp-avatars">${playersOf(other.id).map((p) => avatar(p, 'xs')).join('') || '<span class="sub">فاضي</span>'}</div></div>`).join('')}
+      ${others.map((other) => `<div class="card mini-team team-${other.id}"><b>${esc(other.name)} (${Number(other.score) || 0})</b><div class="tp-avatars">${playersOf(other.id).map((p) => avatar(p, 'xs')).join('') || '<span class="sub">فاضي</span>'}</div></div>`).join('')}
     </div>` : ''}
     <div class="waiting">${sticker('teapot', 90, 'wobble')}<p>مستنيين بداية <b>${GAMES[v.game].name}</b>${v.adminPlays ? ' (حكم AI)' : ''}<span class="dots"><i></i><i></i><i></i></span></p></div>
     ${!isSolo ? `<div class="row wrap-row">
@@ -3926,20 +4180,23 @@ function adminDrawer() {
   </aside>` : ''}`;
 }
 async function returnToLobby() {
+  if (S.view) saveScoreboardSnapshot(S.view, true);
   S.drawer = false;
   S.pickOpt = null;
   S.draft = {};
   await api('end_to_lobby');
-  toast('رجعنا لغرفة الانتظار — تقدر تغيّر اللعبة أو الأسئلة أو الفرق دلوقتي!');
+  toast('رجعنا لغرفة الانتظار — السكور بورد والنقاط محفوظين وتقدر تغيّر اللعبة أو الإعدادات دلوقتي!');
 }
 async function closeRoom() {
-  if (!confirm('تقفل الغرفة؟ كل اللاعيبة هيخرجوا.')) return;
+  if (!confirm('تقفل الغرفة؟ السكور بورد هيفضل محفوظ بره بعد ما تخرج.')) return;
+  if (S.view) saveScoreboardSnapshot(S.view, true);
   await api('close_room');
   if (S.es) S.es.close();
   if (S.pollTimer) clearInterval(S.pollTimer);
   S.es = null; S.pollTimer = null; S.view = null; S.drawer = false; S.lastKey = null; S.customInRoom = false;
   LS.set('session', null);
   S.mode = 'create'; S.screen = 'setup';
+  toast('اتقفلت الغرفة واتحفظ السكور بورد بره!');
   render();
 }
 
