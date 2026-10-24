@@ -187,6 +187,7 @@ const S = {
     wordLen: 5,
     useCustom: false,
     hideSecret: false,
+    manualScore: false,
     ...savedSetup
   },
   customByGame: savedCustomByGame,
@@ -199,6 +200,7 @@ const S = {
   es: null,
   pollTimer: null,
   drawer: false,
+  scoreboardOpen: false,
   draft: {},
   pickOpt: null,
   busy: false,
@@ -210,9 +212,10 @@ const S = {
   resumable: null,
   lang: ['ar', 'en', 'tr'].includes(LS.get('lang', 'ar')) ? LS.get('lang', 'ar') : 'ar'
 };
-if (!S.setup.buzzSec) S.setup.buzzSec = 20;
+if (!S.setup.buzzSec || S.setup.buzzSec < 5) S.setup.buzzSec = 20;
 if (!S.setup.sahlabHints || S.setup.sahlabHints < 1 || S.setup.sahlabHints > 5) S.setup.sahlabHints = 5;
 S.setup.annabLockOpts = Boolean(S.setup.annabLockOpts);
+S.setup.manualScore = Boolean(S.setup.manualScore);
 if (S.setup.playMode !== 'solo') S.setup.playMode = 'teams';
 if (!['easy', 'medium', 'hard'].includes(S.setup.difficulty)) S.setup.difficulty = 'medium';
 if (!S.setup.teamCount || S.setup.teamCount < 2 || S.setup.teamCount > 4) S.setup.teamCount = 2;
@@ -290,7 +293,7 @@ function validCustomList(game = curCustomGame()) {
 }
 
 const NON_BLOCKING_ACTIONS = new Set([
-  'adjust_score', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
+  'adjust_score', 'set_score', 'toggle_score_mode', 'tm_penalty', 'sh_judge', 'tm_judge', 'sh_toggle_freeze',
   'update_lobby', 'rename_team', 'kr_suggest', 'kr_vote_suggest', 'sh_suggest', 'tm_suggest',
   'toggle_secret', 'an_buzz', 'an_pick', 'an_suggest', 'an_reset_buzz', 'an_pass_turn', 'an_reveal',
   'an_admin_pick', 'an_admin_buzz', 'an_toggle_lock',
@@ -395,6 +398,7 @@ function onEvent(v) {
   S.lastEventId = e.id;
   const tn = (id) => (v.teams.find((t) => t.id === id) || {}).name || '';
   if (e.type === 'an_wrong_steal' || e.type === 'an_reset' || e.type === 'an_timeout_steal') S.pickOpt = null;
+  const isManual = Boolean(v.settings && v.settings.manualScore);
   const msgs = {
     join: () => isHost() && `${e.name} دخل الغرفة`,
     wrong: () => e.bothFrozen ? `كل الفرق اتجمدت! التلميح الجاي بيفتح تلقائياً...` : `${tn(e.team)} جاوب غلط — اتجمد لحد التلميح الجاي!`,
@@ -411,13 +415,14 @@ function onEvent(v) {
     team_count: () => `عدد الفرق بقى ${e.teamCount} فرق`,
     admin_play: () => e.adminPlays ? `الحكم انضم لـ ${tn(e.team)} والـ AI مسك التحكيم!` : `الحكم رجع لمنصة التحكيم`,
     buzz: () => `${tn(e.team)} داس الباز الأول! دوره يختار الإجابة`,
-    an_correct: () => v.aiJudge ? `${tn(e.team)} جاوب صح! (+10 نقطة تلقائياً)` : `${tn(e.team)} جاوب صح! الحكم يقدر يزوّد النقط براحته`,
+    an_correct: () => isManual ? `${tn(e.team)} جاوب صح! الحكم يحط النقط من الـ Scoreboard` : `${tn(e.team)} جاوب صح! (+${e.pts || 10} نقطة تلقائياً)`,
     an_wrong_steal: () => `إجابة ${tn(e.wrongTeam)} غلط! الفرصة راحت لـ ${tn(e.nextTeam)} يختار من الاختيارات الباقية`,
     an_both_wrong: () => `كل المحاولات غلط! اتكشفت الإجابة الصح`,
     an_timeout_steal: () => `وقت ${tn(e.wrongTeam)} خلص! الفرصة راحت لـ ${tn(e.nextTeam)}`,
     an_reset: () => `اتفتح الباز من الأول لكل الفرق!`,
-    an_lock_toggled: () => e.lockOpts ? 'الحكم قفل اختيار الإجابات عند الفرق — الاختيار من شاشة الحكم بس!' : 'الحكم فتح اختيار الإجابات للفرق!',
-    yn_solved: () => `${tn(e.winner)} كشف الكلمة «${e.word}» (+${e.pts} نقطة)!`,
+    an_lock_toggled: () => (e.locked ?? e.lockOpts) ? 'الحكم قفل اختيار الإجابات عند الفرق — الاختيار من شاشة الحكم بس!' : 'الحكم فتح اختيار الإجابات للفرق!',
+    score_mode_changed: () => e.manualScore ? 'نظام النقط: الحكم هو اللي يحط النقط لكل فريق بنفسه!' : 'نظام النقط: اللعبة بتحط النقط لكل فريق تلقائياً!',
+    yn_solved: () => isManual ? `${tn(e.winner)} كشف الكلمة «${e.word}» — الحكم يحط النقط من الـ Scoreboard!` : `${tn(e.winner)} كشف الكلمة «${e.word}» (+${e.pts} نقطة)!`,
     yn_revealed: () => `اتكشفت الكلمة: «${e.word}»`,
     yn_pass: () => `الدور اتنقل لـ ${tn(e.nextTurn)}`,
     yn_hint: () => e.showHint ? 'الحكم فتح تلميح للكلمة!' : 'الحكم خفّى التلميح'
@@ -919,7 +924,7 @@ async function closeAvatarEditor(save = true) {
 }
 
 function canGoBack() {
-  if (S.editingAvatar || S.customInRoom || S.drawer) return true;
+  if (S.editingAvatar || S.customInRoom || S.drawer || S.scoreboardOpen) return true;
   if (S.view) return S.view.status !== 'playing';
   return S.screen !== 'home' && S.screen !== 'loading';
 }
@@ -931,12 +936,14 @@ function disconnectRoom() {
   S.pollTimer = null;
   S.view = null;
   S.drawer = false;
+  S.scoreboardOpen = false;
   S.customInRoom = false;
   S.editingAvatar = false;
 }
 
 let _handlingPopState = false;
 async function goBack() {
+  if (S.scoreboardOpen) { S.scoreboardOpen = false; render(); return; }
   if (S.drawer) { S.drawer = false; render(); return; }
   if (S.editingAvatar) { S.editingAvatar = false; render(); return; }
   if (S.customInRoom) { S.customInRoom = false; render(); return; }
@@ -1020,12 +1027,42 @@ function stepper(steps, active) {
     .join('<li class="step-line" aria-hidden="true"></li>')}</ol>`;
 }
 
+function toggleScoreboard(force) {
+  S.scoreboardOpen = force !== undefined ? Boolean(force) : !S.scoreboardOpen;
+  if (S.scoreboardOpen) S.drawer = false;
+  render();
+}
+
+function applyCustomScore(teamId, mode = 'add') {
+  const inp = document.getElementById('sbCustom_' + teamId) || document.getElementById('inlineCustom_' + teamId);
+  const raw = inp ? inp.value : S.draft['sb_' + teamId];
+  const val = Number(raw);
+  if (!Number.isFinite(val)) return toast('اكتب رقم صحيح الأول', 'err');
+  if (mode === 'set') {
+    api('set_score', { team: teamId, score: Math.round(val) }).then((r) => {
+      if (r.ok) {
+        delete S.draft['sb_' + teamId];
+        if (inp) inp.value = '';
+      }
+    });
+  } else {
+    if (Math.round(val) === 0) return toast('اكتب عدد النقاط اللي عايز تزودها أو تنقصها', 'err');
+    api('adjust_score', { team: teamId, delta: Math.round(val) }).then((r) => {
+      if (r.ok) {
+        delete S.draft['sb_' + teamId];
+        if (inp) inp.value = '';
+      }
+    });
+  }
+}
+
 function topbar(extra = '') {
   const v = S.view;
   const key = screenKey();
   const showBack = canGoBack();
   const showMyAv = canEditAvatar() && key !== 'avatar' && key !== 'editAvatar';
   const myAvProf = (v && (isAdmin() ? v.admin : v.players.find((p) => p.id === me().id))) || S.profile;
+  const showSbBtn = Boolean(v && v.teams && v.teams.length && (v.status === 'playing' || v.status === 'finished'));
   return `<header class="topbar">
     <div class="topbar-start">
       ${showBack ? `<button type="button" class="btn ghost sm back-btn" onclick="goBack()" title="رجوع للصفحة السابقة">${ic('chevR')} <span>رجوع</span></button>` : ''}
@@ -1034,6 +1071,10 @@ function topbar(extra = '') {
     <div class="topbar-mid">${extra}</div>
     <div class="topbar-end">
       ${langSwitch(true)}
+      ${showSbBtn ? `<button type="button" class="scoreboard-top-btn ${S.scoreboardOpen ? 'on' : ''}" onclick="toggleScoreboard()" title="افتح لوحة النقاط (Scoreboard)">
+        ${ic('trophy')}
+        <span>Scoreboard</span>
+      </button>` : ''}
       <button type="button" class="account-chip-btn ${S.account ? 'logged' : ''}" onclick="openAccountModal()" title="${S.account ? `حسابك: ${esc(S.account.username)} — أسئلتك الخاصة محفوظة` : 'إنشاء حساب أو تسجيل دخول لحفظ أسئلتك الخاصة'}">
         ${ic('user')}
         <span>${S.account ? esc(S.account.username) : 'حسابي'}</span>
@@ -1078,6 +1119,7 @@ function scorebar() {
   const v = S.view;
   const mt = myTeam();
   const host = isHost();
+  const isManual = Boolean(v.settings && v.settings.manualScore);
   const cell = (t) => {
     const bump = S.bumps[t.id] && Date.now() - S.bumps[t.id].at < 2500 ? S.bumps[t.id].d : null;
     const cap = v.players.find((p) => p.id === t.captainId);
@@ -1093,7 +1135,9 @@ function scorebar() {
     </div>`;
   };
   const diffLbl = DIFF_LABELS[(v.settings && v.settings.difficulty) || 'medium'] || 'متوسط';
-  const midHtml = `<div class="score-mid"><span class="round-pill">${GAMES[v.game].name} · المستوى: ${diffLbl} · الجولة ${Math.max(1, v.round + 1)} من ${v.totalRounds}${v.aiJudge ? ' · الـ AI بيحكم' : ''}</span>${timerRing()}</div>`;
+  const scoreModeTag = isManual ? ' · النقط: بإيد الحكم' : '';
+  const sbBtn = `<button type="button" class="scorebar-sb-btn ${S.scoreboardOpen ? 'on' : ''}" onclick="toggleScoreboard()" title="افتح الـ Scoreboard (لوحة النقاط)">${ic('trophy')} <span>Scoreboard</span></button>`;
+  const midHtml = `<div class="score-mid"><div class="score-mid-row"><span class="round-pill">${GAMES[v.game].name} · المستوى: ${diffLbl} · الجولة ${Math.max(1, v.round + 1)} من ${v.totalRounds}${v.aiJudge ? ' · الـ AI بيحكم' : ''}${scoreModeTag}</span>${sbBtn}</div>${timerRing()}</div>`;
   if (v.teams.length === 2) {
     const [a, b] = v.teams;
     return `<div class="scorebar">${cell(a)}${midHtml}${cell(b)}</div>`;
@@ -1102,6 +1146,128 @@ function scorebar() {
     ${midHtml}
     <div class="score-multi-grid">${v.teams.map(cell).join('')}</div>
   </div>`;
+}
+
+function judgeScorePanel(titleOverride = '') {
+  const v = S.view;
+  if (!v || !isHost()) return '';
+  const isManual = Boolean(v.settings && v.settings.manualScore);
+  return `<div class="card judge-score-panel ${isManual ? 'manual-mode-active' : ''}">
+    <div class="jsp-head-row">
+      <div>
+        <h3 class="h3">${ic('trophy')} ${titleOverride || (isManual ? 'لوحة تحكم الحكم في النقاط (الوضع اليدوي شغال)' : 'تحكم الحكم في النقاط (Scoreboard)')}</h3>
+        <span class="sub">${isManual ? 'إنت مختار إن الحكم هو اللي يدي النقط لكل فريق بنفسه — زوّد أو اكتب النقط هنا أو من زرار الـ Scoreboard في الجنب!' : 'اللعبة بتحسب النقط تلقائياً، وتقدر تزوّد أو تنقص لأي فريق في أي وقت براحتك.'}</span>
+      </div>
+      <div class="row wrap-row">
+        <button type="button" class="btn sm ${isManual ? 'primary' : 'ghost'}" onclick="api('toggle_score_mode')">
+          ${ic(isManual ? 'whistle' : 'bolt')} ${isManual ? 'النقط: بإيد الحكم (دوس للتحويل لتلقائي)' : 'النقط: تلقائي من اللعبة (دوس لليدوي)'}
+        </button>
+        <button type="button" class="btn sm olive" onclick="toggleScoreboard(true)">
+          ${ic('trophy')} افتح الـ Scoreboard الجانبي
+        </button>
+      </div>
+    </div>
+    <div class="judge-score-grid teams-count-${v.teams.length}">
+      ${v.teams.map((tm) => `<div class="judge-score-box team-${tm.id}">
+        <div class="js-head"><b>${esc(tm.name)}</b><span class="js-val" data-team-score="${tm.id}">${tm.score}</span></div>
+        <div class="js-btns">
+          ${[10, 5, 2, 1, -1, -2, -5, -10].map((d) => `<button type="button" class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${tm.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}
+        </div>
+        <div class="js-custom-row">
+          <input id="inlineCustom_${tm.id}" type="number" class="input sm js-custom-in" placeholder="اكتب نقط..." value="${esc(S.draft['sb_' + tm.id] ?? '')}" oninput="S.draft['sb_${tm.id}']=this.value" onkeydown="if(event.key==='Enter')applyCustomScore('${tm.id}','add')"/>
+          <button type="button" class="btn sm olive" onclick="applyCustomScore('${tm.id}','add')" title="زود أو نقص الرقم ده">+ زوّد</button>
+          <button type="button" class="btn sm ghost" onclick="applyCustomScore('${tm.id}','set')" title="خلي مجموع نقاط الفريق بالرقم ده">= المجموع</button>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function scoreboardSideWidget() {
+  const v = S.view;
+  if (!v || !v.teams || !v.teams.length || (v.status !== 'playing' && v.status !== 'finished')) return '';
+  const host = isHost();
+  const isManual = Boolean(v.settings && v.settings.manualScore);
+  const sorted = v.teams.slice().sort((a, b) => b.score - a.score);
+  const rankMap = {};
+  sorted.forEach((t, idx) => {
+    if (idx > 0 && t.score === sorted[idx - 1].score) {
+      rankMap[t.id] = rankMap[sorted[idx - 1].id];
+    } else {
+      rankMap[t.id] = idx + 1;
+    }
+  });
+
+  // الزرار الجانبي العائم في جنب الشاشة + اللوحة الجانبية للـ Scoreboard
+  return `
+  <button type="button" class="sb-side-tab ${S.scoreboardOpen ? 'open' : ''} ${isManual ? 'manual-glow' : ''}" onclick="toggleScoreboard()" aria-expanded="${S.scoreboardOpen}" title="افتح أو اقفل لوحة النقاط (Scoreboard)">
+    <span class="sb-tab-icon">${ic('trophy')}</span>
+    <span class="sb-tab-lbl">Scoreboard</span>
+    <span class="sb-tab-mini-scores">
+      ${sorted.slice(0, 4).map((t) => `<b class="sb-mini-pill team-${t.id}">${t.score}</b>`).join('')}
+    </span>
+  </button>
+  ${S.scoreboardOpen ? `
+    <div class="drawer-backdrop sb-backdrop" onclick="toggleScoreboard(false)"></div>
+    <aside class="scoreboard-panel" role="dialog" aria-label="Scoreboard — لوحة النقاط">
+      <div class="sb-panel-head">
+        <div>
+          <h2 class="h2">${ic('trophy')} Scoreboard · لوحة النقاط</h2>
+          <span class="sub">${GAMES[v.game] ? GAMES[v.game].name : ''} · الجولة ${Math.max(1, v.round + 1)} من ${v.totalRounds}</span>
+        </div>
+        <button type="button" class="icon-btn" aria-label="إغلاق" onclick="toggleScoreboard(false)">${ic('x')}</button>
+      </div>
+
+      <div class="sb-mode-banner ${isManual ? 'is-manual' : 'is-auto'}">
+        <div class="sb-mode-info">
+          <b>${ic(isManual ? 'whistle' : 'bolt')} ${isManual ? 'نظام النقط: الحكم يحط النقط بنفسه' : 'نظام النقط: اللعبة تحط النقط تلقائي'}</b>
+          <span>${isManual ? 'اللعبة مابتحطش نقط أوتوماتيك — الحكم هو اللي بيدي النقط لكل فريق من هنا.' : 'النقط بتتحسب وتزيد تلقائياً مع كل إجابة صح (والحكم يقدر يعدّلها برضه).'}</span>
+        </div>
+        ${host ? `
+          <button type="button" class="btn sm ${isManual ? 'primary' : 'olive'}" onclick="api('toggle_score_mode')">
+            ${isManual ? 'حوّل لتلقائي' : 'حوّل ليدوي (الحكم بس)'}
+          </button>
+        ` : ''}
+      </div>
+
+      <div class="sb-teams-list">
+        ${sorted.map((t) => {
+          const rnk = rankMap[t.id] || 1;
+          const cap = v.players.find((p) => p.id === t.captainId);
+          const members = playersOf(t.id);
+          const bump = S.bumps[t.id] && Date.now() - S.bumps[t.id].at < 2500 ? S.bumps[t.id].d : null;
+          return `<div class="sb-team-card team-${t.id} ${rnk === 1 ? 'rank-1' : ''}">
+            <div class="sb-team-top">
+              <span class="sb-rank-badge ${rnk === 1 ? 'gold' : ''}">${rnk === 1 ? ic('crown') : '#' + rnk}</span>
+              ${avatar(cap, 'sm')}
+              <div class="sb-team-meta">
+                <b>${esc(t.name)}${myTeam() === t.id ? ' <small>(فريقك)</small>' : ''}</b>
+                <small>${members.length ? members.map((m) => esc(m.name)).join('، ') : 'بدون لاعبين'}</small>
+              </div>
+              <div class="sb-score-box">
+                <span class="sb-score-num" data-team-score="${t.id}">${t.score}</span>
+                <small>نقطة</small>
+                ${bump ? `<span class="bump ${bump > 0 ? 'up' : 'down'}">${bump > 0 ? '+' : ''}${bump}</span>` : ''}
+              </div>
+            </div>
+            ${host ? `
+              <div class="sb-host-controls">
+                <div class="sb-quick-btns">
+                  ${[20, 10, 5, 2, 1, -1, -5, -10].map((d) => `<button type="button" class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${t.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}
+                </div>
+                <div class="sb-custom-row">
+                  <input id="sbCustom_${t.id}" type="number" class="input sm" placeholder="اكتب نقط لـ ${esc(t.name)}..." value="${esc(S.draft['sb_' + t.id] ?? '')}" oninput="S.draft['sb_${t.id}']=this.value" onkeydown="if(event.key==='Enter')applyCustomScore('${t.id}','add')"/>
+                  <button type="button" class="btn sm olive" onclick="applyCustomScore('${t.id}','add')">+ زوّد</button>
+                  <button type="button" class="btn sm ghost" onclick="applyCustomScore('${t.id}','set')" title="خلي إجمالي النقط بالرقم المكتوب">= المجموع</button>
+                  <button type="button" class="btn sm danger" onclick="api('set_score',{team:'${t.id}',score:0})" title="تصفير نقاط ${esc(t.name)}">0</button>
+                </div>
+              </div>
+            ` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </aside>
+  ` : ''}`;
 }
 
 // ------------------------------------------------------------------
@@ -1147,8 +1313,9 @@ function render() {
       console.error('render error', err);
       html = `${topbar()}<section class="wrap narrow center-page"><div class="card tape"><h1 class="h1">حصلت مشكلة في عرض اللعبة</h1><p class="sub">جرب تحدّث الصفحة. ${isHost() ? 'أو ارجع لغرفة الانتظار من غير ما الفرق تخرج.' : ''}</p>${isHost() ? `<button class="btn primary block" onclick="returnToLobby()">${ic('sliders')} ارجع لغرفة الانتظار</button>` : ''}<button class="btn ghost block" onclick="location.reload()">${ic('home')} تحديث الصفحة</button></div></section>`;
     }
+    html += scoreboardSideWidget();
     if (isHost()) html += adminDrawer();
-  } else if (v.status === 'finished') html = viewFinal() + (isHost() ? adminDrawer() : '');
+  } else if (v.status === 'finished') html = viewFinal() + scoreboardSideWidget() + (isHost() ? adminDrawer() : '');
   if (S.accountModal) html += viewAccountModal();
 
   const changed = key !== S.lastKey;
@@ -1697,13 +1864,13 @@ function viewSetup() {
 
       <div class="card">
         <h2 class="h2"><span class="num">4</span> الوقت وشاشة الحكم</h2>
-        ${!g ? '<p class="note">اختار اللعبة الأول.</p>' : g === 'karak' ? rangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5) + rangeField('voteSec', 'وقت الاختيار', 15, 120, 5) : g === 'sahlab' ? rangeField('hintSec', 'وقت كل تلميح', 15, 120, 5) + sahlabHintsField(s.sahlabHints || 5, false) : g === 'annab' ? rangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5) + annabLockToggleBtn(Boolean(s.annabLockOpts), false) : g === 'yansoon' ? rangeFieldWordLen() + rangeFieldYansoonSec() : rangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15)}
+        ${!g ? '<p class="note">اختار اللعبة الأول.</p>' : (g === 'karak' ? rangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5) + rangeField('voteSec', 'وقت الاختيار', 15, 120, 5) : g === 'sahlab' ? rangeField('hintSec', 'وقت كل تلميح', 15, 120, 5) + sahlabHintsField(s.sahlabHints || 5, false) : g === 'annab' ? rangeField('buzzSec', 'وقت الباز والإجابة', 5, 60, 5) + annabLockToggleBtn(Boolean(s.annabLockOpts), false) : g === 'yansoon' ? rangeFieldWordLen() + rangeFieldYansoonSec() : rangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15)) + scoreModeField(Boolean(s.manualScore), false)}
         <button class="ai-toggle tv-toggle ${s.hideSecret ? 'on' : ''}" onclick="S.setup.hideSecret=!S.setup.hideSecret;LS.set('setup',S.setup);render()" aria-pressed="${Boolean(s.hideSecret)}">
           <span class="tv-orb" aria-hidden="true">${ic(s.hideSecret ? 'eyeOff' : 'tv')}</span>
           <span class="ai-txt"><b>وضع التلفزيون (إخفاء الإجابات من شاشة الحكم)</b><small>${s.hideSecret ? 'شغال — الإجابات السرية هتكون مخفية من شاشة الحكم وتقدر تظهرها بزرار في أي وقت' : 'مقفول — الإجابات الصح بتظهر للحكم من أول الجولة'}</small></span>
           <span class="switch" aria-hidden="true"><span></span></span>
         </button>
-        <p class="note warn">${ic('lock')} الوقت بيتقفل أول ما اللعبة تبدأ — وتقدر تغيّر إخفاء الإجابات في أي وقت من شاشة الحكم.</p>
+        <p class="note warn">${ic('lock')} الوقت بيتقفل أول ما اللعبة تبدأ — وتقدر تغيّر نظام النقاط أو إخفاء الإجابات في أي وقت من شاشة الحكم والـ Scoreboard.</p>
       </div>
     </div>
 
@@ -1760,6 +1927,26 @@ function setSetupSahlabHints(n) {
   S.setup.sahlabHints = val;
   LS.set('setup', S.setup);
   render();
+}
+function scoreModeField(isManual, inLobby = false) {
+  const setAuto = inLobby
+    ? `lobbySetSetting('manualScore', false)`
+    : `S.setup.manualScore=false;LS.set('setup',S.setup);render()`;
+  const setMan = inLobby
+    ? `lobbySetSetting('manualScore', true)`
+    : `S.setup.manualScore=true;LS.set('setup',S.setup);render()`;
+  return `<div class="field score-mode-field">
+    <span>${ic('trophy')} نظام حساب النقاط وتوزيعها للفرق <small>(في كل الألعاب + الـ Scoreboard)</small></span>
+    <div class="seg score-mode-seg">
+      <button type="button" class="${!isManual ? 'on' : ''}" onclick="${setAuto}">
+        ${ic('bolt')} اللعبة تحط النقط لكل فريق تلقائي
+      </button>
+      <button type="button" class="${isManual ? 'on' : ''}" onclick="${setMan}">
+        ${ic('whistle')} الحكم هو اللي يحط النقط لكل فريق بنفسه
+      </button>
+    </div>
+    <p class="note score-mode-note">${isManual ? `${ic('whistle')} <b>وضع الحكم اليدوي شغال:</b> اللعبة مش هتزود نقط لوحدها، وإنت اللي بتدي النقط لكل فريق بإيدك من لوحة الـ Scoreboard.` : `${ic('bolt')} <b>الوضع التلقائي شغال:</b> اللعبة بتحسب وتزود النقط تلقائياً لكل فريق، وتقدر برضه تعدّل من الـ Scoreboard في أي وقت.`}</p>
+  </div>`;
 }
 function annabLockToggleBtn(isLocked, inLobby = false) {
   const onClick = inLobby
@@ -2522,6 +2709,7 @@ function viewLobbyAdmin() {
           <div><span>الأسئلة</span><b>${esc(catNames)}</b></div>
           <div><span>العدد</span><b>${s.useCustom ? customReady : s.count}</b></div>
           <div><span>الوقت</span><b>${timers}</b></div>
+          <div><span>نظام النقاط</span><b>${s.manualScore ? 'الحكم يحط النقط بنفسه' : 'اللعبة تحط النقط تلقائي'}</b></div>
           <div><span>اللاعبين</span><b>${v.players.length} / ${(v.caps || {}).room || (isSolo ? 10 : 40)}</b></div>
           <div><span>وضع التلفزيون</span><b>${s.hideSecret ? 'إخفاء الإجابات' : 'إظهار للحكم'}</b></div>
           ${v.ai && v.ai.on ? `<div><span>الـ AI</span><b class="ai-state ${v.ai.status}">${v.ai.status === 'loading' ? '<i class="ai-dot"></i> بيجمع أسئلة جديدة...' : v.ai.status === 'ready' ? `جاهز (عربي 100%)` : v.ai.status === 'verified' ? 'البنك الموثّق' : 'هيكمل من البنك'}</b></div>` : ''}
@@ -2672,15 +2860,15 @@ function viewLobbyAdmin() {
 
             <div class="lobby-config-box">
               <h3 class="h3">إعدادات الوقت وشاشة الحكم</h3>
-              ${g === 'karak'
+              ${(g === 'karak'
                 ? lobbyRangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5, s.writeSec) + lobbyRangeField('voteSec', 'وقت الاختيار', 15, 120, 5, s.voteSec)
                 : g === 'sahlab'
                   ? lobbyRangeField('hintSec', 'وقت كل تلميح', 15, 120, 5, s.hintSec) + sahlabHintsField(s.sahlabHints || 5, true)
                   : g === 'annab'
-                    ? lobbyRangeField('buzzSec', 'وقت الباز والإجابة', 10, 60, 5, s.buzzSec || 20) + annabLockToggleBtn(Boolean(s.annabLockOpts), true)
+                    ? lobbyRangeField('buzzSec', 'وقت الباز والإجابة', 5, 60, 5, s.buzzSec || 20) + annabLockToggleBtn(Boolean(s.annabLockOpts), true)
                     : g === 'yansoon'
                       ? lobbyRangeWordLen(s.wordLen || 5) + lobbyRangeYansoonSec(s.yansoonSec || 0)
-                      : lobbyRangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15, s.chessSec)}
+                      : lobbyRangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15, s.chessSec)) + scoreModeField(Boolean(s.manualScore), true)}
               <button class="ai-toggle tv-toggle ${s.hideSecret ? 'on' : ''}" onclick="lobbySetSetting('hideSecret', ${!s.hideSecret})" aria-pressed="${Boolean(s.hideSecret)}">
                 <span class="tv-orb" aria-hidden="true">${ic(s.hideSecret ? 'eyeOff' : 'tv')}</span>
                 <span class="ai-txt"><b>وضع التلفزيون (إخفاء الإجابات من شاشة الحكم)</b><small>${s.hideSecret ? 'شغال — الإجابات مخفية من شاشة الحكم وتقدر تظهرها بزرار جوه اللعبة' : 'مقفول — الإجابات الصح بتظهر للحكم'}</small></span>
@@ -2936,7 +3124,7 @@ function karakAdmin(k) {
   }
   if (ph === 'reveal') {
     const last = v.round + 1 >= v.totalRounds;
-    return `${projector(k.q.replace(/_{2,}/, '«' + k.truth + '»'))}${revealList(k)}
+    return `${projector(k.q.replace(/_{2,}/, '«' + k.truth + '»'))}${revealList(k)}${judgeScorePanel()}
       <div class="next-bar"><button class="btn primary lg" onclick="nextRound()">${last ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' السؤال الجاي'}</button></div>`;
   }
   return '';
@@ -2958,6 +3146,7 @@ function viewSahlab() {
   const admin = isAdmin();
   const solved = v.phase === 'solved';
   const hideSecret = Boolean(v.settings && v.settings.hideSecret);
+  const manualScore = Boolean(v.settings && v.settings.manualScore);
   const diff = (v.settings && v.settings.difficulty) || 'medium';
   const blurSteps5 = diff === 'easy' ? [11, 8, 5, 3, 1] : diff === 'hard' ? [22, 16, 11, 7, 3] : [16, 12, 8, 5, 2];
   const totalH = Math.max(1, sh.totalHints || 5);
@@ -3004,9 +3193,10 @@ function viewSahlab() {
     const w = sh.winner ? teamOf(sh.winner) : null;
     actions = `<div class="card solved team-${sh.winner || 'none'}">
       <span class="sub">الإجابة</span><h2 class="h1">${esc(sh.answer)}</h2>
-      <p>${w ? `${ic('trophy')} ${esc(w.name)} خمّنها وخد <b>+${sh.wonPts}</b>` : 'محدش خمّنها المرة دي'}</p>
+      <p>${w ? `${ic('trophy')} ${esc(w.name)} خمّنها صح ${manualScore ? '— الحكم يحط النقط من الـ Scoreboard' : `وخد <b>+${sh.wonPts}</b>`}` : 'محدش خمّنها المرة دي'}</p>
     </div>
-    ${isHost() ? `<div class="next-bar"><span class="why">${v.aiJudge ? 'الـ AI هينقل للجولة الجاية تلقائياً أو دوس دلوقتي' : ''}</span><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' الجولة الجاية'}</button></div>` : `<div class="waiting small"><p>${v.aiJudge ? 'الـ AI بيجهز الجولة الجاية تلقائياً' : 'مستنيين الحكم'}<span class="dots"><i></i><i></i><i></i></span></p></div>`}`;
+    ${admin ? judgeScorePanel() : ''}
+    ${isHost() ? `<div class="next-bar"><span class="why">${v.aiJudge && !manualScore ? 'الـ AI هينقل للجولة الجاية تلقائياً أو دوس دلوقتي' : ''}</span><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' الجولة الجاية'}</button></div>` : `<div class="waiting small"><p>${v.aiJudge && !manualScore ? 'الـ AI بيجهز الجولة الجاية تلقائياً' : 'مستنيين الحكم'}<span class="dots"><i></i><i></i><i></i></span></p></div>`}`;
   } else if (admin) {
     const teamSugs = v.teams.map((x) => {
       const entries = Object.entries((sh.suggestions && sh.suggestions[x.id]) || {});
@@ -3015,9 +3205,10 @@ function viewSahlab() {
     actions = `${secretBar('الإجابة (ماتورهاش لحد)', esc(sh.answer))}
       ${bothFrozenBanner}
       ${v.teams.map((x) => (sh.pending[x.id] ? `<div class="card judge team-${x.id}"><span>${esc(x.name)} بيقول:</span><b class="big-txt">${esc(sh.pending[x.id])}</b>
-        <div class="row"><button class="btn olive" onclick="api('sh_judge',{team:'${x.id}',correct:true})">${ic('check')} صح (+${sh.value})</button><button class="btn danger" onclick="api('sh_judge',{team:'${x.id}',correct:false})">${ic('x')} غلط (تجميد الفريق)</button></div></div>` : '')).join('')}
+        <div class="row"><button class="btn olive" onclick="api('sh_judge',{team:'${x.id}',correct:true})">${ic('check')} صح ${manualScore ? '(النقط من الـ Scoreboard)' : `(+${sh.value})`}</button><button class="btn danger" onclick="api('sh_judge',{team:'${x.id}',correct:false})">${ic('x')} غلط (تجميد الفريق)</button></div></div>` : '')).join('')}
       ${teamSugs}
-      <div class="next-bar"><button class="btn ghost lg" onclick="api('sh_next_hint')">${ic('skip')} ${sh.hintIdx >= sh.totalHints - 1 ? 'اكشف الإجابة' : 'افتح التلميح الجاي'}</button></div>`;
+      <div class="next-bar"><button class="btn ghost lg" onclick="api('sh_next_hint')">${ic('skip')} ${sh.hintIdx >= sh.totalHints - 1 ? 'اكشف الإجابة' : 'افتح التلميح الجاي'}</button></div>
+      ${judgeScorePanel()}`;
   } else {
     const frozen = Boolean(sh.frozen[t]);
     const sug = sh.suggestions || {};
@@ -3026,7 +3217,7 @@ function viewSahlab() {
     actions = `${bothFrozenBanner}` + (
       sh.myPending ? `<div class="card done-card">${ic('clock')}<div><b>تخمين فريقكم اتبعت:</b><p class="big-txt">${esc(sh.myPending)}</p><span class="sub">${v.aiJudge ? 'الـ AI بيصحح الإجابة...' : 'مستنيين حكم الحكم...'}</span></div></div>`
       : frozen ? `<div class="card frozen-card">${ic('snow')}<div><b>فريقكم متجمد في التلميح ده!</b><p class="sub">جاوبتوا غلط على التلميح رقم ${sh.hintIdx + 1} — التجميد هيتفك أول ما يفتح التلميح الجاي.</p></div></div>`
-      : me().captain ? `<div class="card write-card"><h2 class="h2">${ic('bulb')} تخمين الفريق (+${sh.value})</h2>
+      : me().captain ? `<div class="card write-card"><h2 class="h2">${ic('bulb')} تخمين الفريق ${manualScore ? '' : `(+${sh.value})`}</h2>
           <div class="row"><input id="shGuess" class="input big" maxlength="60" placeholder="إيه هي الإجابة؟" value="${esc(S.draft.sh ?? '')}" oninput="S.draft.sh=this.value" onkeydown="if(event.key==='Enter')shGuess()"/></div>
           <button class="btn primary block" onclick="shGuess()">${ic('check')} ابعت التخمين</button>
           ${others.length ? `<div class="sugs"><span class="sub">اقتراحات فريقك (دوس لاختيارها):</span>${others.map(([pid, txt]) => `<button class="sug" onclick="S.draft.sh=this.dataset.t;render()" data-t="${esc(txt)}"><b>${esc(nameOf(pid))}:</b> ${esc(txt)}</button>`).join('')}</div>` : ''}
@@ -3041,9 +3232,9 @@ function viewSahlab() {
   }
   return `${topbar()}<section class="wrap game sahlab">${scorebar()}
     <div class="sahlab-grid ${hasPhoto ? '' : 'no-photo'}">
-      ${hasPhoto ? `<div>${photo}<div class="value-badge">قيمة التلميح الحالي: <b>${sh.value}</b> نقطة</div>${frozenPills}</div>` : ''}
+      ${hasPhoto ? `<div>${photo}<div class="value-badge">${manualScore ? 'وضع الحكم اليدوي للنقاط (Scoreboard)' : `قيمة التلميح الحالي: <b>${sh.value}</b> نقطة`}</div>${frozenPills}</div>` : ''}
       <div>
-        ${!hasPhoto ? `${noPhotoCenterBox}<div class="value-badge">قيمة التلميح الحالي: <b>${sh.value}</b> نقطة</div>${frozenPills}` : ''}
+        ${!hasPhoto ? `${noPhotoCenterBox}<div class="value-badge">${manualScore ? 'وضع الحكم اليدوي للنقاط (Scoreboard)' : `قيمة التلميح الحالي: <b>${sh.value}</b> نقطة`}</div>${frozenPills}` : ''}
         ${ladder}${actions}
       </div>
     </div>
@@ -3063,6 +3254,7 @@ function viewTamr() {
   const t = myTeam();
   const solved = v.phase === 'solved';
   const hideSecret = Boolean(v.settings && v.settings.hideSecret);
+  const manualScore = Boolean(v.settings && v.settings.manualScore);
   const active = tm.golden || tm.turn;
   const nameOf = (pid) => (v.players.find((p) => p.id === pid) || {}).name || '';
   const clock = (id) => {
@@ -3101,18 +3293,20 @@ function viewTamr() {
   let actions = '';
   if (solved) {
     const w = tm.winner ? teamOf(tm.winner) : null;
-    actions = `<div class="card solved team-${tm.winner || 'none'}"><p>${w ? `${ic('trophy')} ${esc(w.name)} كسب الجولة ${tm.reason === 'timeout' ? '(وقت الخصم خلص)' : 'بالتخمين الصح'} <b>+${tm.wonPts}</b>` : ''}</p></div>
+    actions = `<div class="card solved team-${tm.winner || 'none'}"><p>${w ? `${ic('trophy')} ${esc(w.name)} كسب الجولة ${tm.reason === 'timeout' ? '(وقت الخصم خلص)' : 'بالتخمين الصح'} ${manualScore ? '— الحكم يحط النقط من الـ Scoreboard' : `<b>+${tm.wonPts}</b>`}` : ''}</p></div>
+      ${admin ? judgeScorePanel() : ''}
       ${isHost() ? `<div class="next-bar"><button class="btn primary lg" onclick="nextRound()">${v.round + 1 >= v.totalRounds ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' الجولة الجاية'}</button></div>` : ''}`;
   } else if (admin) {
     actions = `${tm.golden ? `<div class="golden">${ic('star')} فرصة ذهبية لـ ${esc(teamOf(tm.golden).name)} — الساعات واقفة</div>` : ''}
       ${tm.pending ? `<div class="card judge team-${tm.pending.team}"><span>${esc(teamOf(tm.pending.team).name)} بيخمن:</span><b class="big-txt">${esc(tm.pending.text)}</b>
-        <div class="row"><button class="btn olive" onclick="api('tm_judge',{correct:true})">${ic('check')} صح (+${v.points.tamr.guess})</button><button class="btn danger" onclick="api('tm_judge',{correct:false})">${ic('x')} غلط</button></div></div>` : ''}
+        <div class="row"><button class="btn olive" onclick="api('tm_judge',{correct:true})">${ic('check')} صح ${manualScore ? '(النقط من الـ Scoreboard)' : `(+${v.points.tamr.guess})`}</button><button class="btn danger" onclick="api('tm_judge',{correct:false})">${ic('x')} غلط</button></div></div>` : ''}
       <div class="card admin-tools">
         <button class="btn ghost" onclick="api('tm_force_pass')">${ic('swap')} حوّل الدور</button>
         <button class="btn ghost" onclick="api('pause')">${v.pausedLeft != null ? ic('play') + ' كمّل' : ic('pause') + ' وقف الساعة'}</button>
         ${v.teams.map((x) => `<button class="btn danger sm" onclick="api('tm_penalty',{team:'${x.id}'})">-15ث تضليل ${esc(x.name)}</button>`).join('')}
         ${tm.golden ? `<button class="btn ghost sm" onclick="api('tm_end_golden')">إلغاء الفرصة الذهبية</button>` : ''}
-      </div>`;
+      </div>
+      ${judgeScorePanel()}`;
   } else {
     const myTurn = active === t;
     const sug = tm.suggestions || {};
@@ -3154,6 +3348,7 @@ function viewAnnab() {
   const cap = me().captain;
   const solved = v.phase === 'solved';
   const hideSecret = Boolean(v.settings && v.settings.hideSecret);
+  const manualScore = Boolean(v.settings && v.settings.manualScore);
   const lockOpts = Boolean((v.settings && v.settings.annabLockOpts) || an.lockOpts);
   const elim = an.eliminated || [];
   const picks = an.picks || [];
@@ -3174,7 +3369,7 @@ function viewAnnab() {
     const w = an.winner ? teamOf(an.winner) : null;
     banner = `<div class="card solved team-${an.winner || 'none'}">
       <span class="sub">الإجابة الصح</span><h2 class="h1">${esc(an.truth)}</h2>
-      <p>${w ? `${ic('trophy')} <b>${esc(w.name)}</b> جاوبها صح ${an.attempt > 1 ? '(في فرصة التكملة!)' : '(من أول باز!)'} ${v.aiJudge ? '— الـ AI زوّد +10 نقط تلقائياً' : '— الحكم يحدد النقط'}` : 'محدش جاب الإجابة الصح المرة دي'}</p>
+      <p>${w ? `${ic('trophy')} <b>${esc(w.name)}</b> جاوبها صح ${an.attempt > 1 ? '(في فرصة التكملة!)' : '(من أول باز!)'} ${manualScore ? '— الحكم يحط النقط من لوحة الـ Scoreboard' : `وخد <b>+${an.wonPts || 10}</b> نقطة!`}` : 'محدش جاب الإجابة الصح المرة دي'}</p>
     </div>`;
   }
 
@@ -3247,17 +3442,7 @@ function viewAnnab() {
       </div>
     </div>` : '';
 
-    const scorePanel = `<div class="card judge-score-panel">
-      <h3 class="h3">${ic('trophy')} تحكم الحكم في النقاط <small>(زود أو نقص لأي فريق براحتك)</small></h3>
-      <div class="judge-score-grid teams-count-${v.teams.length}">
-        ${v.teams.map((tm) => `<div class="judge-score-box team-${tm.id}">
-          <div class="js-head"><b>${esc(tm.name)}</b><span class="js-val">${tm.score}</span></div>
-          <div class="js-btns">
-            ${[10, 5, 1, -1, -5, -10].map((d) => `<button class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${tm.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}
-          </div>
-        </div>`).join('')}
-      </div>
-    </div>`;
+    const scorePanel = judgeScorePanel();
 
     const roundTools = !solved ? `<div class="card admin-tools">
       ${an.subPhase !== 'buzz' ? `<button class="btn ghost sm" onclick="api('an_reset_buzz')">${ic('bell')} إعادة فتح الباز للفرق</button>` : ''}
@@ -3477,6 +3662,7 @@ function viewYansoon() {
   const solved = v.phase === 'solved';
   const revealed = v.phase === 'revealed';
   const isEnded = solved || revealed;
+  const manualScore = Boolean(v.settings && v.settings.manualScore);
   const isMyTurn = !isEnded && ynCanType();
   // تتبع اللي اتحرك قبل كده عشان الأنيميشن مايتعادش مع كل تحديث (كان بيعمل رعشة/جليتش)
   if (!S.ynSeen || S.ynSeen.round !== v.round) {
@@ -3498,7 +3684,7 @@ function viewYansoon() {
       <div class="yn-banner-content">
         <span class="sub">مبروك! الإجابة الصح:</span>
         <h2 class="h1">«${esc(yn.target || '')}»</h2>
-        <p><b>${w ? esc(w.name) : 'فريق'}</b> كشف الكلمة في المحاولة <b>#${yn.guesses.length}</b> وأخد <b>+${yn.wonPts}</b> نقطة!</p>
+        <p><b>${w ? esc(w.name) : 'فريق'}</b> كشف الكلمة في المحاولة <b>#${yn.guesses.length}</b> ${manualScore ? '— الحكم يحط النقط من الـ Scoreboard' : `وأخد <b>+${yn.wonPts}</b> نقطة!`}</p>
         ${yn.hint ? `<span class="yn-banner-hint">${ic('bulb')} التلميح: ${esc(yn.hint)}</span>` : ''}
       </div>
     </div>`;
@@ -3640,17 +3826,7 @@ function viewYansoon() {
   // تحكم الحكم / مضيف الغرفة
   let adminControls = '';
   if (host) {
-    const scorePanel = admin ? `<div class="card judge-score-panel">
-      <h3 class="h3">${ic('trophy')} تحكم الحكم في النقاط <small>(زود أو نقص لأي فريق براحتك)</small></h3>
-      <div class="judge-score-grid teams-count-${v.teams.length}">
-        ${v.teams.map((tm) => `<div class="judge-score-box team-${tm.id}">
-          <div class="js-head"><b>${esc(tm.name)}</b><span class="js-val">${tm.score}</span></div>
-          <div class="js-btns">
-            ${[10, 5, 2, -2, -5, -10].map((d) => `<button class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${tm.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}
-          </div>
-        </div>`).join('')}
-      </div>
-    </div>` : '';
+    const scorePanel = admin ? judgeScorePanel() : '';
 
     const roundTools = !isEnded ? `<div class="card admin-tools">
       <button class="btn ghost sm" onclick="api('yn_hint')">${ic('bulb')} ${yn.showHint ? 'إخفاء التلميح' : 'إظهار تلميح للفرق'}</button>
@@ -3715,6 +3891,7 @@ function viewFinal() {
 function adminDrawer() {
   const v = S.view;
   const hideSecret = Boolean(v.settings && v.settings.hideSecret);
+  const manualScore = Boolean(v.settings && v.settings.manualScore);
   return `<button class="fab" onclick="S.drawer=!S.drawer;render()" aria-expanded="${S.drawer}">${ic('whistle')} ${v.adminPlays ? 'تحكم الأدمن (AI حكم)' : 'لوحة الحكم'}</button>
   ${S.drawer ? `<div class="drawer-backdrop" onclick="S.drawer=false;render()"></div>
   <aside class="drawer" role="dialog" aria-label="لوحة الحكم">
@@ -3728,10 +3905,12 @@ function adminDrawer() {
            <div class="row wrap-row">${v.teams.map((t) => `<button class="btn olive sm" onclick="api('admin_join_team',{team:'${t.id}'});S.drawer=false">العب مع ${esc(t.name)}</button>`).join('')}</div>`}
       <button class="btn ${v.pausedLeft != null ? 'primary' : 'ghost'} block" style="margin-top:8px" onclick="api('pause')">${v.pausedLeft != null ? ic('play') + ' كمّل اللعب' : ic('pause') + ' إيقاف مؤقت'}</button>
       ${!v.adminPlays ? `<button class="btn ${hideSecret ? 'olive' : 'ghost'} block" onclick="api('toggle_secret')">${ic(hideSecret ? 'eye' : 'eyeOff')} ${hideSecret ? 'إظهار الإجابات السرية للحكم' : 'إخفاء الإجابات (وضع التلفزيون)'}</button>` : ''}
+      <button class="btn ${manualScore ? 'primary' : 'ghost'} block" onclick="api('toggle_score_mode')">${ic(manualScore ? 'whistle' : 'bolt')} ${manualScore ? 'وضع النقاط: الحكم يحط النقط (دوس للتحويل لتلقائي)' : 'وضع النقاط: اللعبة تحط النقط تلقائي (دوس للتحويل للحكم)'}</button>
+      <button class="btn olive block" onclick="S.drawer=false;toggleScoreboard(true)">${ic('trophy')} افتح الـ Scoreboard الكاملة</button>
       <button class="btn ghost block" onclick="nextRound();S.drawer=false">${ic('next')} تخطي للجولة الجاية</button>
     </div>` : ''}
     <div class="drawer-sec">
-      <h3 class="h3">تعديل النقاط (بيظهر فوراً لكل الفرق)</h3>
+      <h3 class="h3">تعديل النقاط السريع (أو افتح الـ Scoreboard)</h3>
       ${v.teams.map((t) => `<div class="adj team-${t.id}"><b>${esc(t.name)}</b><span class="adj-score">${t.score}</span>
         <div class="row">${[-10, -5, -1, 1, 5, 10].map((d) => `<button class="btn sm ${d > 0 ? 'olive' : 'danger'}" onclick="api('adjust_score',{team:'${t.id}',delta:${d}})">${d > 0 ? '+' : ''}${d}</button>`).join('')}</div></div>`).join('')}
     </div>

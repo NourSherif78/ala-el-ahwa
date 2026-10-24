@@ -88,12 +88,13 @@ const DEFAULT_SETTINGS = {
   yansoonSec: 0,
   wordLen: 5,
   hideSecret: false,
+  manualScore: false,
   teamCount: 2,
   teamNames: [...DEFAULT_TEAM_NAMES],
   adminPlays: false,
   adminTeam: 'A'
 };
-const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], sahlabHints: [1, 5], chessSec: [60, 600], buzzSec: [10, 60], yansoonSec: [0, 180], wordLen: [3, 8], teamCount: [2, 4] };
+const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], sahlabHints: [1, 5], chessSec: [60, 600], buzzSec: [5, 60], yansoonSec: [0, 180], wordLen: [3, 8], teamCount: [2, 4] };
 
 // ============================================================
 // درع الحماية الشامل ضد الثغرات (Injection Shield)
@@ -518,7 +519,7 @@ function clearRoomTimers(room) {
 }
 
 function scheduleAutoNext(room, sec = 6) {
-  if (!room.aiJudge) return;
+  if (!room.aiJudge || (room.settings && room.settings.manualScore)) return;
   if (room.autoNextTimer) clearTimeout(room.autoNextTimer);
   setDeadline(room, sec);
   room.autoNextTimer = setTimeout(async () => {
@@ -712,6 +713,7 @@ function sanitizeSettings(game, s = {}) {
   out.yansoonSec = clamp(s.yansoonSec ?? out.yansoonSec, LIMITS.yansoonSec);
   out.wordLen = clamp(s.wordLen ?? out.wordLen, LIMITS.wordLen);
   out.hideSecret = !!s.hideSecret;
+  out.manualScore = !!s.manualScore;
   out.teamCount = clamp(s.teamCount ?? out.teamCount, LIMITS.teamCount);
   out.categories = Array.isArray(s.categories) ? s.categories.map((c) => clean(c, 24)).slice(0, 30) : [];
   out.useCustom = !!s.useCustom;
@@ -795,7 +797,8 @@ function event(room, type, data = {}) {
   room.lastEvent = { id: rid(4), type, ...data, at: Date.now() };
 }
 
-function addScore(room, teamId, pts) {
+function addScore(room, teamId, pts, isManual = false) {
+  if (!isManual && room && room.settings && room.settings.manualScore) return;
   const n = Number(pts);
   if (!Number.isFinite(n)) return;
   const t = room.teams.find((x) => x.id === teamId);
@@ -1033,27 +1036,30 @@ function karakReveal(room) {
   const kr = room.kr;
   const ids = teamIds(room);
   const P = POINTS.karak;
+  const isManual = Boolean(room.settings && room.settings.manualScore);
   const delta = Object.fromEntries(ids.map((id) => [id, 0]));
   const lines = [];
   for (const t of ids) {
     const v = kr.options.find((o) => o.id === kr.votes[t]);
     if (!v) { lines.push({ team: t, kind: 'none', pts: 0 }); continue; }
     if (v.src === 'truth') {
-      delta[t] += P.truth;
-      lines.push({ team: t, kind: 'truth', pts: P.truth, opt: v.id });
+      if (!isManual) delta[t] += P.truth;
+      lines.push({ team: t, kind: 'truth', pts: isManual ? 0 : P.truth, opt: v.id });
     } else if (ids.includes(v.src)) {
-      delta[v.src] = (delta[v.src] || 0) + P.fooled;
-      lines.push({ team: t, kind: 'fooled', by: v.src, pts: P.fooled, opt: v.id });
+      if (!isManual) delta[v.src] = (delta[v.src] || 0) + P.fooled;
+      lines.push({ team: t, kind: 'fooled', by: v.src, pts: isManual ? 0 : P.fooled, opt: v.id });
     } else {
-      delta[t] += P.houseBluff;
-      lines.push({ team: t, kind: 'house', src: v.src, pts: P.houseBluff, opt: v.id });
+      if (!isManual) delta[t] += P.houseBluff;
+      lines.push({ team: t, kind: 'house', src: v.src, pts: isManual ? 0 : P.houseBluff, opt: v.id });
     }
   }
-  for (const t of ids) addScore(room, t, delta[t] || 0);
-  kr.results = { delta, lines };
+  if (!isManual) {
+    for (const t of ids) addScore(room, t, delta[t] || 0);
+  }
+  kr.results = { delta, lines, manualScore: isManual };
   room.phase = 'reveal';
   setDeadline(room, 0);
-  event(room, 'reveal', { delta });
+  event(room, 'reveal', { delta, manualScore: isManual });
   scheduleAutoNext(room, 7);
 }
 
@@ -1136,7 +1142,7 @@ function sahlabNextHint(room) {
   if (sh.autoHintTimer) { clearTimeout(sh.autoHintTimer); sh.autoHintTimer = null; }
   if (sh.hintIdx >= sh.hints.length - 1) return sahlabSolve(room, null);
   sh.hintIdx++;
-  sh.frozen = Object.fromEntries(ids.map((id) => [id, false]));
+  sh.frozen = Object.fromEntries(ids.map((id) => [id, false])),
   sh.pending = Object.fromEntries(ids.map((id) => [id, null]));
   sh.suggestions = Object.fromEntries(ids.map((id) => [id, {}]));
   setDeadline(room, room.settings.hintSec);
@@ -1150,7 +1156,8 @@ function sahlabSolve(room, teamId) {
   if (sh.autoHintTimer) { clearTimeout(sh.autoHintTimer); sh.autoHintTimer = null; }
   sh.winner = teamId;
   const vals = Array.isArray(sh.values) && sh.values.length ? sh.values : sahlabPointsFor(sh.hints.length);
-  const pts = teamId ? vals[Math.min(sh.hintIdx, vals.length - 1)] : 0;
+  const rawPts = teamId ? vals[Math.min(sh.hintIdx, vals.length - 1)] : 0;
+  const pts = (room.settings && room.settings.manualScore) ? 0 : rawPts;
   if (teamId) addScore(room, teamId, pts);
   sh.pending = Object.fromEntries(ids.map((id) => [id, null]));
   sh.suggestions = Object.fromEntries(ids.map((id) => [id, {}]));
@@ -1247,13 +1254,14 @@ function tamrMatches(name, text) {
 
 function tamrSolve(room, teamId, pts, reason) {
   const tm = room.tm;
+  const finalPts = (room.settings && room.settings.manualScore) ? 0 : pts;
   tm.winner = teamId;
-  tm.wonPts = pts;
+  tm.wonPts = finalPts;
   tm.reason = reason;
   tm.pending = null;
-  if (teamId) addScore(room, teamId, pts);
+  if (teamId) addScore(room, teamId, finalPts);
   room.phase = 'solved';
-  event(room, 'solved', { team: teamId, pts, reason });
+  event(room, 'solved', { team: teamId, pts: finalPts, reason });
   scheduleAutoNext(room, 6);
 }
 
@@ -1365,11 +1373,10 @@ function annabHandlePick(room, teamId, opt) {
   an.suggestions = Object.fromEntries(ids.map((id) => [id, {}]));
   if (correct) {
     an.winner = teamId;
-    if (room.aiJudge) {
-      const pts = an.triedTeams.length === 0 ? POINTS.annab.first : POINTS.annab.steal;
-      addScore(room, teamId, pts);
-      an.wonPts = pts;
-    }
+    const rawPts = an.triedTeams.length === 0 ? POINTS.annab.first : POINTS.annab.steal;
+    const pts = (room.settings && room.settings.manualScore) ? 0 : rawPts;
+    addScore(room, teamId, pts);
+    an.wonPts = pts;
     room.phase = 'solved';
     setDeadline(room, 0);
     event(room, 'an_correct', { team: teamId, text: opt.text, pts: an.wonPts || 0 });
@@ -1529,10 +1536,10 @@ function yansoonSubmitGuess(room, teamId, rawWord) {
   if (isWin) {
     yn.solved = true;
     yn.winner = teamId;
-    const pts = POINTS.yansoon[attemptIdx] || 2;
+    const rawPts = POINTS.yansoon[attemptIdx] || 2;
+    const pts = (room.settings && room.settings.manualScore) ? 0 : rawPts;
     yn.wonPts = pts;
-    const t = room.teams.find((x) => x.id === teamId);
-    if (t) t.score += pts;
+    addScore(room, teamId, pts);
     room.phase = 'solved';
     setDeadline(room, 0);
     event(room, 'yn_solved', { winner: teamId, pts, word: yn.target });
@@ -2331,11 +2338,29 @@ async function handleAction(b) {
     case 'adjust_score': {
       const rawD = Number(b.delta);
       const d = Number.isFinite(rawD) ? Math.round(rawD) : 0;
-      if (!d || Math.abs(d) > 100) ERR('قيمة غير مسموحة');
+      if (!d || Math.abs(d) > 1000) ERR('قيمة غير مسموحة');
       const teamId = validTeamId(room, b.team);
-      addScore(room, teamId, d);
+      addScore(room, teamId, d, true);
       const t = room.teams.find((x) => x.id === teamId);
       event(room, 'adjust', { team: teamId, delta: d, score: t ? t.score : 0 });
+      break;
+    }
+    case 'set_score': {
+      const rawS = Number(b.score);
+      if (!Number.isFinite(rawS)) ERR('اكتب رقم صحيح للنقاط');
+      const newScore = Math.max(-9999, Math.min(99999, Math.round(rawS)));
+      const teamId = validTeamId(room, b.team);
+      const t = room.teams.find((x) => x.id === teamId);
+      if (t) {
+        const delta = newScore - (Number(t.score) || 0);
+        t.score = newScore;
+        event(room, 'adjust', { team: teamId, delta, score: t.score });
+      }
+      break;
+    }
+    case 'toggle_score_mode': {
+      room.settings.manualScore = b.manualScore !== undefined ? !!b.manualScore : !room.settings.manualScore;
+      event(room, 'score_mode_changed', { manualScore: room.settings.manualScore });
       break;
     }
     case 'end_to_lobby': {
