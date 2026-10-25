@@ -286,7 +286,7 @@ function defaultCustomItem(game) {
     return { truth: '', hints: ['', '', '', '', ''], hintCount: defCnt, photo: '' };
   }
   if (game === 'tamr') return { truth: '', photo: '' };
-  if (game === 'annab') return { q: '', truth: '', bluffs: ['', '', ''] };
+  if (game === 'annab' || game === 'karak') return { q: '', truth: '', bluffs: ['', '', ''] };
   return { q: '', truth: '' };
 }
 function normalizeCustomItem(it, game) {
@@ -307,7 +307,7 @@ function normalizeCustomItem(it, game) {
       photo: String(x.photo || '')
     };
   }
-  if (game === 'annab') {
+  if (game === 'annab' || game === 'karak') {
     const rawB = Array.isArray(x.bluffs) ? x.bluffs : [];
     return {
       q: String(x.q || ''),
@@ -2254,6 +2254,14 @@ function annabBluffStatusText(c) {
   return 'كتبت الـ 3 اختيارات بإيدك';
 }
 
+function karakBluffStatusText(c) {
+  const filled = Array.isArray(c.bluffs) ? c.bluffs.filter((b) => String(b || '').trim()).length : 0;
+  if (filled === 0) return 'الـ AI الذكي هيولّد كذبات من نفس سياق سؤالك';
+  if (filled === 1) return 'كتبت كذبة · والـ AI هيكمّل الباقي من نفس السياق';
+  if (filled === 2) return 'كتبت كذبتين · والـ AI هيكمّل الباقي';
+  return 'كتبت 3 كذبات جاهزة للسؤال';
+}
+
 function updateCustomMeta(idx) {
   saveCustom();
   const g = curCustomGame();
@@ -2261,9 +2269,56 @@ function updateCustomMeta(idx) {
   const ok = validCustomList(g).length;
   const pill = document.getElementById('customReadyPill');
   if (pill) pill.textContent = `${ok} / ${list.length} ${g === 'tamr' ? 'شخصية جاهزة' : 'سؤال جاهز'}`;
-  if (g === 'annab' && idx !== undefined && list[idx]) {
-    const bEl = document.getElementById('annabBluffBadge_' + idx);
-    if (bEl) bEl.textContent = annabBluffStatusText(list[idx]);
+  if ((g === 'annab' || g === 'karak') && idx !== undefined && list[idx]) {
+    const bEl = document.getElementById((g === 'karak' ? 'karakBluffBadge_' : 'annabBluffBadge_') + idx);
+    if (bEl) bEl.textContent = g === 'karak' ? karakBluffStatusText(list[idx]) : annabBluffStatusText(list[idx]);
+  }
+}
+
+async function suggestCustomBluffs(idx, onlyEmpty = false) {
+  const g = curCustomGame();
+  const list = customList(g);
+  const it = list[idx];
+  if (!it) return;
+  const qEl = document.getElementById('cq' + idx);
+  const aEl = document.getElementById('ca' + idx);
+  if (qEl) it.q = qEl.value;
+  if (aEl) it.truth = aEl.value;
+  const truth = String(it.truth || '').trim();
+  const q = String(it.q || '').trim();
+  if (!truth) {
+    toast('اكتب «الإجابة الصح» الأول عشان الـ AI يولّد كذبات لايقة عليها!', 'err');
+    if (aEl) aEl.focus();
+    return;
+  }
+  if (!Array.isArray(it.bluffs)) it.bluffs = ['', '', ''];
+  try {
+    const r = await fetch('/api/suggest-bluffs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        q,
+        truth,
+        code: (S.view && S.view.code) || '',
+        avoid: it.bluffs.filter(Boolean)
+      })
+    }).then((x) => x.json());
+    if (!r || !r.ok || !Array.isArray(r.bluffs) || !r.bluffs.length) {
+      return toast((r && r.error) || 'ماقدرش يولّد كذبات دلوقتي', 'err');
+    }
+    let bCursor = 0;
+    for (let bIdx = 0; bIdx < 3; bIdx++) {
+      if (onlyEmpty && String(it.bluffs[bIdx] || '').trim()) continue;
+      if (r.bluffs[bCursor]) {
+        it.bluffs[bIdx] = r.bluffs[bCursor++];
+        const inp = document.getElementById(`cb_${idx}_${bIdx}`);
+        if (inp) inp.value = it.bluffs[bIdx];
+      }
+    }
+    updateCustomMeta(idx);
+    toast('الـ AI ولّد كذبات ذكية لايقة على سؤالك — تقدر تعدل فيها أو تغيرها براحتك!');
+  } catch (e) {
+    toast('حصلت مشكلة في توليد الكذبات', 'err');
   }
 }
 
@@ -2416,7 +2471,7 @@ function viewCustom() {
   const gameMeta = {
     karak: {
       title: 'أسئلتك الخاصة — لعبة كرك',
-      desc: 'اكتب <b>السؤال</b> و<b>الإجابة الصح</b> لكل سؤال، وزوّد أو قلّل عدد الأسئلة براحتك. (لو حطيت <b>____</b> في السؤال هيبان مكانها علامة الفراغ، والـ AI هيكمّل إجابتين مزيفين مع إجابات الفريقين).',
+      desc: 'اكتب <b>السؤال</b> و<b>الإجابة الصح</b>، وتقدر كمان تكتب <b>الكذبات</b> بنفسك أو تدوس <b>«اقترح كذبات ذكية بالـ AI»</b> وهو هيولّد كذبات من نفس سياق سؤالك ونفس نوع الإجابة بالظبط!',
       addLbl: 'أضف سؤال جديد'
     },
     sahlab: {
@@ -2443,18 +2498,33 @@ function viewCustom() {
 
   const cardsHtml = list.map((c, i) => {
     if (g === 'karak') {
+      if (!Array.isArray(c.bluffs)) c.bluffs = ['', '', ''];
       return `<div class="card q-row custom-card custom-karak" data-custom-card="${i}">
         <div class="q-card-head">
           <span class="q-badge">السؤال ${i + 1}</span>
+          <span class="pill ai-bluff-pill" id="karakBluffBadge_${i}">${karakBluffStatusText(c)}</span>
           <button type="button" class="icon-btn danger" aria-label="حذف السؤال" title="حذف السؤال" onclick="removeCustomItem(${i})">${ic('trash')}</button>
         </div>
         <div class="q-fields">
           <label class="field"><span>السؤال</span>
-            <textarea id="cq${i}" class="input" rows="2" maxlength="220" oninput="customList('karak')[${i}].q=this.value;updateCustomMeta(${i})" placeholder="مثال: أطول حرب في التاريخ استمرت ____">${esc(c.q)}</textarea>
+            <textarea id="cq${i}" class="input" rows="2" maxlength="220" oninput="customList('karak')[${i}].q=this.value;updateCustomMeta(${i})" placeholder="مثال: أكتر أكلة بحبها يوم الجمعة هي ____">${esc(c.q)}</textarea>
           </label>
           <label class="field"><span>الإجابة الصح</span>
-            <input id="ca${i}" class="input" maxlength="80" value="${esc(c.truth)}" oninput="customList('karak')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="مثال: 335 سنة"/>
+            <input id="ca${i}" class="input" maxlength="80" value="${esc(c.truth)}" oninput="customList('karak')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="مثال: محشي ورق عنب / 3 ساعات / الأهلي..."/>
           </label>
+          <div class="annab-bluffs-box">
+            <div class="annab-bluffs-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+              <span class="field-lbl">كذبات إضافية للسؤال (اختياري — لو سبتها فاضية الـ AI الذكي هيولّد كذبات من نفس سياق سؤالك)</span>
+              <button type="button" class="btn olive sm" onclick="suggestCustomBluffs(${i})">${ic('spark')} اقترح كذبات ذكية بالـ AI</button>
+            </div>
+            <div class="annab-bluffs-grid">
+              ${[0, 1, 2].map((bIdx) => `
+                <label class="field bluff-field">
+                  <span>كذبة ${bIdx + 1} <small>(اختياري)</small></span>
+                  <input id="cb_${i}_${bIdx}" class="input" maxlength="60" value="${esc((c.bluffs && c.bluffs[bIdx]) || '')}" oninput="if(!Array.isArray(customList('karak')[${i}].bluffs))customList('karak')[${i}].bluffs=['','',''];customList('karak')[${i}].bluffs[${bIdx}]=this.value;updateCustomMeta(${i})" placeholder="سيبها فاضية أو دوس اقترح بالـ AI"/>
+                </label>`).join('')}
+            </div>
+          </div>
         </div>
       </div>`;
     }
@@ -2522,8 +2592,9 @@ function viewCustom() {
           <input id="ca${i}" class="input" maxlength="60" value="${esc(c.truth)}" oninput="customList('annab')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="اكتب الإجابة الصح..."/>
         </label>
         <div class="annab-bluffs-box">
-          <div class="annab-bluffs-head">
+          <div class="annab-bluffs-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
             <span class="field-lbl">الاختيارات التانية الغلط (اختياري — لو سبت أي خانة فاضية الـ AI هيكتبها تلقائياً)</span>
+            <button type="button" class="btn olive sm" onclick="suggestCustomBluffs(${i})">${ic('spark')} اقترح اختيارات ذكية بالـ AI</button>
           </div>
           <div class="annab-bluffs-grid">
             ${[0, 1, 2].map((bIdx) => `
@@ -3270,6 +3341,13 @@ function revealList(k) {
   </div>`;
 }
 
+function revealQuestionText(q, truth) {
+  const s = String(q || '').trim();
+  const ans = '«' + String(truth || '').trim() + '»';
+  if (/_{2,}|\.{3,}/.test(s)) return s.replace(/_{2,}|\.{3,}/, ans);
+  return `${s} — ${ans}`;
+}
+
 function karakPlayer(k) {
   const v = S.view;
   const cap = me().captain;
@@ -3317,7 +3395,7 @@ function karakPlayer(k) {
   }
   if (ph === 'reveal') {
     const last = v.round + 1 >= v.totalRounds;
-    return `${projector(k.q.replace(/_{2,}/, '«' + k.truth + '»'))}${revealList(k)}
+    return `${projector(revealQuestionText(k.q, k.truth))}${revealList(k)}
       ${isHost() ? `<div class="next-bar"><span class="why">${v.aiJudge ? 'الـ AI هينقل تلقائياً بعد ثواني أو دوس دلوقتي' : ''}</span><button class="btn primary lg" onclick="nextRound()">${last ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' السؤال الجاي'}</button></div>` : `<div class="waiting small"><p>${v.aiJudge ? 'الـ AI بيفتح السؤال الجاي تلقائياً' : 'مستنيين الحكم للسؤال الجاي'}<span class="dots"><i></i><i></i><i></i></span></p></div>`}`;
   }
   return '';
@@ -3329,6 +3407,17 @@ function pickOpt(id) {
   api('kr_vote_suggest', { opt: id });
 }
 function confirmVote() { if (!S.pickOpt) return; api('kr_vote_submit', { opt: S.pickOpt }).then((r) => { if (r.ok) S.pickOpt = null; }); }
+
+function regenAiBluff(i) {
+  delete S.draft['aiBluff_' + i];
+  api('kr_regen_ai', { index: i });
+}
+function saveAiBluff(i, val) {
+  const txt = String(val ?? (document.getElementById('aiBluff_' + i) || {}).value ?? '').trim();
+  if (!txt) return;
+  delete S.draft['aiBluff_' + i];
+  api('kr_edit_ai', { index: i, text: txt }).then((r) => r.ok && toast('اتعدلت كذبة الـ AI'));
+}
 
 function karakAdmin(k) {
   const v = S.view;
@@ -3354,7 +3443,11 @@ function karakAdmin(k) {
           <input id="admBluff" class="input" maxlength="60" placeholder="اكتب كذبة بإيدك (ولو سبتها الـ AI هيكمل)" value="${esc(S.draft.admBluff ?? k.adminBluff)}" oninput="S.draft.admBluff=this.value" onchange="api('kr_admin_bluff',{text:this.value})"/>
           <button class="btn olive sm" onclick="api('kr_admin_bluff',{text:document.getElementById('admBluff').value}).then(r=>r.ok&&toast('اتحفظت'))">${ic('check')} حفظ</button>
         </div>
-        ${k.aiBluffs.map((b, i) => `<div class="src-row ai"><span class="src-tag">AI ${i + 1}</span><span class="src-txt">${esc(b)}</span><button class="icon-btn" title="غيّرها" aria-label="غير كذبة الـ AI" onclick="api('kr_regen_ai',{index:${i}})">${ic('dice')}</button></div>`).join('')}
+        ${k.aiBluffs.map((b, i) => `<div class="src-row ai">
+          <span class="src-tag">AI ${i + 1}</span>
+          <input id="aiBluff_${i}" class="input" maxlength="60" value="${esc(S.draft['aiBluff_' + i] ?? b)}" oninput="S.draft['aiBluff_${i}']=this.value" onchange="saveAiBluff(${i},this.value)" placeholder="كذبة الـ AI (تقدر تعدلها بإيدك)"/>
+          <button class="icon-btn" title="تغيير كذبة الـ AI" aria-label="غير كذبة الـ AI" onclick="regenAiBluff(${i})">${ic('dice')}</button>
+        </div>`).join('')}
       </div>
       <div class="next-bar">
         ${ph === 'write' ? `<span class="why">${statusPills(k.submitted, 'بعت', 'بيكتب')}</span>` : ''}
@@ -3378,16 +3471,26 @@ function karakAdmin(k) {
   }
   if (ph === 'reveal') {
     const last = v.round + 1 >= v.totalRounds;
-    return `${projector(k.q.replace(/_{2,}/, '«' + k.truth + '»'))}${revealList(k)}${judgeScorePanel()}
+    return `${projector(revealQuestionText(k.q, k.truth))}${revealList(k)}${judgeScorePanel()}
       <div class="next-bar"><button class="btn primary lg" onclick="nextRound()">${last ? ic('trophy') + ' النتيجة النهائية' : ic('next') + ' السؤال الجاي'}</button></div>`;
   }
   return '';
 }
-function publish() {
+async function publish() {
   const el = document.getElementById('admBluff');
   const txt = el ? el.value.trim() : '';
-  const go = () => api('kr_publish').then(() => { S.draft.admBluff = undefined; });
-  if (txt) api('kr_admin_bluff', { text: txt }).then((r) => r.ok && go()); else go();
+  if (txt) await api('kr_admin_bluff', { text: txt });
+  const aiList = (S.view && S.view.kr && S.view.kr.aiBluffs) || [];
+  for (let i = 0; i < aiList.length; i++) {
+    const aiEl = document.getElementById('aiBluff_' + i);
+    const aiVal = aiEl ? aiEl.value.trim() : '';
+    if (aiVal && aiVal !== aiList[i]) {
+      await api('kr_edit_ai', { index: i, text: aiVal });
+    }
+    delete S.draft['aiBluff_' + i];
+  }
+  S.draft.admBluff = undefined;
+  await api('kr_publish');
 }
 function nextRound() { S.pickOpt = null; S.draft = {}; api('next'); }
 

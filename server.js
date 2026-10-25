@@ -828,15 +828,25 @@ function startAiPrefetch(room) {
 // ============================================================
 // بداية اللعبة (فورية وبدون أي انتظار للشبكة)
 // ============================================================
+function roomBluffContext(room) {
+  if (!room || !room.players) return {};
+  const playerNames = Object.values(room.players)
+    .map((p) => clean(p && p.name, 20))
+    .filter((n) => n && !n.startsWith('لاعب تجريبي'));
+  return { playerNames };
+}
+
 async function startGame(room) {
   const s = room.settings;
   if (isSoloMode(room)) syncSoloTeams(room);
   const tCount = Math.max(2, room.teams.length);
+  const bluffCtx = roomBluffContext(room);
   let items = [];
   if (s.useCustom && room.customPack.length) {
     items = room.customPack.map((c, i) => {
       if (room.game === 'karak' || room.game === 'annab') {
-        return { id: 'custom_' + i, custom: true, q: c.q, truth: c.truth, bluffs: Array.isArray(c.bluffs) ? c.bluffs.filter(Boolean) : [] };
+        const userBluffs = Array.isArray(c.bluffs) ? c.bluffs.filter(Boolean) : [];
+        return { id: 'custom_' + i, custom: true, q: c.q, truth: c.truth, userBluffs, bluffs: [...userBluffs] };
       }
       if (room.game === 'sahlab') {
         const maxH = c.hintCount ? clamp(c.hintCount, [1, 5]) : 5;
@@ -850,16 +860,17 @@ async function startGame(room) {
       return { id: 'custom_' + i, custom: true, name: c.truth, brief: '', imageQuery: '', customPhoto: c.photo || null };
     });
     if (room.game === 'karak' || room.game === 'annab') {
-      const targetLen = room.game === 'annab' ? 3 : 10;
+      const targetLen = room.game === 'annab' ? 3 : 12;
       items.forEach((it) => {
-        const userBluffs = (it.bluffs || []).filter(Boolean);
+        const userBluffs = (it.userBluffs || it.bluffs || []).filter(Boolean);
         const seen = new Set([Q.normalizeAr(it.truth), ...userBluffs.map(Q.normalizeAr)]);
-        const extra = Q.smartBluffsForItem(it, 16).filter((b) => {
+        const extra = Q.smartBluffsForItem(it, 20, bluffCtx).filter((b) => {
           const k = Q.normalizeAr(b);
           if (!k || seen.has(k)) return false;
           seen.add(k);
           return true;
         });
+        it.userBluffs = userBluffs;
         it.bluffs = [...userBluffs, ...extra].slice(0, targetLen);
       });
     }
@@ -921,10 +932,14 @@ function startKarakRound(room) {
   const item = room.queue[room.round];
   Q.markUsed('karak', item);
   const ids = teamIds(room);
-  // أولاً إجابات السؤال المضللة الأصلية، ثم إجابات ذكية مطابقة 100% لنوع الإجابة (رقم/نص) ونفس الكتالوج
-  const ownBluffs = Q.shuffle(Array.isArray(item.bluffs) ? item.bluffs : []);
-  const extraBluffs = Q.smartBluffsForItem(item, 20);
-  const bl = [...ownBluffs, ...extraBluffs];
+  const bluffCtx = roomBluffContext(room);
+  // أولاً الكذبات اللي صاحب الأسئلة الخاصة كتبها بإيده (لو موجودة)، ثم إجابات السؤال الأصلية، ثم إجابات ذكية مطابقة لسياق السؤال والإجابة
+  const manualBluffs = Array.isArray(item.userBluffs) && item.userBluffs.length ? Q.shuffle(item.userBluffs) : [];
+  const ownBluffs = item.custom
+    ? (Array.isArray(item.bluffs) ? item.bluffs.filter((b) => !manualBluffs.includes(b)) : [])
+    : Q.shuffle(Array.isArray(item.bluffs) ? item.bluffs : []);
+  const extraBluffs = Q.smartBluffsForItem(item, 20, bluffCtx);
+  const bl = [...manualBluffs, ...ownBluffs, ...extraBluffs];
   const uniqueBl = [];
   const seenBl = new Set([Q.normalizeAr(item.truth)]);
   for (const b of bl) {
@@ -964,7 +979,7 @@ function spareBluff(room, avoid) {
     const b = kr.spareBluffs.shift();
     if (!taken.has(Q.normalizeAr(b))) return b;
   }
-  const fb = Q.smartBluffsForItem({ q: kr.q, truth: kr.truth, cat: kr.cat, bluffs: [] }, 24).find((b) => !taken.has(Q.normalizeAr(b)));
+  const fb = Q.smartBluffsForItem({ q: kr.q, truth: kr.truth, cat: kr.cat, bluffs: [] }, 24, roomBluffContext(room)).find((b) => !taken.has(Q.normalizeAr(b)));
   if (fb) return fb;
   const tStr = String(kr.truth || '').trim();
   if (/^\d+$/.test(tStr)) return String((parseInt(tStr, 10) || 10) + 13);
@@ -2422,6 +2437,16 @@ async function handleAction(b) {
       room.kr.aiBluffs[i] = spareBluff(room, [room.kr.truth, ...room.kr.aiBluffs, ...Object.values(room.kr.teamBluff), room.kr.adminBluff]);
       break;
     }
+    case 'kr_edit_ai': {
+      if (!room.kr || !['write', 'review'].includes(room.phase)) ERR('مش وقته');
+      const maxIdx = Math.max(0, (room.kr.aiBluffs || []).length - 1);
+      const i = Math.max(0, Math.min(maxIdx, Number(b.index) || 0));
+      const txt = clean(b.text, 60);
+      if (!txt) ERR('اكتب الكذبة الأول');
+      if (Q.normalizeAr(txt) === Q.normalizeAr(room.kr.truth)) ERR('دي الإجابة الصح نفسها');
+      room.kr.aiBluffs[i] = txt;
+      break;
+    }
     case 'kr_reject': {
       if (!room.kr || room.phase !== 'review') ERR('مش وقته');
       const t = validTeamId(room, b.team);
@@ -2919,6 +2944,25 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res, 400, { ok: false, error: 'أكشن غير معروف' });
     }
+  }
+
+  if (p === '/api/suggest-bluffs' && req.method === 'POST') {
+    const b = await readBody(req);
+    const q = clean(b && b.q, 220);
+    const truth = clean(b && b.truth, 80);
+    if (!truth) return json(res, 200, { ok: false, error: 'اكتب الإجابة الصح الأول عشان الـ AI يولّد كذبات مناسبة ليها' });
+    const code = cleanId(b && b.code, 10).toUpperCase();
+    const room = code ? ROOMS.get(code) : null;
+    const ctx = room ? roomBluffContext(room) : {};
+    const avoid = Array.isArray(b && b.avoid) ? b.avoid.map((x) => Q.normalizeAr(x)).filter(Boolean) : [];
+    const avoidSet = new Set([Q.normalizeAr(truth), ...avoid]);
+    const list = Q.smartBluffsForItem({ q, truth, bluffs: [] }, 16, ctx).filter((x) => {
+      const k = Q.normalizeAr(x);
+      if (!k || avoidSet.has(k)) return false;
+      avoidSet.add(k);
+      return true;
+    });
+    return json(res, 200, { ok: true, bluffs: list.slice(0, 6) });
   }
 
   if (p === '/api/action' && req.method === 'POST') {
