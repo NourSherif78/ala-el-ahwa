@@ -2967,24 +2967,56 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (p === '/api/suggest-answer' && req.method === 'POST') {
+    const b = await readBody(req);
+    const q = clean(b && b.q, 220);
+    const game = cleanId(b && b.game, 20) || 'karak';
+    if (!q) return json(res, 200, { ok: false, error: 'اكتب السؤال الأول عشان الـ AI يختار الإجابة الصح' });
+    const code = cleanId(b && b.code, 10).toUpperCase();
+    const room = code ? ROOMS.get(code) : null;
+    const avoid = Array.isArray(b && b.avoid) ? b.avoid.map((x) => clean(x, 80)).filter(Boolean) : [];
+    const ctx = { ...(room ? roomBluffContext(room) : {}), avoid };
+    const out = await Q.suggestAnswerForQuestion(q, game, ctx);
+    if (!out || !out.truth) {
+      return json(res, 200, { ok: false, error: 'ماقدرش يحدد الإجابة دلوقتي — اكتبها بإيدك' });
+    }
+    return json(res, 200, { ok: true, truth: out.truth, bluffs: out.bluffs || [], source: out.source || 'ai' });
+  }
+
   if (p === '/api/suggest-bluffs' && req.method === 'POST') {
     const b = await readBody(req);
     const q = clean(b && b.q, 220);
-    const truth = clean(b && b.truth, 80);
-    if (!truth) return json(res, 200, { ok: false, error: 'اكتب الإجابة الصح الأول عشان الـ AI يولّد كذبات مناسبة ليها' });
+    let truth = clean(b && b.truth, 80);
     const code = cleanId(b && b.code, 10).toUpperCase();
     const room = code ? ROOMS.get(code) : null;
     const ctx = room ? roomBluffContext(room) : {};
+    if (!truth && q) {
+      const solved = await Q.suggestAnswerForQuestion(q, cleanId(b && b.game, 20) || 'karak', ctx);
+      if (solved && solved.truth) truth = solved.truth;
+    }
+    if (!truth) return json(res, 200, { ok: false, error: 'اكتب السؤال أو الإجابة الصح الأول عشان الـ AI يولّد اختيارات مناسبة' });
     const avoid = Array.isArray(b && b.avoid) ? b.avoid.map((x) => Q.normalizeAr(x)).filter(Boolean) : [];
-    const avoidSet = new Set([Q.normalizeAr(truth), ...avoid]);
-    const list = Q.smartBluffsForItem({ q, truth, bluffs: [] }, 16, ctx).filter((x) => {
+    const truthNorm = Q.normalizeAr(truth);
+    const rawCandidates = Q.smartBluffsForItem({ q, truth, bluffs: [] }, 24, ctx);
+    const strictSet = new Set([truthNorm, ...avoid]);
+    let list = rawCandidates.filter((x) => {
       const k = Q.normalizeAr(x);
-      if (!k || avoidSet.has(k)) return false;
-      avoidSet.add(k);
+      if (!k || strictSet.has(k)) return false;
+      strictSet.add(k);
       return true;
     });
-    return json(res, 200, { ok: true, bluffs: list.slice(0, 6) });
+    if (list.length < 3) {
+      const baseSet = new Set([truthNorm, ...list.map((x) => Q.normalizeAr(x))]);
+      for (const x of rawCandidates) {
+        const k = Q.normalizeAr(x);
+        if (!k || baseSet.has(k)) continue;
+        baseSet.add(k);
+        list.push(x);
+      }
+    }
+    return json(res, 200, { ok: true, truth, bluffs: list.slice(0, 6) });
   }
+
 
   if (p === '/api/action' && req.method === 'POST') {
     const b = await readBody(req);

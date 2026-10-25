@@ -2328,6 +2328,60 @@ function updateCustomMeta(idx) {
   }
 }
 
+async function suggestCustomAnswer(idx, alsoBluffs = false) {
+  const g = curCustomGame();
+  const list = customList(g);
+  const it = list[idx];
+  if (!it) return;
+  const qEl = document.getElementById('cq' + idx);
+  const aEl = document.getElementById('ca' + idx);
+  if (qEl) it.q = qEl.value;
+  if (aEl) it.truth = aEl.value;
+  let q = String(it.q || '').trim();
+  if (g === 'sahlab' && !q && Array.isArray(it.hints)) {
+    q = it.hints.map((h) => String(h || '').trim()).filter(Boolean).join(' · ');
+  }
+  if (!q) {
+    toast(g === 'sahlab' ? 'اكتب تلميح واحد على الأقل عشان الـ AI يقترح الإجابة!' : 'اكتب «السؤال» الأول عشان الـ AI يختار الإجابة الصح!', 'err');
+    if (qEl) qEl.focus();
+    return;
+  }
+  const curTruth = String(it.truth || '').trim();
+  try {
+    const r = await fetch('/api/suggest-answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        q,
+        game: g,
+        code: (S.view && S.view.code) || '',
+        avoid: curTruth ? [curTruth] : []
+      })
+    }).then((x) => x.json());
+    if (!r || !r.ok || !r.truth) {
+      return toast((r && r.error) || 'ماقدرش يحدد الإجابة دلوقتي — اكتبها بإيدك', 'err');
+    }
+    it.truth = r.truth;
+    if (aEl) aEl.value = r.truth;
+    if (alsoBluffs && (g === 'karak' || g === 'annab') && Array.isArray(r.bluffs) && r.bluffs.length) {
+      if (!Array.isArray(it.bluffs)) it.bluffs = ['', '', ''];
+      for (let bIdx = 0; bIdx < 3; bIdx++) {
+        if (r.bluffs[bIdx]) {
+          it.bluffs[bIdx] = r.bluffs[bIdx];
+          const inp = document.getElementById(`cb_${idx}_${bIdx}`);
+          if (inp) inp.value = it.bluffs[bIdx];
+        }
+      }
+    }
+    updateCustomMeta(idx);
+    toast(alsoBluffs
+      ? 'الـ AI اختار الإجابة الصح وكتب الاختيارات الغلط المنطقية مع بعض!'
+      : 'الـ AI اختار الإجابة الصح — تقدر تعدلها أو تسيبها زي ما هي!');
+  } catch (e) {
+    toast('حصلت مشكلة في اقتراح الإجابة', 'err');
+  }
+}
+
 async function suggestCustomBluffs(idx, onlyEmpty = false) {
   const g = curCustomGame();
   const list = customList(g);
@@ -2339,9 +2393,10 @@ async function suggestCustomBluffs(idx, onlyEmpty = false) {
   if (aEl) it.truth = aEl.value;
   const truth = String(it.truth || '').trim();
   const q = String(it.q || '').trim();
-  if (!truth) {
-    toast('اكتب «الإجابة الصح» الأول عشان الـ AI يولّد كذبات لايقة عليها!', 'err');
-    if (aEl) aEl.focus();
+  if (!truth && !q) {
+    toast('اكتب «السؤال» أو «الإجابة الصح» الأول عشان الـ AI يولّد اختيارات منطقية!', 'err');
+    if (qEl) qEl.focus();
+    else if (aEl) aEl.focus();
     return;
   }
   if (!Array.isArray(it.bluffs)) it.bluffs = ['', '', ''];
@@ -2352,12 +2407,17 @@ async function suggestCustomBluffs(idx, onlyEmpty = false) {
       body: JSON.stringify({
         q,
         truth,
+        game: g,
         code: (S.view && S.view.code) || '',
         avoid: it.bluffs.filter(Boolean)
       })
     }).then((x) => x.json());
     if (!r || !r.ok || !Array.isArray(r.bluffs) || !r.bluffs.length) {
-      return toast((r && r.error) || 'ماقدرش يولّد كذبات دلوقتي', 'err');
+      return toast((r && r.error) || 'ماقدرش يولّد اختيارات دلوقتي', 'err');
+    }
+    if (!truth && r.truth) {
+      it.truth = r.truth;
+      if (aEl) aEl.value = r.truth;
     }
     let bCursor = 0;
     for (let bIdx = 0; bIdx < 3; bIdx++) {
@@ -2369,9 +2429,11 @@ async function suggestCustomBluffs(idx, onlyEmpty = false) {
       }
     }
     updateCustomMeta(idx);
-    toast('الـ AI ولّد كذبات ذكية لايقة على سؤالك — تقدر تعدل فيها أو تغيرها براحتك!');
+    toast(!truth && r.truth
+      ? 'الـ AI اختار الإجابة الصح وولّد الاختيارات الغلط المنطقية!'
+      : 'الـ AI ولّد اختيارات غلط منطقية مختلفة عن إجابتك — تقدر تعدل فيها براحتك!');
   } catch (e) {
-    toast('حصلت مشكلة في توليد الكذبات', 'err');
+    toast('حصلت مشكلة في توليد الاختيارات', 'err');
   }
 }
 
@@ -2562,13 +2624,20 @@ function viewCustom() {
           <label class="field"><span>السؤال</span>
             <textarea id="cq${i}" class="input" rows="2" maxlength="220" oninput="customList('karak')[${i}].q=this.value;updateCustomMeta(${i})" placeholder="مثال: أكتر أكلة بحبها يوم الجمعة هي ____">${esc(c.q)}</textarea>
           </label>
-          <label class="field"><span>الإجابة الصح</span>
-            <input id="ca${i}" class="input" maxlength="80" value="${esc(c.truth)}" oninput="customList('karak')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="مثال: محشي ورق عنب / 3 ساعات / الأهلي..."/>
-          </label>
+          <div class="field">
+            <div class="annab-bluffs-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              <span class="field-lbl">الإجابة الصح <small>(اكتبها بإيدك أو خلّي الـ AI يختارها)</small></span>
+              <div class="row wrap-row" style="gap:6px">
+                <button type="button" class="btn olive sm" id="aiAnsBtn_${i}" onclick="suggestCustomAnswer(${i}, false)">${ic('spark')} اقترح الإجابة بالـ AI</button>
+                <button type="button" class="btn ghost sm" onclick="suggestCustomAnswer(${i}, true)" title="الـ AI يكتب الإجابة الصح والـ 3 كذبات مع بعض">${ic('spark')} الإجابة + الكذبات</button>
+              </div>
+            </div>
+            <input id="ca${i}" class="input" maxlength="80" value="${esc(c.truth)}" oninput="customList('karak')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="اكتب الإجابة الصح أو دوس «اقترح الإجابة بالـ AI»..."/>
+          </div>
           <div class="annab-bluffs-box">
             <div class="annab-bluffs-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
               <span class="field-lbl">كذبات إضافية للسؤال (اختياري — لو سبتها فاضية الـ AI الذكي هيولّد كذبات من نفس سياق سؤالك)</span>
-              <button type="button" class="btn olive sm" onclick="suggestCustomBluffs(${i})">${ic('spark')} اقترح كذبات ذكية بالـ AI</button>
+              <button type="button" class="btn olive sm" id="aiBluffBtn_${i}" onclick="suggestCustomBluffs(${i})">${ic('spark')} اقترح كذبات ذكية بالـ AI</button>
             </div>
             <div class="annab-bluffs-grid">
               ${[0, 1, 2].map((bIdx) => `
@@ -2596,9 +2665,13 @@ function viewCustom() {
           </div>
         </div>
         <div class="q-fields">
-          <label class="field"><span>الإجابة الصح <small>(الاسم اللي هيظهر في نص الشاشة)</small></span>
+          <div class="field">
+            <div class="annab-bluffs-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              <span class="field-lbl">الإجابة الصح <small>(الاسم اللي هيظهر في نص الشاشة — اكتبها أو خلّي الـ AI يقترحها من التلميحات)</small></span>
+              <button type="button" class="btn olive sm" id="aiAnsBtn_${i}" onclick="suggestCustomAnswer(${i}, false)">${ic('spark')} اقترح الإجابة بالـ AI</button>
+            </div>
             <input id="ca${i}" class="input big" maxlength="80" value="${esc(c.truth)}" oninput="customList('sahlab')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="اكتب الإجابة هنا (مثال: برج إيفل، الكشري، محمد صلاح...)"/>
-          </label>
+          </div>
           <div class="sahlab-hints-box">
             <span class="field-lbl">${ic('bulb')} التلميحات (${hCount} تلميحات) للسؤال رقم ${i + 1}</span>
             <div class="sahlab-hints-grid">
@@ -2641,13 +2714,20 @@ function viewCustom() {
         <label class="field"><span>السؤال</span>
           <textarea id="cq${i}" class="input" rows="2" maxlength="220" oninput="customList('annab')[${i}].q=this.value;updateCustomMeta(${i})" placeholder="اكتب السؤال هنا...">${esc(c.q)}</textarea>
         </label>
-        <label class="field"><span>الإجابة الصح</span>
-          <input id="ca${i}" class="input" maxlength="60" value="${esc(c.truth)}" oninput="customList('annab')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="اكتب الإجابة الصح..."/>
-        </label>
+        <div class="field">
+          <div class="annab-bluffs-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+            <span class="field-lbl">الإجابة الصح <small>(اكتبها بإيدك أو خلّي الـ AI يختارها)</small></span>
+            <div class="row wrap-row" style="gap:6px">
+              <button type="button" class="btn olive sm" id="aiAnsBtn_${i}" onclick="suggestCustomAnswer(${i}, false)">${ic('spark')} اقترح الإجابة بالـ AI</button>
+              <button type="button" class="btn ghost sm" onclick="suggestCustomAnswer(${i}, true)" title="الـ AI يكتب الإجابة الصح والـ 3 اختيارات الغلط مع بعض">${ic('spark')} الإجابة + الاختيارات</button>
+            </div>
+          </div>
+          <input id="ca${i}" class="input" maxlength="60" value="${esc(c.truth)}" oninput="customList('annab')[${i}].truth=this.value;updateCustomMeta(${i})" placeholder="اكتب الإجابة الصح أو دوس «اقترح الإجابة بالـ AI»..."/>
+        </div>
         <div class="annab-bluffs-box">
           <div class="annab-bluffs-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
             <span class="field-lbl">الاختيارات التانية الغلط (اختياري — لو سبت أي خانة فاضية الـ AI هيكتبها تلقائياً)</span>
-            <button type="button" class="btn olive sm" onclick="suggestCustomBluffs(${i})">${ic('spark')} اقترح اختيارات ذكية بالـ AI</button>
+            <button type="button" class="btn olive sm" id="aiBluffBtn_${i}" onclick="suggestCustomBluffs(${i})">${ic('spark')} اقترح اختيارات ذكية بالـ AI</button>
           </div>
           <div class="annab-bluffs-grid">
             ${[0, 1, 2].map((bIdx) => `
