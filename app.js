@@ -2084,7 +2084,7 @@ function viewSetup() {
 
       <div class="card">
         <h2 class="h2"><span class="num">4</span> الوقت وشاشة الحكم</h2>
-        ${!g ? '<p class="note">اختار اللعبة الأول.</p>' : (g === 'karak' ? rangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5) + rangeField('voteSec', 'وقت الاختيار', 15, 120, 5) : g === 'sahlab' ? rangeField('hintSec', 'وقت كل تلميح', 15, 120, 5) + sahlabHintsField(s.sahlabHints || 5, false) : g === 'annab' ? rangeField('buzzSec', 'وقت الباز والإجابة', 5, 60, 5) + annabLockToggleBtn(Boolean(s.annabLockOpts), false) : g === 'yansoon' ? rangeFieldWordLen() + rangeFieldYansoonSec() : rangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15)) + scoreModeField(Boolean(s.manualScore), false)}
+        ${!g ? '<p class="note">اختار اللعبة الأول.</p>' : (g === 'karak' ? rangeField('writeSec', 'وقت كتابة الإجابة المزيفة', 20, 180, 5) + rangeField('voteSec', 'وقت الاختيار', 15, 120, 5) : g === 'sahlab' ? rangeField('hintSec', 'وقت كل تلميح', 15, 120, 5) + sahlabHintsField(s.sahlabHints || 5, false) : g === 'annab' ? rangeField('buzzSec', 'وقت الباز والإجابة', 3, 60, 1) + annabLockToggleBtn(Boolean(s.annabLockOpts), false) : g === 'yansoon' ? rangeFieldWordLen() + rangeFieldYansoonSec() : rangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15)) + scoreModeField(Boolean(s.manualScore), false)}
         <button class="ai-toggle tv-toggle ${s.hideSecret ? 'on' : ''}" onclick="S.setup.hideSecret=!S.setup.hideSecret;LS.set('setup',S.setup);render()" aria-pressed="${Boolean(s.hideSecret)}">
           <span class="tv-orb" aria-hidden="true">${ic(s.hideSecret ? 'eyeOff' : 'tv')}</span>
           <span class="ai-txt"><b>وضع التلفزيون (إخفاء الإجابات من شاشة الحكم)</b><small>${s.hideSecret ? 'شغال — الإجابات السرية هتكون مخفية من شاشة الحكم وتقدر تظهرها بزرار في أي وقت' : 'مقفول — الإجابات الصح بتظهر للحكم من أول الجولة'}</small></span>
@@ -3190,7 +3190,7 @@ function viewLobbyAdmin() {
                 : g === 'sahlab'
                   ? lobbyRangeField('hintSec', 'وقت كل تلميح', 15, 120, 5, s.hintSec) + sahlabHintsField(s.sahlabHints || 5, true)
                   : g === 'annab'
-                    ? lobbyRangeField('buzzSec', 'وقت الباز والإجابة', 5, 60, 5, s.buzzSec || 20) + annabLockToggleBtn(Boolean(s.annabLockOpts), true)
+                    ? lobbyRangeField('buzzSec', 'وقت الباز والإجابة', 3, 60, 1, s.buzzSec || 20) + annabLockToggleBtn(Boolean(s.annabLockOpts), true)
                     : g === 'yansoon'
                       ? lobbyRangeWordLen(s.wordLen || 5) + lobbyRangeYansoonSec(s.yansoonSec || 0)
                       : lobbyRangeField('chessSec', 'رصيد ساعة الشطرنج لكل فريق', 60, 600, 15, s.chessSec)) + scoreModeField(Boolean(s.manualScore), true)}

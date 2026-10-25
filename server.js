@@ -94,7 +94,7 @@ const DEFAULT_SETTINGS = {
   adminPlays: false,
   adminTeam: 'A'
 };
-const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], sahlabHints: [1, 5], chessSec: [60, 600], buzzSec: [5, 60], yansoonSec: [0, 180], wordLen: [3, 8], teamCount: [2, 4] };
+const LIMITS = { count: [3, 30], writeSec: [20, 180], voteSec: [15, 120], hintSec: [15, 120], sahlabHints: [1, 5], chessSec: [60, 600], buzzSec: [3, 60], yansoonSec: [0, 180], wordLen: [3, 8], teamCount: [2, 4] };
 
 // ============================================================
 // درع الحماية الشامل ضد الثغرات (Injection Shield)
