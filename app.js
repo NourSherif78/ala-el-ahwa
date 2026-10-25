@@ -1242,9 +1242,9 @@ function topbar(extra = '') {
     <div class="topbar-mid">${extra}</div>
     <div class="topbar-end">
       ${langSwitch(true)}
-      ${showSbBtn ? `<button type="button" class="scoreboard-top-btn ${S.scoreboardOpen ? 'on' : ''}" onclick="toggleScoreboard()" title="افتح لوحة النقاط المحفوظة (Scoreboard)">
+      ${showSbBtn ? `<button type="button" class="scoreboard-top-btn ${S.scoreboardOpen ? 'on' : ''}" onclick="toggleScoreboard()" title="افتح لوحة النقاط (Scoreboard)">
         ${ic('trophy')}
-        <span>Scoreboard</span>
+        <span>النقاط</span>
       </button>` : ''}
       <button type="button" class="account-chip-btn ${S.account ? 'logged' : ''}" onclick="openAccountModal()" title="${S.account ? `حسابك: ${esc(S.account.username)} — أسئلتك الخاصة والسكور بورد محفوظين` : 'إنشاء حساب أو تسجيل دخول لحفظ أسئلتك الخاصة والسكور بورد'}">
         ${ic('user')}
@@ -1307,8 +1307,11 @@ function scorebar() {
   };
   const diffLbl = DIFF_LABELS[(v.settings && v.settings.difficulty) || 'medium'] || 'متوسط';
   const scoreModeTag = isManual ? ' · النقط: بإيد الحكم' : '';
-  const sbBtn = `<button type="button" class="scorebar-sb-btn ${S.scoreboardOpen ? 'on' : ''}" onclick="toggleScoreboard()" title="افتح الـ Scoreboard (لوحة النقاط)">${ic('trophy')} <span>Scoreboard</span></button>`;
-  const midHtml = `<div class="score-mid"><div class="score-mid-row"><span class="round-pill">${GAMES[v.game].name} · المستوى: ${diffLbl} · الجولة ${Math.max(1, v.round + 1)} من ${v.totalRounds}${v.aiJudge ? ' · الـ AI بيحكم' : ''}${scoreModeTag}</span>${sbBtn}</div>${timerRing()}</div>`;
+  const isLastRound = v.round + 1 >= v.totalRounds;
+  const skipBtn = host && v.status === 'playing'
+    ? `<button type="button" class="skip-q-btn" onclick="skipQuestion()" title="انقل للسؤال اللي بعده على طول">${ic('next')} <span>${isLastRound ? 'إنهاء والنتيجة' : 'السؤال اللي بعده'}</span></button>`
+    : '';
+  const midHtml = `<div class="score-mid"><div class="score-mid-row"><span class="round-pill">${GAMES[v.game].name} · المستوى: ${diffLbl} · الجولة ${Math.max(1, v.round + 1)} من ${v.totalRounds}${v.aiJudge ? ' · الـ AI بيحكم' : ''}${scoreModeTag}</span>${skipBtn}</div>${timerRing()}</div>`;
   if (v.teams.length === 2) {
     const [a, b] = v.teams;
     return `<div class="scorebar">${cell(a)}${midHtml}${cell(b)}</div>`;
@@ -1379,11 +1382,10 @@ function scoreboardSideWidget() {
 
   // الزرار الجانبي العائم في جنب الشاشة + اللوحة الجانبية للـ Scoreboard
   return `
-  <button type="button" class="sb-side-tab ${S.scoreboardOpen ? 'open' : ''} ${isManual ? 'manual-glow' : ''}" onclick="toggleScoreboard()" aria-expanded="${S.scoreboardOpen}" title="افتح أو اقفل لوحة النقاط المحفوظة (Scoreboard)">
-    <span class="sb-tab-icon">${ic('trophy')}</span>
-    <span class="sb-tab-lbl">Scoreboard</span>
-    <span class="sb-tab-mini-scores">
-      ${sorted.slice(0, 4).map((t) => `<b class="sb-mini-pill team-${t.id}">${Number(t.score) || 0}</b>`).join('')}
+  <button type="button" class="sb-side-tab ${S.scoreboardOpen ? 'open' : ''} ${isManual ? 'manual-glow' : ''}" onclick="toggleScoreboard()" aria-expanded="${S.scoreboardOpen}" title="افتح أو اقفل لوحة النقاط (Scoreboard)">
+    <span class="sb-tab-head">${ic('trophy')}<span>النقاط</span></span>
+    <span class="sb-tab-list">
+      ${sorted.slice(0, 4).map((t, i) => `<span class="sb-tab-row team-${t.id}"><i class="sb-dot"></i><em>${esc(t.name)}</em><b>${Number(t.score) || 0}</b>${i === 0 && (Number(t.score) || 0) > 0 ? `<span class="sb-tab-crown">${ic('crown')}</span>` : ''}</span>`).join('')}
     </span>
   </button>
   ${S.scoreboardOpen ? `
@@ -1538,7 +1540,58 @@ function render() {
     if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(selS, selE); } catch (e) {} }
   }
   if (changed) window.scrollTo(0, 0); else window.scrollTo(0, scrollY);
+  pixelateCanvases(app);
   tick();
+}
+
+// ---------- بكسلة صورة سحلب (بدل البلور) ----------
+const PIX_IMG_CACHE = new Map();
+function pixelateCanvases(root = document) {
+  root.querySelectorAll('canvas.pix-canvas').forEach((cv) => {
+    const src = cv.dataset.src;
+    if (!src) return;
+    const blocks = Math.max(4, Number(cv.dataset.blocks) || 16);
+    const draw = (img) => {
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      if (!w || !h || !cv.isConnected) return;
+      const scale = Math.min(1, 720 / w);
+      const W = Math.max(1, Math.round(w * scale));
+      const H = Math.max(1, Math.round(h * scale));
+      cv.width = W;
+      cv.height = H;
+      const bw = Math.min(blocks, W);
+      const bh = Math.max(1, Math.round((bw * H) / W));
+      const tmp = document.createElement('canvas');
+      tmp.width = bw;
+      tmp.height = bh;
+      const tctx = tmp.getContext('2d');
+      tctx.imageSmoothingEnabled = true;
+      tctx.drawImage(img, 0, 0, bw, bh);
+      const ctx = cv.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(tmp, 0, 0, bw, bh, 0, 0, W, H);
+      cv.classList.add('ready');
+    };
+    const fail = () => {
+      PIX_IMG_CACHE.delete(src);
+      const f = cv.closest('.photo-frame');
+      if (f) f.remove();
+      const g = document.querySelector('.sahlab-grid');
+      if (g) g.classList.add('no-photo');
+    };
+    let img = PIX_IMG_CACHE.get(src);
+    if (img && img.complete && img.naturalWidth) { draw(img); return; }
+    if (!img) {
+      img = new Image();
+      img.decoding = 'async';
+      img.src = src;
+      PIX_IMG_CACHE.set(src, img);
+      if (PIX_IMG_CACHE.size > 40) PIX_IMG_CACHE.delete(PIX_IMG_CACHE.keys().next().value);
+    }
+    img.addEventListener('load', () => draw(img), { once: true });
+    img.addEventListener('error', fail, { once: true });
+  });
 }
 
 function tamrClockSec(teamId) {
@@ -3493,6 +3546,15 @@ async function publish() {
   await api('kr_publish');
 }
 function nextRound() { S.pickOpt = null; S.draft = {}; api('next'); }
+let _skipBusy = false;
+async function skipQuestion() {
+  if (_skipBusy) return;
+  _skipBusy = true;
+  S.pickOpt = null;
+  S.draft = {};
+  S.drawer = false;
+  try { await api('skip'); } finally { setTimeout(() => { _skipBusy = false; }, 600); }
+}
 
 // ==================================================================
 // 7) سحلب
@@ -3505,10 +3567,11 @@ function viewSahlab() {
   const hideSecret = Boolean(v.settings && v.settings.hideSecret);
   const manualScore = Boolean(v.settings && v.settings.manualScore);
   const diff = (v.settings && v.settings.difficulty) || 'medium';
-  const blurSteps5 = diff === 'easy' ? [11, 8, 5, 3, 1] : diff === 'hard' ? [22, 16, 11, 7, 3] : [16, 12, 8, 5, 2];
+  // البكسلة: عدد المربعات بعرض الصورة — بتبدأ 16 مربع وتزيد مع كل تلميح لحد ما الصورة توضح
+  const pixSteps5 = diff === 'easy' ? [24, 36, 56, 90, 150] : diff === 'hard' ? [10, 16, 24, 40, 70] : [16, 24, 36, 56, 96];
   const totalH = Math.max(1, sh.totalHints || 5);
   const scaledIdx = totalH <= 1 ? 0 : Math.min(4, Math.round((sh.hintIdx / (totalH - 1)) * 4));
-  const blur = solved ? 0 : blurSteps5[scaledIdx];
+  const pixBlocks = solved ? 0 : pixSteps5[scaledIdx];
   const t = myTeam();
   const values = sh.values || v.points.sahlab;
   const nameOf = (pid) => (v.players.find((p) => p.id === pid) || {}).name || '';
@@ -3523,8 +3586,11 @@ function viewSahlab() {
     }).join('')}
   </ol>`;
   const hasPhoto = Boolean(sh.photo);
+  const photoInner = solved
+    ? `<img src="${esc(sh.photo)}" alt="" onerror="const f=this.closest('.photo-frame');if(f)f.remove();const g=document.querySelector('.sahlab-grid');if(g)g.classList.add('no-photo');"/>`
+    : `<canvas class="pix-canvas" data-src="${esc(sh.photo)}" data-blocks="${pixBlocks}" aria-label="صورة متبكسلة"></canvas>`;
   const photo = hasPhoto
-    ? `<div class="photo-frame"><div class="photo" style="filter:blur(${blur}px)"><img src="${esc(sh.photo)}" alt="" onerror="const f=this.closest('.photo-frame');if(f)f.remove();const g=document.querySelector('.sahlab-grid');if(g)g.classList.add('no-photo');"/></div><span class="photo-tag">${solved ? 'اتكشفت الصورة' : `وضوح الصورة ${sh.hintIdx + 1}/${totalH}`}</span></div>`
+    ? `<div class="photo-frame"><div class="photo pix-photo">${photoInner}</div><span class="photo-tag">${solved ? 'اتكشفت الصورة' : `وضوح الصورة ${sh.hintIdx + 1}/${totalH} · ${pixBlocks} بكسل`}</span></div>`
     : '';
   const noPhotoCenterBox = !hasPhoto && admin && !solved
     ? `<div class="card sahlab-name-center ${hideSecret ? 'is-hidden' : ''}">
@@ -4264,7 +4330,7 @@ function adminDrawer() {
       ${!v.adminPlays ? `<button class="btn ${hideSecret ? 'olive' : 'ghost'} block" onclick="api('toggle_secret')">${ic(hideSecret ? 'eye' : 'eyeOff')} ${hideSecret ? 'إظهار الإجابات السرية للحكم' : 'إخفاء الإجابات (وضع التلفزيون)'}</button>` : ''}
       <button class="btn ${manualScore ? 'primary' : 'ghost'} block" onclick="api('toggle_score_mode')">${ic(manualScore ? 'whistle' : 'bolt')} ${manualScore ? 'وضع النقاط: الحكم يحط النقط (دوس للتحويل لتلقائي)' : 'وضع النقاط: اللعبة تحط النقط تلقائي (دوس للتحويل للحكم)'}</button>
       <button class="btn olive block" onclick="S.drawer=false;toggleScoreboard(true)">${ic('trophy')} افتح الـ Scoreboard الكاملة</button>
-      <button class="btn ghost block" onclick="nextRound();S.drawer=false">${ic('next')} تخطي للجولة الجاية</button>
+      <button class="btn ghost block" onclick="skipQuestion()">${ic('next')} انقل للسؤال اللي بعده على طول</button>
     </div>` : ''}
     <div class="drawer-sec">
       <h3 class="h3">تعديل النقاط السريع (أو افتح الـ Scoreboard)</h3>

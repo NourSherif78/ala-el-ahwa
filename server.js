@@ -541,6 +541,10 @@ function syncSoloTeams(room) {
   if (!isSoloMode(room)) return;
   const oldScoreByCap = {};
   (room.teams || []).forEach((t) => {
+    if (!t.isSolo) {
+      room._teamScores = room._teamScores || {};
+      room._teamScores[t.id] = Number(t.score) || 0;
+    }
     if (t.captainId) oldScoreByCap[t.captainId] = t.score || 0;
   });
   const playersList = Object.values(room.players).slice(0, MAX_SOLO);
@@ -615,13 +619,19 @@ function syncRoomTeams(room, teamCount, teamNames) {
     room.settings.teamNames = ALL_TEAM_IDS.map((_, i) => clean(teamNames[i], 24) || room.settings.teamNames[i] || DEFAULT_TEAM_NAMES[i]);
   }
   const activeIds = ALL_TEAM_IDS.slice(0, n);
+  room.teams.forEach((t) => {
+    if (!t.isSolo) {
+      room._teamScores = room._teamScores || {};
+      room._teamScores[t.id] = Number(t.score) || 0;
+    }
+  });
   const oldMap = Object.fromEntries(room.teams.map((t) => [t.id, t]));
   room.teams = activeIds.map((id, i) => {
     if (oldMap[id] && !oldMap[id].isSolo) {
       oldMap[id].name = room.settings.teamNames[i] || oldMap[id].name;
       return oldMap[id];
     }
-    return { id, name: room.settings.teamNames[i] || DEFAULT_TEAM_NAMES[i], captainId: null, score: 0 };
+    return { id, name: room.settings.teamNames[i] || DEFAULT_TEAM_NAMES[i], captainId: null, score: (room._teamScores && Number(room._teamScores[id])) || 0 };
   });
   let idx = 0;
   for (const p of Object.values(room.players)) {
@@ -2392,6 +2402,7 @@ async function handleAction(b) {
     }
     case 'reset_scores': {
       room.teams.forEach((t) => { t.score = 0; });
+      room._teamScores = null;
       event(room, 'scores_reset', {});
       break;
     }
@@ -2620,6 +2631,16 @@ async function handleAction(b) {
       room.paused = false;
       room._busy = true;
       try { await nextRound(room); } finally { room._busy = false; }
+      break;
+    }
+    case 'skip': {
+      // الحكم ينقل للسؤال اللي بعده على طول من أي مرحلة (من غير نقط)
+      if (room.status !== 'playing' || room._busy) ERR('مش وقته');
+      clearRoomTimers(room);
+      room.paused = false;
+      room._busy = true;
+      try { await nextRound(room); } finally { room._busy = false; }
+      if (room.status === 'playing') event(room, 'skipped', { round: room.round });
       break;
     }
     default:
