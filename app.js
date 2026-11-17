@@ -47,7 +47,10 @@ const IC = {
   save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>',
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
-  bot: '<rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/>'
+  bot: '<rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/>',
+  volOn: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+  volOff: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>'
 };
 const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n] || ''}</svg>`;
 
@@ -211,6 +214,10 @@ const S = {
   bumps: {},
   lastKey: null,
   resumable: null,
+  muted: Boolean(LS.get('muted', false)),
+  reactionsOpen: true,
+  _lastTickSec: null,
+  _lastTickKey: null,
   lang: ['ar', 'en', 'tr'].includes(LS.get('lang', 'ar')) ? LS.get('lang', 'ar') : 'ar'
 };
 if (!S.setup.buzzSec || S.setup.buzzSec < 5) S.setup.buzzSec = 20;
@@ -350,7 +357,7 @@ const NON_BLOCKING_ACTIONS = new Set([
   'an_admin_pick', 'an_admin_buzz', 'an_toggle_lock',
   'yn_suggest', 'yn_guess', 'yn_reveal', 'yn_pass', 'yn_hint',
   'set_team_count', 'set_play_mode', 'add_test_player', 'admin_join_team', 'admin_become_judge',
-  'update_profile', 'unpick_team', 'leave_room'
+  'update_profile', 'unpick_team', 'leave_room', 'send_reaction'
 ]);
 
 // ------------------------------------------------------------------
@@ -431,13 +438,154 @@ function closedRoom() {
   render();
 }
 
+// ------------------------------------------------------------------
+// محرك المؤثرات الصوتية التفاعلية (Web Audio API بدون ملفات خارجية)
+// ------------------------------------------------------------------
+const SFX = {
+  _ctx: null,
+  ctx() {
+    if (S.muted) return null;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!this._ctx) this._ctx = new AC();
+      if (this._ctx.state === 'suspended') this._ctx.resume().catch(() => {});
+      return this._ctx;
+    } catch (e) {
+      return null;
+    }
+  },
+  tone(freq, dur = 0.12, type = 'sine', vol = 0.16, delay = 0, slideTo = null) {
+    const c = this.ctx();
+    if (!c) return;
+    try {
+      const t0 = c.currentTime + delay;
+      const osc = c.createOscillator();
+      const g = c.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(40, slideTo), t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol, t0 + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(g);
+      g.connect(c.destination);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    } catch (e) {}
+  },
+  tick(urgent = false) {
+    this.tone(urgent ? 1050 : 780, 0.055, 'triangle', urgent ? 0.2 : 0.12);
+  },
+  timeup() {
+    this.tone(440, 0.18, 'sawtooth', 0.16, 0, 220);
+    this.tone(280, 0.32, 'sawtooth', 0.18, 0.16, 150);
+  },
+  buzz() {
+    this.tone(587.33, 0.09, 'triangle', 0.24, 0);
+    this.tone(880, 0.22, 'triangle', 0.26, 0.07);
+  },
+  correct() {
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+      this.tone(f, i === 3 ? 0.28 : 0.11, 'triangle', 0.2, i * 0.075);
+    });
+  },
+  wrong() {
+    this.tone(310, 0.18, 'sawtooth', 0.16, 0, 240);
+    this.tone(235, 0.32, 'sawtooth', 0.18, 0.17, 145);
+  },
+  pop() {
+    this.tone(520, 0.08, 'sine', 0.14, 0, 860);
+  },
+  fanfare() {
+    [523.25, 659.25, 783.99, 659.25, 1046.5].forEach((f, i) => {
+      this.tone(f, i === 4 ? 0.45 : 0.13, 'triangle', 0.22, i * 0.1);
+    });
+  }
+};
+
+function toggleSoundMute() {
+  S.muted = !S.muted;
+  LS.set('muted', S.muted);
+  if (!S.muted) SFX.pop();
+  const btn = document.querySelector('.sound-top-btn');
+  if (btn) {
+    btn.classList.toggle('is-muted', S.muted);
+    btn.innerHTML = `${ic(S.muted ? 'volOff' : 'volOn')}<span>${S.muted ? 'صامت' : 'الصوت'}</span>`;
+  } else {
+    render();
+  }
+  toast(S.muted ? 'اتكتمت المؤثرات الصوتية' : 'اتفتحت المؤثرات الصوتية الحماسية!');
+}
+
+function toggleReactionBar() {
+  S.reactionsOpen = !S.reactionsOpen;
+  const bar = document.querySelector('.reaction-dock');
+  if (bar) bar.classList.toggle('collapsed', !S.reactionsOpen);
+}
+
+let _lastClientReactAt = 0;
+function sendReaction(key) {
+  if (!S.view || !S.code) return;
+  const now = Date.now();
+  if (now - _lastClientReactAt < 1200) return;
+  _lastClientReactAt = now;
+  api('send_reaction', { key });
+}
+
+function spawnReactionBubble(e) {
+  if (!e) return;
+  let layer = document.getElementById('reactionLayer');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.id = 'reactionLayer';
+    layer.className = 'reaction-layer';
+    document.body.appendChild(layer);
+  }
+  const b = document.createElement('div');
+  const teamCls = e.team && ['A', 'B', 'C', 'D'].includes(e.team) ? `team-${e.team}` : 'team-host';
+  b.className = `reaction-bubble ${teamCls}`;
+  const leftPct = 14 + Math.round(Math.random() * 72);
+  b.style.left = leftPct + '%';
+  b.innerHTML = `<span class="rb-icon">${esc(e.icon || '🔥')}</span><div class="rb-txt"><b>${esc(e.sender || 'لاعب')}</b><span>${esc(e.text || '')}</span></div>`;
+  layer.appendChild(b);
+  setTimeout(() => b.remove(), 3400);
+}
+
+function spawnScoreFlyer(teamId, delta) {
+  if (!delta) return;
+  setTimeout(() => {
+    const targets = document.querySelectorAll(`.score.team-${teamId}, .sb-tab-row.team-${teamId}, .sb-team-card.team-${teamId}`);
+    targets.forEach((el) => {
+      el.classList.remove('score-flash-up', 'score-flash-down');
+      void el.offsetWidth;
+      el.classList.add(delta > 0 ? 'score-flash-up' : 'score-flash-down');
+      const fl = document.createElement('span');
+      fl.className = `score-flyer ${delta > 0 ? 'up' : 'down'}`;
+      fl.textContent = `${delta > 0 ? '+' : ''}${delta}`;
+      el.appendChild(fl);
+      setTimeout(() => fl.remove(), 1700);
+    });
+  }, 60);
+}
+
 function onEvent(v) {
-  // نقاط متحركة
+  // نقاط متحركة + صوت ومؤثر طيران النقاط
   if (S.prevScores && v.teams) {
+    let anyPositive = false;
+    let anyNegative = false;
     v.teams.forEach((t) => {
       const old = S.prevScores[t.id];
-      if (old != null && old !== t.score) S.bumps[t.id] = { d: t.score - old, at: Date.now() };
+      if (old != null && old !== t.score) {
+        const diff = t.score - old;
+        S.bumps[t.id] = { d: diff, at: Date.now() };
+        spawnScoreFlyer(t.id, diff);
+        if (diff > 0) anyPositive = true;
+        if (diff < 0) anyNegative = true;
+      }
     });
+    if (anyPositive) SFX.correct();
+    else if (anyNegative) SFX.wrong();
   }
   S.prevScores = v.teams ? Object.fromEntries(v.teams.map((t) => [t.id, t.score])) : null;
 
@@ -449,9 +597,24 @@ function onEvent(v) {
   }
   if (!e || e.id === S.lastEventId) return;
   S.lastEventId = e.id;
+
+  if (e.type === 'reaction') {
+    SFX.pop();
+    spawnReactionBubble(e);
+    return;
+  }
+
   const tn = (id) => (v.teams.find((t) => t.id === id) || {}).name || '';
   if (e.type === 'an_wrong_steal' || e.type === 'an_reset' || e.type === 'an_timeout_steal') S.pickOpt = null;
   const isManual = Boolean(v.settings && v.settings.manualScore);
+
+  // تشغيل المؤثرات الصوتية حسب نوع الحدث
+  if (e.type === 'buzz') SFX.buzz();
+  else if (e.type === 'an_correct' || e.type === 'yn_solved' || e.type === 'solved') SFX.correct();
+  else if (e.type === 'final') SFX.fanfare();
+  else if (e.type === 'wrong' || e.type === 'an_wrong_steal' || e.type === 'an_both_wrong' || e.type === 'penalty' || e.type === 'rejected') SFX.wrong();
+  else if (e.type === 'hint' || e.type === 'golden') SFX.pop();
+
   const msgs = {
     join: () => isHost() && `${e.name} دخل الغرفة`,
     wrong: () => e.bothFrozen ? `كل الفرق اتجمدت! التلميح الجاي بيفتح تلقائياً...` : `${tn(e.team)} جاوب غلط — اتجمد لحد التلميح الجاي!`,
@@ -1242,6 +1405,10 @@ function topbar(extra = '') {
     <div class="topbar-mid">${extra}</div>
     <div class="topbar-end">
       ${langSwitch(true)}
+      <button type="button" class="sound-top-btn ${S.muted ? 'is-muted' : ''}" onclick="toggleSoundMute()" title="${S.muted ? 'تشغيل المؤثرات الصوتية' : 'كتم المؤثرات الصوتية'}">
+        ${ic(S.muted ? 'volOff' : 'volOn')}
+        <span>${S.muted ? 'صامت' : 'الصوت'}</span>
+      </button>
       ${showSbBtn ? `<button type="button" class="scoreboard-top-btn ${S.scoreboardOpen ? 'on' : ''}" onclick="toggleScoreboard()" title="افتح لوحة النقاط (Scoreboard)">
         ${ic('trophy')}
         <span>النقاط</span>
@@ -1471,6 +1638,30 @@ function scoreboardSideWidget() {
   ` : ''}`;
 }
 
+function reactionBarWidget() {
+  const v = S.view;
+  if (!v || v.me.role === 'kicked' || S.editingAvatar || S.customInRoom) return '';
+  const items = [
+    ['tea', '☕', 'اشرب شاي'],
+    ['beast', '🔥', 'عاش يا وحش'],
+    ['bait', '🎣', 'بلعت الطعم!'],
+    ['cheater', '👀', 'غشاش!'],
+    ['focus', '🧠', 'ركزوا'],
+    ['hurry', '⏰', 'الوقت بيجري!']
+  ];
+  return `<div class="reaction-dock ${S.reactionsOpen ? '' : 'collapsed'}" role="region" aria-label="تفاعلات السهرة">
+    <button type="button" class="reaction-toggle-btn" onclick="toggleReactionBar()" title="تفاعلات ومناكفات السهرة">
+      ${ic('flame')}
+      <span>ولّعها</span>
+    </button>
+    <div class="reaction-pills">
+      ${items.map(([k, emo, lbl]) => `<button type="button" class="react-pill" data-react="${k}" onclick="sendReaction('${k}')" title="${lbl}">
+        <i>${emo}</i><span>${lbl}</span>
+      </button>`).join('')}
+    </div>
+  </div>`;
+}
+
 // ------------------------------------------------------------------
 // الرسم العام
 // ------------------------------------------------------------------
@@ -1505,7 +1696,7 @@ function render() {
   } else if (!v) {
     html = ({ home: viewHome, avatar: viewAvatar, setup: viewSetup, custom: viewCustom, closed: viewClosed, loading: viewLoading })[S.screen]() + (S.screen !== 'loading' ? scoreboardSideWidget() : '');
   } else if (key === 'kicked') html = viewKicked() + scoreboardSideWidget();
-  else if (v.status === 'lobby') html = (isAdmin() ? viewLobbyAdmin() : myTeam() ? viewLobbyPlayer() : viewTeamPick()) + scoreboardSideWidget();
+  else if (v.status === 'lobby') html = (isAdmin() ? viewLobbyAdmin() : myTeam() ? viewLobbyPlayer() : viewTeamPick()) + scoreboardSideWidget() + reactionBarWidget();
   else if (v.status === 'playing') {
     try {
       if (!isAdmin() && !myTeam()) html = viewTeamPick();
@@ -1514,9 +1705,9 @@ function render() {
       console.error('render error', err);
       html = `${topbar()}<section class="wrap narrow center-page"><div class="card tape"><h1 class="h1">حصلت مشكلة في عرض اللعبة</h1><p class="sub">جرب تحدّث الصفحة. ${isHost() ? 'أو ارجع لغرفة الانتظار من غير ما الفرق تخرج.' : ''}</p>${isHost() ? `<button class="btn primary block" onclick="returnToLobby()">${ic('sliders')} ارجع لغرفة الانتظار</button>` : ''}<button class="btn ghost block" onclick="location.reload()">${ic('home')} تحديث الصفحة</button></div></section>`;
     }
-    html += scoreboardSideWidget();
+    html += scoreboardSideWidget() + reactionBarWidget();
     if (isHost()) html += adminDrawer();
-  } else if (v.status === 'finished') html = viewFinal() + scoreboardSideWidget() + (isHost() ? adminDrawer() : '');
+  } else if (v.status === 'finished') html = viewFinal() + scoreboardSideWidget() + reactionBarWidget() + (isHost() ? adminDrawer() : '');
   if (S.accountModal) html += viewAccountModal();
 
   const changed = key !== S.lastKey;
@@ -1606,10 +1797,11 @@ function tamrClockSec(teamId) {
   return s;
 }
 
-// تحديث العداد بدون إعادة رسم
+// تحديث العداد بدون إعادة رسم + صوت وتوتر آخر 5 ثواني
 function tick() {
   const el = document.querySelector('.js-timer');
-  if (el) {
+  const v = S.view;
+  if (el && v) {
     const r = remaining();
     const total = Math.max(1, phaseTotal());
     el.querySelector('.t-num').textContent = r;
@@ -1617,16 +1809,37 @@ function tick() {
     const C = 2 * Math.PI * 19;
     fg.style.strokeDasharray = C;
     fg.style.strokeDashoffset = C * (1 - Math.min(1, r / total));
-    el.classList.toggle('low', r <= 5 && S.view.pausedLeft == null);
+    const isDanger = r >= 1 && r <= 5 && v.pausedLeft == null && v.status === 'playing';
+    el.classList.toggle('low', isDanger || (r <= 5 && v.pausedLeft == null));
+    document.body.classList.toggle('danger-countdown', isDanger);
+
+    const tickKey = `${v.code}:${v.game}:${v.round}:${v.phase}:${v.deadline || ''}`;
+    if (S._lastTickKey !== tickKey) {
+      S._lastTickKey = tickKey;
+      S._lastTickSec = r;
+    } else if (v.pausedLeft == null && v.deadline && r !== S._lastTickSec) {
+      S._lastTickSec = r;
+      if (r >= 1 && r <= 5) {
+        SFX.tick(r <= 2);
+      } else if (r === 0) {
+        SFX.timeup();
+      }
+    }
+  } else {
+    document.body.classList.remove('danger-countdown');
   }
-  const v = S.view;
   if (v && v.game === 'tamr' && v.tm) {
+    let anyLowTamr = false;
     document.querySelectorAll('.js-clock').forEach((c) => {
       const sec = tamrClockSec(c.dataset.team);
       c.textContent = mmss(sec);
       const card = c.closest('.clock');
       if (card) card.classList.toggle('low', sec <= 30);
+      if (sec >= 1 && sec <= 10 && v.tm.turnRunning && (v.tm.golden || v.tm.turn) === c.dataset.team) {
+        anyLowTamr = true;
+      }
     });
+    if (anyLowTamr) document.body.classList.add('danger-countdown');
   }
 }
 setInterval(tick, 250);

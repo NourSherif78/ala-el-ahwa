@@ -2047,6 +2047,30 @@ async function handleAction(b) {
     return { room };
   }
 
+  // ---------- تفاعلات ومناكفات لحظية بين اللاعبين والحكم ----------
+  if (action === 'send_reaction') {
+    const REACTIONS = {
+      tea: { text: 'اشرب شاي!', icon: '☕' },
+      beast: { text: 'عاش يا وحش!', icon: '🔥' },
+      bait: { text: 'بلعت الطعم!', icon: '🎣' },
+      cheater: { text: 'غشاش!', icon: '👀' },
+      focus: { text: 'ركزوا يا رجالة!', icon: '🧠' },
+      hurry: { text: 'الوقت بيجري!', icon: '⏰' }
+    };
+    const rKey = cleanId(b.key, 20);
+    const item = REACTIONS[rKey];
+    if (!item) return { room };
+    const actor = authPlayer(room, b) || (admin ? room.admin : null);
+    if (!actor) ERR('ادخل الغرفة الأول');
+    const now = Date.now();
+    if (actor._lastReactAt && now - actor._lastReactAt < 1200) return { room };
+    actor._lastReactAt = now;
+    const senderName = (actor.profile && actor.profile.name) || actor.name || (admin ? 'الحكم' : 'لاعب');
+    const teamId = actor.team || (admin && room.adminPlays ? room.adminTeam : null) || 'host';
+    event(room, 'reaction', { key: rKey, text: item.text, icon: item.icon, sender: senderName, team: teamId });
+    return { room };
+  }
+
   // ---------- أكشنز اللاعبين أثناء اللعب ----------
   const p = authPlayer(room, b);
   if (p && action.startsWith('kr_') && room.game === 'karak' && room.kr) {
